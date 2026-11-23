@@ -261,7 +261,7 @@ fun SettingsScreen(
                 } else {
                     Button(
                         onClick = {
-                            downloadProgress = 0f
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.apkDownloadUrl))) }; if (false)
                             scope.launch {
                                 val dl = repo.downloadApk(info.apkDownloadUrl) { p -> downloadProgress = p }
                                 downloadProgress = null

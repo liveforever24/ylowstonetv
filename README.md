@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/Platform-Android%2010%2B%20%7C%20Android%20TV-000000?style=flat-square" alt="Platform" />
   <img src="https://img.shields.io/badge/Built%20with-Kotlin%20%26%20Jetpack%20Compose-FA2D48?style=flat-square" alt="Kotlin Compose" />
   <img src="https://img.shields.io/badge/Engine-Media3%20ExoPlayer-0A84FF?style=flat-square" alt="Media3 ExoPlayer" />
-  <img src="https://img.shields.io/badge/Version-v1.0.1-30D158?style=flat-square" alt="Version" />
+  <img src="https://img.shields.io/badge/Version-v1.0.2-30D158?style=flat-square" alt="Version" />
 </p>
 
 **YlowstoneTV** is a lightweight, native media player for Android smartphones and Google/Android TV. Built from the ground up with Kotlin, Jetpack Compose, indexed local SQLite storage, and Media3 ExoPlayer, it delivers smooth high-refresh-rate browsing—even across playlists containing tens of thousands of channels—wrapped in a clean, distraction-free interface.
