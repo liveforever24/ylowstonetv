@@ -1,0 +1,59 @@
+name: Build YlowstoneTV APK
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK (Android 10-17 & Android TV)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build Release APK
+        run: gradle assembleRelease --stacktrace
+
+      - name: Prepare Final APK
+        run: |
+          mkdir -p dist
+          VERSION=$(grep 'versionName = ' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
+          cp app/build/outputs/apk/release/app-release.apk "dist/YlowstoneTV-v${VERSION}-by-ylowstone.apk"
+
+      - name: Upload APK to GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: YlowstoneTV-v${{ env.APP_VERSION }}-APK
+          path: dist/*.apk
+
+      - name: Publish GitHub Release (for In-App Auto Update)
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.APP_VERSION }}
+          name: YlowstoneTV v${{ env.APP_VERSION }}
+          body: |
+            ## YlowstoneTV v${{ env.APP_VERSION }} (by ylowstone)
+            - Native Kotlin + Jetpack Compose + Media3 ExoPlayer (120fps smooth UI)
+            - Supports Android 10–17 Smartphone & Google/Android TV
+            - Multi-Playlist (Xtream Codes, M3U URL/File, Direct Stream) + PIN Lock + Floating Glass Navbar
+          files: dist/*.apk
