@@ -6,8 +6,8 @@
     </style>
 
     <style name="Theme.YlowstoneTV.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#0E121B</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_fg_img</item>
+        <item name="windowSplashScreenBackground">#000000</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_dot</item>
         <item name="postSplashScreenTheme">@style/Theme.YlowstoneTV</item>
     </style>
 </resources>

@@ -55,7 +55,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         onCreate(db)
     }
 
-    // ---- Playlists ----
     fun getAllPlaylists(): List<PlaylistProfile> {
         val list = mutableListOf<PlaylistProfile>()
         readableDatabase.rawQuery("SELECT * FROM playlists ORDER BY id DESC", null).use { c ->
@@ -113,10 +112,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         }
     }
 
-    // ---- Bulk Insert Channels (Optimized for 25,000+ rows in < 1s) ----
     fun replaceChannels(playlistId: Long, items: List<ChannelItem>) {
         val db = writableDatabase
-        // Preserve favorites by streamUrl
         val favUrls = HashSet<String>()
         db.rawQuery(
             "SELECT stream_url FROM channels WHERE playlist_id = ? AND is_favorite = 1",
@@ -201,7 +198,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
     fun queryChannels(
         playlistId: Long,
         mediaType: MediaType?,
-        specialFilter: String, // "ALL", "FAV", "HIST", or category name
+        specialFilter: String,
         searchQuery: String,
         lockedCategories: Set<String>,
         allowLockedCategory: Boolean = false,
@@ -233,7 +230,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             args.add("%$trimmedSearch%")
         }
 
-        // Hide locked categories from ALL/FAV/HIST/Search unless explicitly unlocked
         if (!allowLockedCategory && lockedCategories.isNotEmpty()) {
             val placeholders = lockedCategories.joinToString(",") { "?" }
             where.append(" AND category NOT IN ($placeholders)")
@@ -246,26 +242,122 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         val list = mutableListOf<ChannelItem>()
         readableDatabase.rawQuery(sql, args.toTypedArray()).use { c ->
             while (c.moveToNext()) {
-                list.add(
-                    ChannelItem(
-                        id = c.getLong(0),
-                        playlistId = c.getLong(1),
-                        streamId = c.getString(2),
-                        name = c.getString(3),
-                        category = c.getString(4),
-                        logoUrl = c.getString(5),
-                        streamUrl = c.getString(6),
-                        mediaType = runCatching { MediaType.valueOf(c.getString(7)) }.getOrDefault(MediaType.LIVE),
-                        containerExtension = c.getString(8),
-                        rating = c.getString(9),
-                        isFavorite = c.getInt(10) == 1,
-                        lastWatchedAt = c.getLong(11)
-                    )
-                )
+                list.add(readChannel(c))
             }
         }
         return list
     }
+
+    // ---- Cross-Playlist Home & Search Queries (Respecting PIN-locked categories!) ----
+    fun getAllFavoritesAcrossPlaylists(
+        lockedByPlaylist: Map<Long, Set<String>>,
+        limit: Int = 80
+    ): List<TaggedChannel> {
+        val list = mutableListOf<TaggedChannel>()
+        val sql = """
+            SELECT c.*, p.name AS pl_name
+            FROM channels c
+            JOIN playlists p ON p.id = c.playlist_id
+            WHERE c.is_favorite = 1
+            ORDER BY c.last_watched DESC, c.id DESC
+            LIMIT ?
+        """.trimIndent()
+        readableDatabase.rawQuery(sql, arrayOf((limit * 2).toString())).use { c ->
+            while (c.moveToNext() && list.size < limit) {
+                val ch = readChannel(c)
+                val plName = c.getString(12) ?: ""
+                val locked = lockedByPlaylist[ch.playlistId]
+                if (locked != null && locked.contains(ch.category)) continue
+                list.add(TaggedChannel(ch, plName))
+            }
+        }
+        return list
+    }
+
+    fun getRecentHistoryAcrossPlaylists(
+        lockedByPlaylist: Map<Long, Set<String>>,
+        limit: Int = 40
+    ): List<TaggedChannel> {
+        val list = mutableListOf<TaggedChannel>()
+        val sql = """
+            SELECT c.*, p.name AS pl_name
+            FROM channels c
+            JOIN playlists p ON p.id = c.playlist_id
+            WHERE c.last_watched > 0
+            ORDER BY c.last_watched DESC
+            LIMIT ?
+        """.trimIndent()
+        readableDatabase.rawQuery(sql, arrayOf((limit * 2).toString())).use { c ->
+            while (c.moveToNext() && list.size < limit) {
+                val ch = readChannel(c)
+                val plName = c.getString(12) ?: ""
+                val locked = lockedByPlaylist[ch.playlistId]
+                if (locked != null && locked.contains(ch.category)) continue
+                list.add(TaggedChannel(ch, plName))
+            }
+        }
+        return list
+    }
+
+    fun searchAcrossPlaylists(
+        query: String,
+        playlistIdFilter: Long?, // null = all playlists
+        mediaType: MediaType?,
+        lockedByPlaylist: Map<Long, Set<String>>,
+        limit: Int = 120
+    ): List<TaggedChannel> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        val args = mutableListOf<String>()
+        val where = StringBuilder("(c.name LIKE ? OR c.category LIKE ?)")
+        args.add("%$q%")
+        args.add("%$q%")
+
+        if (playlistIdFilter != null) {
+            where.append(" AND c.playlist_id = ?")
+            args.add(playlistIdFilter.toString())
+        }
+        if (mediaType != null) {
+            where.append(" AND c.media_type = ?")
+            args.add(mediaType.name)
+        }
+
+        val sql = """
+            SELECT c.*, p.name AS pl_name
+            FROM channels c
+            JOIN playlists p ON p.id = c.playlist_id
+            WHERE $where
+            ORDER BY c.is_favorite DESC, c.last_watched DESC, c.id ASC
+            LIMIT ${limit * 2}
+        """.trimIndent()
+
+        val list = mutableListOf<TaggedChannel>()
+        readableDatabase.rawQuery(sql, args.toTypedArray()).use { c ->
+            while (c.moveToNext() && list.size < limit) {
+                val ch = readChannel(c)
+                val plName = c.getString(12) ?: ""
+                val locked = lockedByPlaylist[ch.playlistId]
+                if (locked != null && locked.contains(ch.category)) continue
+                list.add(TaggedChannel(ch, plName))
+            }
+        }
+        return list
+    }
+
+    private fun readChannel(c: android.database.Cursor): ChannelItem = ChannelItem(
+        id = c.getLong(0),
+        playlistId = c.getLong(1),
+        streamId = c.getString(2),
+        name = c.getString(3),
+        category = c.getString(4),
+        logoUrl = c.getString(5),
+        streamUrl = c.getString(6),
+        mediaType = runCatching { MediaType.valueOf(c.getString(7)) }.getOrDefault(MediaType.LIVE),
+        containerExtension = c.getString(8),
+        rating = c.getString(9),
+        isFavorite = c.getInt(10) == 1,
+        lastWatchedAt = c.getLong(11)
+    )
 
     fun toggleFavorite(channelId: Long, newFav: Boolean) {
         val cv = ContentValues().apply { put("is_favorite", if (newFav) 1 else 0) }

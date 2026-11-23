@@ -39,7 +39,7 @@ import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.PlaylistProfile
 import com.ylowstone.tv.model.PlaylistType
 import com.ylowstone.tv.model.StreamFormat
-import com.ylowstone.tv.ui.components.SmallIconPill
+import com.ylowstone.tv.ui.components.ProfileYBadgeButton
 import com.ylowstone.tv.ui.components.YlowstoneLogoBadge
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
@@ -104,9 +104,7 @@ fun PlaylistManagerScreen(
                         Text(strings.choosePlaylist, color = c.textSecondary, fontSize = 12.sp)
                     }
                 }
-                SmallIconPill(
-                    icon = Icons.Rounded.Settings,
-                    contentDescription = strings.settings,
+                ProfileYBadgeButton(
                     isTvMode = isTvMode,
                     onClick = onOpenSettings
                 )

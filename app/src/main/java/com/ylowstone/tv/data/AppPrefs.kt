@@ -11,7 +11,8 @@ class AppPrefs(context: Context) {
             hasSelectedMode = prefs.getBoolean("has_selected_mode", false),
             deviceMode = runCatching { DeviceMode.valueOf(prefs.getString("device_mode", "SMARTPHONE")!!) }.getOrDefault(DeviceMode.SMARTPHONE),
             themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "AMOLED")!!) }.getOrDefault(ThemeMode.AMOLED),
-            stylePreset = runCatching { StylePreset.valueOf(prefs.getString("style_preset", "APPLE_MUSIC")!!) }.getOrDefault(StylePreset.APPLE_MUSIC),
+            stylePreset = StylePreset.fromStored(prefs.getString("style_preset", "ROSE_GLASS")),
+            appIcon = AppIconOption.fromKey(prefs.getString("app_icon", "obsidian")),
             language = runCatching { AppLanguage.valueOf(prefs.getString("language", "ID")!!) }.getOrDefault(AppLanguage.ID),
             showPlayerGestures = prefs.getBoolean("show_gestures", true),
             streamFormat = runCatching { StreamFormat.valueOf(prefs.getString("stream_format", "HLS")!!) }.getOrDefault(StreamFormat.HLS),
@@ -27,6 +28,7 @@ class AppPrefs(context: Context) {
             .putString("device_mode", s.deviceMode.name)
             .putString("theme_mode", s.themeMode.name)
             .putString("style_preset", s.stylePreset.name)
+            .putString("app_icon", s.appIcon.key)
             .putString("language", s.language.name)
             .putBoolean("show_gestures", s.showPlayerGestures)
             .putString("stream_format", s.streamFormat.name)
@@ -42,5 +44,14 @@ class AppPrefs(context: Context) {
 
     fun setLockedCategories(playlistId: Long, categories: Set<String>) {
         prefs.edit().putStringSet("locked_cats_$playlistId", categories).apply()
+    }
+
+    fun getAllLockedMap(playlistIds: List<Long>): Map<Long, Set<String>> {
+        val map = HashMap<Long, Set<String>>()
+        for (id in playlistIds) {
+            val set = getLockedCategories(id)
+            if (set.isNotEmpty()) map[id] = set
+        }
+        return map
     }
 }

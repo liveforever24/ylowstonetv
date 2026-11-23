@@ -1,6 +1,15 @@
 package com.ylowstone.tv.ui.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,29 +33,185 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.ylowstone.tv.BuildConfig
 import com.ylowstone.tv.R
 import com.ylowstone.tv.i18n.AppStrings
+import com.ylowstone.tv.model.AppIconOption
+import com.ylowstone.tv.model.ChannelItem
+import com.ylowstone.tv.model.DeviceMode
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 
 @Composable
-fun YlowstoneLogoBadge(size: Dp = 44.dp) {
-    val shape = RoundedCornerShape(size * 0.28f)
+fun YlowstoneLogoBadge(
+    iconOption: AppIconOption = AppIconOption.OBSIDIAN,
+    size: Dp = 42.dp
+) {
     Image(
-        painter = painterResource(id = R.drawable.app_icon_art),
+        painter = painterResource(id = iconOption.previewRes),
         contentDescription = "YlowstoneTV",
         contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(size)
-            .clip(shape)
-            .border(1.dp, Color.White.copy(alpha = 0.22f), shape)
+            .clip(CircleShape)
+            .border(1.dp, Color.White.copy(alpha = 0.20f), CircleShape)
     )
+}
+
+@Composable
+fun ProfileYBadgeButton(
+    isTvMode: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(40.dp)
+            .shadow(10.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.45f))
+            .clip(CircleShape)
+            .border(1.5.dp, Color.White.copy(alpha = 0.30f), CircleShape)
+            .tvFocusBorder(isTvMode, CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.profile_y_badge),
+            contentDescription = "Menu",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
+fun ProfileQuickDropdown(
+    expanded: Boolean,
+    activePlaylistName: String?,
+    deviceMode: DeviceMode,
+    strings: AppStrings,
+    onDismiss: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onSwitchDeviceMode: (DeviceMode) -> Unit,
+    onManagePlaylists: () -> Unit,
+    onCheckUpdates: () -> Unit
+) {
+    val c = LocalYlowColors.current
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(22.dp),
+        containerColor = if (c.isDark) Color(0xF0181820) else Color(0xF7FFFFFF),
+        modifier = Modifier
+            .width(250.dp)
+            .border(1.dp, c.glassHighlight, RoundedCornerShape(22.dp))
+    ) {
+        // Header info
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.profile_y_badge),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(34.dp).clip(CircleShape)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = activePlaylistName ?: "YlowstoneTV",
+                    color = c.textPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "YlowstoneTV v${BuildConfig.VERSION_NAME}",
+                    color = c.textSecondary,
+                    fontSize = 11.sp
+                )
+            }
+        }
+
+        HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(horizontal = 12.dp))
+
+        // Settings
+        DropdownMenuItem(
+            text = { Text(strings.settings, color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium) },
+            leadingIcon = { Icon(Icons.Rounded.Settings, contentDescription = null, tint = c.textPrimary, modifier = Modifier.size(20.dp)) },
+            onClick = { onDismiss(); onOpenSettings() }
+        )
+
+        // Manage / Switch Playlist
+        DropdownMenuItem(
+            text = { Text(strings.managePlaylists, color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium) },
+            leadingIcon = { Icon(Icons.Rounded.SwitchAccount, contentDescription = null, tint = c.textPrimary, modifier = Modifier.size(20.dp)) },
+            onClick = { onDismiss(); onManagePlaylists() }
+        )
+
+        // Inline Switch Mode: Smartphone / TV
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
+            Text(strings.switchModeLabel, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(c.surfaceElevated)
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                listOf(
+                    DeviceMode.SMARTPHONE to Pair(Icons.Rounded.Smartphone, strings.smartphone),
+                    DeviceMode.TV to Pair(Icons.Rounded.Tv, strings.androidTv)
+                ).forEach { (mode, pair) ->
+                    val active = deviceMode == mode
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (active) c.accent else Color.Transparent)
+                            .clickable { onSwitchDeviceMode(mode) }
+                            .padding(vertical = 7.dp, horizontal = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(pair.first, contentDescription = null, tint = if (active) Color.White else c.textSecondary, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = pair.second,
+                            color = if (active) Color.White else c.textPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(horizontal = 12.dp))
+
+        // Bottom: Check for Updates
+        DropdownMenuItem(
+            text = { Text(strings.checkUpdates, color = c.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) },
+            leadingIcon = { Icon(Icons.Rounded.SystemUpdate, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp)) },
+            onClick = { onDismiss(); onCheckUpdates() }
+        )
+    }
 }
 
 @Composable
@@ -68,83 +233,258 @@ fun Modifier.tvFocusBorder(
         )
 }
 
-enum class MainTab { HOME, LIVE, MOVIES, SERIES, SETTINGS }
+enum class MainTab { HOME, LIVE, MOVIES, SERIES, SEARCH }
 
 @Composable
-fun FloatingGlassNavbar(
+fun MorphingLiquidGlassNavbar(
     selectedTab: MainTab,
-    onSelect: (MainTab) -> Unit,
+    isCompact: Boolean,
+    activeChannel: ChannelItem?,
+    activePlaylistName: String,
+    isPlaying: Boolean,
     strings: AppStrings,
     isTvMode: Boolean,
+    onSelectTab: (MainTab) -> Unit,
+    onTogglePlayPause: () -> Unit,
+    onOpenNowPlaying: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val c = LocalYlowColors.current
-    val items = listOf(
-        Triple(MainTab.HOME, Icons.Rounded.Home, strings.home),
-        Triple(MainTab.LIVE, Icons.Rounded.LiveTv, strings.liveTv),
-        Triple(MainTab.MOVIES, Icons.Rounded.Movie, strings.movies),
-        Triple(MainTab.SERIES, Icons.Rounded.Tv, strings.series),
-        Triple(MainTab.SETTINGS, Icons.Rounded.Settings, strings.settings)
-    )
 
-    Row(
+    AnimatedContent(
+        targetState = isCompact && !isTvMode,
+        transitionSpec = {
+            (fadeIn(tween(220)) + scaleIn(initialScale = 0.94f, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)))
+                .togetherWith(fadeOut(tween(180)) + scaleOut(targetScale = 0.95f))
+        },
+        label = "morphNavbar",
         modifier = modifier
-            .shadow(18.dp, RoundedCornerShape(32.dp), ambientColor = Color.Black.copy(alpha = 0.48f))
-            .clip(RoundedCornerShape(32.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        c.glassBg.copy(alpha = if (c.isDark) 0.88f else 0.92f),
-                        c.glassBg.copy(alpha = if (c.isDark) 0.74f else 0.84f)
-                    )
+    ) { compact ->
+        if (compact) {
+            // ---- BITChORD-STYLE COLLAPSED 3-PART LIQUID GLASS BAR ----
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Left Circle: Home
+                LiquidGlassCircleButton(
+                    icon = Icons.Rounded.Home,
+                    active = selectedTab == MainTab.HOME,
+                    onClick = { onSelectTab(MainTab.HOME) }
                 )
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = if (c.isDark) 0.28f else 0.72f),
-                        c.glassBorder
-                    )
-                ),
-                shape = RoundedCornerShape(32.dp)
-            )
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        items.forEach { (tab, icon, label) ->
-            val active = tab == selectedTab
-            val pillBg by animateColorAsState(
-                targetValue = if (active) c.accent.copy(alpha = 0.22f) else Color.Transparent,
-                label = "navPill"
-            )
-            val tint by animateColorAsState(
-                targetValue = if (active) c.accent else c.textSecondary,
-                label = "navTint"
+
+                // Center Capsule: Now Playing Mini Pill (or Active Playlist)
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(50.dp)
+                        .shadow(16.dp, RoundedCornerShape(28.dp), ambientColor = Color.Black.copy(alpha = 0.55f))
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    c.glassBg.copy(alpha = if (c.isDark) 0.90f else 0.94f),
+                                    c.glassBg.copy(alpha = if (c.isDark) 0.78f else 0.86f)
+                                )
+                            )
+                        )
+                        .border(
+                            1.dp,
+                            Brush.verticalGradient(listOf(c.glassHighlight, c.glassBorder)),
+                            RoundedCornerShape(28.dp)
+                        )
+                        .clickable {
+                            if (activeChannel != null) onOpenNowPlaying()
+                            else onSelectTab(MainTab.LIVE)
+                        }
+                        .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (activeChannel != null) {
+                        ChannelLogoBox(activeChannel.logoUrl, 32.dp, corner = 9.dp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = activeChannel.name,
+                                color = c.textPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = activeChannel.category,
+                                color = c.textSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(onClick = onTogglePlayPause, modifier = Modifier.size(34.dp)) {
+                            Icon(
+                                if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                contentDescription = "PlayPause",
+                                tint = c.textPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(c.accent.copy(alpha = 0.22f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = c.accent, modifier = Modifier.size(16.dp))
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(activePlaylistName, color = c.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(strings.nothingPlaying, color = c.textSecondary, fontSize = 10.sp, maxLines = 1)
+                        }
+                    }
+                }
+
+                // Right Circle: Search
+                LiquidGlassCircleButton(
+                    icon = Icons.Rounded.Search,
+                    active = selectedTab == MainTab.SEARCH,
+                    onClick = { onSelectTab(MainTab.SEARCH) }
+                )
+            }
+        } else {
+            // ---- FULL 5-TAB LIQUID GLASS CAPSULE (Home · Live · Movies · Series · Search) ----
+            val items = listOf(
+                Triple(MainTab.HOME, Icons.Rounded.Home, strings.home),
+                Triple(MainTab.LIVE, Icons.Rounded.LiveTv, strings.liveTv),
+                Triple(MainTab.MOVIES, Icons.Rounded.Movie, strings.movies),
+                Triple(MainTab.SERIES, Icons.Rounded.Tv, strings.series),
+                Triple(MainTab.SEARCH, Icons.Rounded.Search, strings.search)
             )
 
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(pillBg)
-                    .tvFocusBorder(isTvMode, RoundedCornerShape(24.dp))
-                    .clickable { onSelect(tab) }
-                    .padding(horizontal = if (active) 13.dp else 11.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(19.dp))
-                if (active) {
-                    Text(
-                        text = label,
-                        color = tint,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
+                    .shadow(20.dp, RoundedCornerShape(34.dp), ambientColor = Color.Black.copy(alpha = 0.55f))
+                    .clip(RoundedCornerShape(34.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                c.glassBg.copy(alpha = if (c.isDark) 0.90f else 0.94f),
+                                c.glassBg.copy(alpha = if (c.isDark) 0.76f else 0.86f)
+                            )
+                        )
                     )
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.verticalGradient(listOf(c.glassHighlight, c.glassBorder)),
+                        shape = RoundedCornerShape(34.dp)
+                    )
+                    .padding(horizontal = 7.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                items.forEach { (tab, icon, label) ->
+                    val active = tab == selectedTab
+                    val pillBg by animateColorAsState(
+                        targetValue = if (active) c.accent.copy(alpha = 0.22f) else Color.Transparent,
+                        label = "tabBg"
+                    )
+                    val tint by animateColorAsState(
+                        targetValue = if (active) c.accent else c.textSecondary,
+                        label = "tabTint"
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(26.dp))
+                            .background(pillBg)
+                            .tvFocusBorder(isTvMode, RoundedCornerShape(26.dp))
+                            .clickable { onSelectTab(tab) }
+                            .padding(horizontal = if (active) 13.dp else 11.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(20.dp))
+                        if (active) {
+                            Text(
+                                text = label,
+                                color = tint,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LiquidGlassCircleButton(
+    icon: ImageVector,
+    active: Boolean,
+    onClick: () -> Unit
+) {
+    val c = LocalYlowColors.current
+    Box(
+        modifier = Modifier
+            .size(50.dp)
+            .shadow(16.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.55f))
+            .clip(CircleShape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        c.glassBg.copy(alpha = if (c.isDark) 0.90f else 0.94f),
+                        c.glassBg.copy(alpha = if (c.isDark) 0.78f else 0.86f)
+                    )
+                )
+            )
+            .border(1.dp, Brush.verticalGradient(listOf(c.glassHighlight, c.glassBorder)), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (active) c.accent else c.textPrimary,
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
+@Composable
+fun ChannelLogoBox(
+    url: String,
+    size: Dp,
+    corner: Dp = 10.dp
+) {
+    val c = LocalYlowColors.current
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(corner))
+            .background(c.surfaceElevated),
+        contentAlignment = Alignment.Center
+    ) {
+        if (url.isNotBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(url)
+                    .crossfade(false)
+                    .size(128)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().padding(3.dp)
+            )
+        } else {
+            Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(size * 0.5f))
         }
     }
 }
@@ -218,7 +558,7 @@ fun SmallIconPill(
         modifier = Modifier
             .size(38.dp)
             .clip(CircleShape)
-            .background(c.surfaceElevated.copy(alpha = 0.85f))
+            .background(c.glassBg)
             .border(1.dp, c.glassBorder, CircleShape)
             .tvFocusBorder(isTvMode, CircleShape)
             .clickable(onClick = onClick),

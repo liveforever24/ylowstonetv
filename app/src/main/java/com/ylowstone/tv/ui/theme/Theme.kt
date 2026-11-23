@@ -19,6 +19,7 @@ data class YlowColors(
     val surface: Color,
     val surfaceElevated: Color,
     val glassBg: Color,
+    val glassHighlight: Color,
     val glassBorder: Color,
     val textPrimary: Color,
     val textSecondary: Color,
@@ -32,10 +33,11 @@ val LocalYlowColors = staticCompositionLocalOf {
         bg = Color.Black,
         surface = Color(0xFF121216),
         surfaceElevated = Color(0xFF1C1C24),
-        glassBg = Color(0xD916161C),
-        glassBorder = Color(0x2EFFFFFF),
+        glassBg = Color(0xCC14141A),
+        glassHighlight = Color(0x38FFFFFF),
+        glassBorder = Color(0x28FFFFFF),
         textPrimary = Color.White,
-        textSecondary = Color(0xFFA0A0AE),
+        textSecondary = Color(0xFF9E9EAC),
         accent = Color(0xFFFA2D48),
         accentSecondary = Color(0xFFFF6B81)
     )
@@ -61,24 +63,26 @@ fun YlowstoneTheme(
     val ylow = if (isDark) {
         YlowColors(
             isDark = true,
-            bg = if (themeMode == ThemeMode.AMOLED) Color(0xFF000000) else darkSurface.copy(alpha = 0.96f),
-            surface = darkSurface,
+            bg = if (themeMode == ThemeMode.AMOLED) Color(0xFF000000) else darkSurface,
+            surface = Color(0xFF121215),
             surfaceElevated = darkElevated,
-            glassBg = darkSurface.copy(alpha = 0.86f),
-            glassBorder = Color(0x2EFFFFFF),
+            glassBg = Color(0xD615151B),
+            glassHighlight = Color(0x38FFFFFF),
+            glassBorder = Color(0x26FFFFFF),
             textPrimary = Color(0xFFFFFFFF),
-            textSecondary = Color(0xFF9E9EAC),
+            textSecondary = Color(0xFF9898A6),
             accent = accentColor,
             accentSecondary = accentSec
         )
     } else {
         YlowColors(
             isDark = false,
-            bg = Color(0xFFF4F4F8),
+            bg = Color(0xFFF3F3F7),
             surface = Color(0xFFFFFFFF),
-            surfaceElevated = Color(0xFFEBEBF2),
-            glassBg = Color(0xE0FFFFFF),
-            glassBorder = Color(0x24000000),
+            surfaceElevated = Color(0xFFE9E9F0),
+            glassBg = Color(0xDCFFFFFF),
+            glassHighlight = Color(0xB8FFFFFF),
+            glassBorder = Color(0x20000000),
             textPrimary = Color(0xFF111116),
             textSecondary = Color(0xFF5D5D6C),
             accent = accentColor,
@@ -86,7 +90,7 @@ fun YlowstoneTheme(
         )
     }
 
-    // Native FontFamily.Default inherits device system font (Motorola Edge 60 Fusion default)
+    // Native FontFamily.Default inherits device default system font (Motorola Edge 60 Fusion)
     val typography = Typography(
         headlineLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 28.sp),
         headlineMedium = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 22.sp),

@@ -1,8 +1,6 @@
 package com.ylowstone.tv.ui.screens
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -30,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ylowstone.tv.R
 import com.ylowstone.tv.i18n.AppStrings
+import com.ylowstone.tv.model.AppIconOption
 import com.ylowstone.tv.model.DeviceMode
 import com.ylowstone.tv.ui.components.YlowstoneLogoBadge
 import com.ylowstone.tv.ui.components.tvFocusBorder
@@ -38,57 +38,99 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun SplashOverlayScreen(onFinished: () -> Unit) {
-    val scale = remember { Animatable(0.84f) }
-    val alpha = remember { Animatable(0f) }
+    val logoAlpha = remember { Animatable(0f) }
+    val logoScale = remember { Animatable(0.92f) }
+    val progressAnim = remember { Animatable(0f) }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "splashPulse")
+    val ambientGlow by infiniteTransition.animateFloat(
+        initialValue = 0.14f,
+        targetValue = 0.30f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowAlpha"
+    )
 
     LaunchedEffect(Unit) {
-        alpha.animateTo(1f, tween(450))
-        scale.animateTo(1f, tween(520, easing = FastOutSlowInEasing))
-        delay(900)
+        logoAlpha.animateTo(1f, tween(520, easing = FastOutSlowInEasing))
+        logoScale.animateTo(1f, tween(560, easing = FastOutSlowInEasing))
+        progressAnim.animateTo(1f, tween(780, easing = FastOutSlowInEasing))
+        delay(180)
         onFinished()
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0E121B))
+            .background(Color.Black)
             .systemBarsPadding(),
         contentAlignment = Alignment.Center
     ) {
+        // Subtle understated crimson ambient halo
+        Box(
+            modifier = Modifier
+                .size(340.dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            Color(0xFFFA2D48).copy(alpha = ambientGlow * logoAlpha.value),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .scale(scale.value)
-                .alpha(alpha.value)
-                .padding(horizontal = 28.dp)
+                .scale(logoScale.value)
+                .alpha(logoAlpha.value)
+                .padding(horizontal = 32.dp)
         ) {
             Image(
                 painter = painterResource(id = R.drawable.splash_logo),
                 contentDescription = "YlowstoneTV",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .widthIn(max = 360.dp)
-                    .aspectRatio(2f)
+                    .fillMaxWidth(0.84f)
+                    .widthIn(max = 350.dp)
+                    .aspectRatio(2.4f)
             )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "Aesthetic Xtream & IPTV Player",
-                color = Color.White.copy(alpha = 0.52f),
-                fontSize = 12.sp
-            )
+            Spacer(Modifier.height(22.dp))
+            // Minimalist hairline specular loading bar
+            Box(
+                modifier = Modifier
+                    .width(124.dp)
+                    .height(2.5.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(progressAnim.value)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color.White.copy(alpha = 0.65f), Color(0xFFFA2D48))
+                            )
+                        )
+                )
+            }
         }
 
         Text(
             text = "by ylowstone",
-            color = Color.White.copy(alpha = 0.42f),
-            fontSize = 12.sp,
+            color = Color.White.copy(alpha = 0.36f),
+            fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
-            letterSpacing = 1.2.sp,
+            letterSpacing = 1.6.sp,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 28.dp)
-                .alpha(alpha.value)
+                .padding(bottom = 30.dp)
+                .alpha(logoAlpha.value)
         )
     }
 }
@@ -96,6 +138,7 @@ fun SplashOverlayScreen(onFinished: () -> Unit) {
 @Composable
 fun DeviceModeSelectionScreen(
     currentMode: DeviceMode,
+    appIcon: AppIconOption,
     strings: AppStrings,
     onSelectMode: (DeviceMode) -> Unit
 ) {
@@ -115,7 +158,7 @@ fun DeviceModeSelectionScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp),
             modifier = Modifier.widthIn(max = 520.dp)
         ) {
-            YlowstoneLogoBadge(size = 64.dp)
+            YlowstoneLogoBadge(iconOption = appIcon, size = 66.dp)
             Text(
                 text = strings.chooseDeviceTitle,
                 color = c.textPrimary,
