@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -60,10 +62,9 @@ fun SettingsScreen(
             .background(c.bg)
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 92.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Header
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (showBackButton) {
                 IconButton(onClick = onBack) {
@@ -82,7 +83,7 @@ fun SettingsScreen(
             )
         }
 
-        // 2. Theme (AMOLED / Light / System) + Accent Color
+        // 2. Base Theme (AMOLED / Light / System) + 5 Streaming Platform Style Presets
         SettingsGroupCard(title = strings.appearanceTheme) {
             SegmentedChoiceRow(
                 options = listOf(
@@ -93,28 +94,45 @@ fun SettingsScreen(
                 selected = settings.themeMode,
                 onSelect = { onUpdateSettings(settings.copy(themeMode = it)) }
             )
-            Spacer(Modifier.height(10.dp))
-            Text(strings.accentColor, color = c.textSecondary, fontSize = 12.sp)
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                AccentTheme.entries.forEach { acc ->
-                    val active = settings.accent == acc
-                    Box(
+            Spacer(Modifier.height(14.dp))
+            Text(strings.stylePresetTitle, color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(StylePreset.entries) { preset ->
+                    val active = settings.stylePreset == preset
+                    val swatch = Color(preset.accentHex)
+                    Row(
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(Color(acc.hex))
-                            .border(if (active) 2.5.dp else 0.dp, c.textPrimary, CircleShape)
-                            .clickable { onUpdateSettings(settings.copy(accent = acc)) },
-                        contentAlignment = Alignment.Center
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (active) swatch.copy(alpha = 0.22f) else c.surfaceElevated)
+                            .border(
+                                width = if (active) 2.dp else 1.dp,
+                                color = if (active) swatch else c.glassBorder,
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .clickable { onUpdateSettings(settings.copy(stylePreset = preset)) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        if (active) Icon(Icons.Rounded.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .clip(CircleShape)
+                                .background(swatch)
+                        )
+                        Text(
+                            text = preset.label,
+                            color = if (active) c.textPrimary else c.textSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium
+                        )
                     }
                 }
             }
         }
 
-        // 3. Language (English US & Bahasa Indonesia)
+        // 3. Language (Bahasa Indonesia & English US)
         SettingsGroupCard(title = strings.appLanguage) {
             SegmentedChoiceRow(
                 options = listOf(AppLanguage.ID to "Bahasa Indonesia", AppLanguage.EN to "English (US)"),
@@ -123,7 +141,7 @@ fun SettingsScreen(
             )
         }
 
-        // 4. Player Settings: Hide/Show Gestures + Stream Format + External Player
+        // 4. Player Settings: Hide/Show Gestures + External Player + Stream Format
         SettingsGroupCard(title = "Player & Streaming") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -173,10 +191,7 @@ fun SettingsScreen(
         // 5. Security (PIN) & Cache
         SettingsGroupCard(title = strings.parentalPin) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
-                    onClick = { showChangePin = true },
-                    modifier = Modifier.weight(1f)
-                ) {
+                OutlinedButton(onClick = { showChangePin = true }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Rounded.Security, contentDescription = null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(strings.changePin, fontSize = 12.sp)
@@ -202,7 +217,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("${strings.currentVersion}: v${BuildConfig.VERSION_NAME}", color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     if (updateStatusMsg.isNotEmpty()) {
                         Text(updateStatusMsg, color = c.accent, fontSize = 12.sp)
@@ -281,7 +296,7 @@ fun SettingsScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            YlowstoneLogoBadge(size = 42.dp)
+            YlowstoneLogoBadge(size = 46.dp)
             Text("YlowstoneTV v${BuildConfig.VERSION_NAME}", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             Text(strings.aboutCredit, color = c.textSecondary, fontSize = 12.sp)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {

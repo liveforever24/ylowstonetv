@@ -53,7 +53,8 @@ jobs:
           name: YlowstoneTV v${{ env.APP_VERSION }}
           body: |
             ## YlowstoneTV v${{ env.APP_VERSION }} (by ylowstone)
-            - Native Kotlin + Jetpack Compose + Media3 ExoPlayer (120fps smooth UI)
-            - Supports Android 10–17 Smartphone & Google/Android TV
-            - Multi-Playlist (Xtream Codes, M3U URL/File, Direct Stream) + PIN Lock + Floating Glass Navbar
+            - New custom Splash Screen logo, App Icon, and Android TV Banner
+            - Draggable Rounded Floating Mini-Player (in-app) + Automatic System Picture-in-Picture (PiP)
+            - 5 Streaming Platform Style Presets: Apple Music (Default), YouTube, Prime Video, Netflix, HBO
+            - Manual Fullscreen orientation control with responsive Portrait & Landscape UI
           files: dist/*.apk

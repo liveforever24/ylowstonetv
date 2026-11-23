@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -30,11 +31,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
@@ -54,12 +52,17 @@ fun BrowseScreen(
     playlist: PlaylistProfile,
     mediaType: MediaType,
     repo: IptvRepository,
+    sharedPlayer: ExoPlayer,
+    activeChannel: ChannelItem?,
+    playerMode: PlayerMode,
     lockedCategories: Set<String>,
     pinCode: String,
     strings: AppStrings,
     isTvMode: Boolean,
     onToggleLockCategory: (String) -> Unit,
-    onLaunchFullscreen: (ChannelItem, List<ChannelItem>) -> Unit
+    onSelectChannelInline: (ChannelItem, List<ChannelItem>) -> Unit,
+    onLaunchPlayer: (ChannelItem, List<ChannelItem>, Boolean) -> Unit,
+    onFloatCurrent: () -> Unit
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -95,362 +98,386 @@ fun BrowseScreen(
         )
     }
 
-    // Mini Preview Player for Live TV split-screen
-    var previewChannel by remember(playlist.id, mediaType) { mutableStateOf<ChannelItem?>(null) }
-    val previewPlayer = remember(playlist.id, mediaType) {
-        if (mediaType == MediaType.LIVE) {
-            val dsFactory = OkHttpDataSource.Factory(repo.httpClient)
-                .setUserAgent(playlist.userAgent.ifBlank { "YlowstoneTV/1.0" })
-            ExoPlayer.Builder(context)
-                .setMediaSourceFactory(DefaultMediaSourceFactory(dsFactory))
-                .build()
-        } else null
-    }
-
-    DisposableEffect(previewPlayer) {
-        onDispose { previewPlayer?.release() }
-    }
-
-    LaunchedEffect(previewChannel) {
-        val ch = previewChannel
-        if (ch != null && previewPlayer != null) {
-            previewPlayer.setMediaItem(MediaItem.fromUri(ch.streamUrl))
-            previewPlayer.prepare()
-            previewPlayer.playWhenReady = true
-            repo.db.markWatched(ch.id)
-        }
-    }
-
-    // PIN Lock/Unlock dialog states
     var pinActionCategory by remember { mutableStateOf<String?>(null) }
-    var pinActionMode by remember { mutableStateOf("") } // "TOGGLE_LOCK" or "OPEN_LOCKED"
+    var pinActionMode by remember { mutableStateOf("") }
 
-    // Series Episodes dialog
     var activeSeries by remember { mutableStateOf<ChannelItem?>(null) }
     var episodes by remember { mutableStateOf<List<EpisodeItem>>(emptyList()) }
     var loadingEpisodes by remember { mutableStateOf(false) }
 
-    Row(
+    fun handleCategoryClick(catName: String) {
+        val isLocked = lockedCategories.contains(catName)
+        if (isLocked && !unlockedTempCategories.contains(catName)) {
+            pinActionCategory = catName
+            pinActionMode = "OPEN_LOCKED"
+        } else {
+            selectedCategory = catName
+        }
+    }
+
+    fun handleCategoryLongClick(catName: String) {
+        pinActionCategory = catName
+        pinActionMode = "TOGGLE_LOCK"
+    }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
             .systemBarsPadding()
-            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 78.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // ---- LEFT SIDEBAR: Search + Categories (with Long-Press PIN Lock) ----
-        Column(
-            modifier = Modifier
-                .width(235.dp)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(20.dp))
-                .background(c.surface)
-                .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
-                .padding(10.dp)
-        ) {
-            // In-Playlist Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text(strings.searchInPlaylist, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(20.dp)) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Clear", modifier = Modifier.size(14.dp))
-                        }
-                    }
-                },
-                singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
+        val isPortrait = maxWidth < 600.dp
 
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = strings.longPressPinHint,
-                color = c.textSecondary,
-                fontSize = 10.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-            Spacer(Modifier.height(6.dp))
-
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                item {
-                    CategoryRowItem(strings.allChannels, allCount, selectedCategory == "ALL", false, isTvMode,
-                        onClick = { selectedCategory = "ALL" }, onLongClick = {})
-                }
-                item {
-                    CategoryRowItem(strings.favourites, favCount, selectedCategory == "FAV", false, isTvMode,
-                        onClick = { selectedCategory = "FAV" }, onLongClick = {})
-                }
-                item {
-                    CategoryRowItem(strings.history, histCount, selectedCategory == "HIST", false, isTvMode,
-                        onClick = { selectedCategory = "HIST" }, onLongClick = {})
-                }
-                item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
-
-                items(categories, key = { it.name }) { cat ->
-                    val isLocked = lockedCategories.contains(cat.name)
-                    CategoryRowItem(
-                        name = cat.name,
-                        count = cat.count,
-                        selected = selectedCategory == cat.name,
-                        locked = isLocked,
-                        isTvMode = isTvMode,
-                        onClick = {
-                            if (isLocked && !unlockedTempCategories.contains(cat.name)) {
-                                pinActionCategory = cat.name
-                                pinActionMode = "OPEN_LOCKED"
-                            } else {
-                                selectedCategory = cat.name
-                            }
-                        },
-                        onLongClick = {
-                            pinActionCategory = cat.name
-                            pinActionMode = "TOGGLE_LOCK"
-                        }
-                    )
-                }
-            }
-        }
-
-        // ---- RIGHT CONTENT AREA ----
-        if (mediaType == MediaType.LIVE) {
-            // Split-Screen Live TV: Channel List (Middle) + Live Preview (Right)
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(c.surface)
-                    .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                items(channels, key = { it.id }) { ch ->
-                    val active = previewChannel?.id == ch.id
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (active) c.accent.copy(alpha = 0.20f) else c.surfaceElevated.copy(alpha = 0.55f))
-                            .tvFocusBorder(isTvMode, RoundedCornerShape(12.dp))
-                            .clickable {
-                                if (active) {
-                                    previewPlayer?.pause()
-                                    onLaunchFullscreen(ch, channels)
-                                } else {
-                                    previewChannel = ch
-                                }
-                            }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        ChannelLogo(ch.logoUrl, 34.dp)
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                ch.name,
-                                color = if (active) c.accent else c.textPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(ch.category, color = c.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        IconButton(
-                            onClick = {
-                                repo.db.toggleFavorite(ch.id, !ch.isFavorite)
-                                refreshTrigger++
-                            },
-                            modifier = Modifier.size(30.dp)
-                        ) {
-                            Icon(
-                                if (ch.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                                contentDescription = "Fav",
-                                tint = if (ch.isFavorite) c.accent else c.textSecondary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Live Mini Preview Pane
+        if (isPortrait) {
+            // ---- PORTRAIT SMARTPHONE LAYOUT ----
             Column(
                 modifier = Modifier
-                    .weight(0.95f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(c.surface)
-                    .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
-                    .padding(12.dp),
+                    .fillMaxSize()
+                    .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 84.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color.Black)
-                        .clickable(enabled = previewChannel != null) {
-                            previewChannel?.let {
-                                previewPlayer?.pause()
-                                onLaunchFullscreen(it, channels)
+                // Search Bar inside playlist
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(strings.searchInPlaylist, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
                             }
-                        },
-                    contentAlignment = Alignment.Center
+                        }
+                    },
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Horizontal Category Chips (with Long-Press PIN Lock)
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    if (previewChannel != null && previewPlayer != null) {
-                        AndroidView(
-                            factory = { ctx ->
-                                PlayerView(ctx).apply {
-                                    player = previewPlayer
-                                    useController = false
-                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                }
-                            },
-                            modifier = Modifier.fillMaxSize()
+                    item {
+                        CategoryChip(strings.allChannels, allCount, selectedCategory == "ALL", false,
+                            onClick = { selectedCategory = "ALL" }, onLongClick = {})
+                    }
+                    item {
+                        CategoryChip(strings.favourites, favCount, selectedCategory == "FAV", false,
+                            onClick = { selectedCategory = "FAV" }, onLongClick = {})
+                    }
+                    item {
+                        CategoryChip(strings.history, histCount, selectedCategory == "HIST", false,
+                            onClick = { selectedCategory = "HIST" }, onLongClick = {})
+                    }
+                    items(categories, key = { it.name }) { cat ->
+                        CategoryChip(
+                            name = cat.name,
+                            count = cat.count,
+                            selected = selectedCategory == cat.name,
+                            locked = lockedCategories.contains(cat.name),
+                            onClick = { handleCategoryClick(cat.name) },
+                            onLongClick = { handleCategoryLongClick(cat.name) }
                         )
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(8.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color.Black.copy(alpha = 0.65f))
-                                .padding(horizontal = 10.dp, vertical = 5.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                Text(strings.fullscreen, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                    } else {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = Color.White.copy(alpha = 0.35f), modifier = Modifier.size(40.dp))
-                            Text(strings.tapToWatch, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
-                        }
                     }
                 }
 
-                previewChannel?.let { ch ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(ch.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(ch.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
-                        }
-                        Button(
-                            onClick = {
-                                previewPlayer?.pause()
-                                onLaunchFullscreen(ch, channels)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = c.accent),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                        ) {
-                            Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(strings.fullscreen, color = Color.White, fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-        } else {
-            // Movies / Series Poster Grid
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 124.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-            ) {
-                items(channels, key = { it.id }) { item ->
+                // Inline Live Preview Box in Portrait (only when playing inline and NOT floating)
+                if (mediaType == MediaType.LIVE && activeChannel != null && playerMode == PlayerMode.NONE) {
                     Column(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(20.dp))
                             .background(c.surface)
-                            .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
-                            .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
-                            .clickable {
-                                if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM) {
-                                    activeSeries = item
-                                    loadingEpisodes = true
-                                    scope.launch {
-                                        episodes = repo.fetchSeriesEpisodes(playlist, item.streamId)
-                                        loadingEpisodes = false
-                                    }
-                                } else {
-                                    repo.db.markWatched(item.id)
-                                    onLaunchFullscreen(item, channels)
-                                }
-                            }
+                            .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(148.dp)
-                                .background(c.surfaceElevated),
-                            contentAlignment = Alignment.Center
+                                .aspectRatio(16f / 9f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color.Black)
                         ) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(context)
-                                    .data(item.logoUrl)
-                                    .crossfade(true)
-                                    .size(260)
-                                    .build(),
-                                contentDescription = item.name,
-                                contentScale = ContentScale.Crop,
+                            AndroidView(
+                                factory = { ctx ->
+                                    PlayerView(ctx).apply {
+                                        player = sharedPlayer
+                                        useController = false
+                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                    }
+                                },
+                                update = { it.player = sharedPlayer },
                                 modifier = Modifier.fillMaxSize()
                             )
-                            IconButton(
-                                onClick = {
-                                    repo.db.toggleFavorite(item.id, !item.isFavorite)
-                                    refreshTrigger++
-                                },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(4.dp)
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.55f))
-                            ) {
-                                Icon(
-                                    if (item.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                                    contentDescription = "Fav",
-                                    tint = if (item.isFavorite) c.accent else Color.White,
-                                    modifier = Modifier.size(15.dp)
-                                )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(activeChannel.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(activeChannel.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedButton(
+                                    onClick = onFloatCurrent,
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(Icons.Rounded.PictureInPictureAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(strings.floatPlayer, fontSize = 11.sp)
+                                }
+                                Button(
+                                    onClick = { onLaunchPlayer(activeChannel, channels, true) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = c.accent),
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(strings.fullscreen, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
-                        Text(
-                            text = item.name,
-                            color = c.textPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(8.dp)
-                        )
                     }
+                }
+
+                // Channel List or Poster Grid
+                if (mediaType == MediaType.LIVE) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(channels, key = { it.id }) { ch ->
+                            val active = activeChannel?.id == ch.id
+                            ChannelListRow(
+                                ch = ch,
+                                active = active,
+                                isTvMode = isTvMode,
+                                onClick = {
+                                    if (active && playerMode == PlayerMode.NONE) {
+                                        onLaunchPlayer(ch, channels, true)
+                                    } else {
+                                        onSelectChannelInline(ch, channels)
+                                    }
+                                },
+                                onToggleFav = {
+                                    repo.db.toggleFavorite(ch.id, !ch.isFavorite)
+                                    refreshTrigger++
+                                }
+                            )
+                        }
+                    }
+                } else {
+                    PosterGrid(
+                        channels = channels,
+                        mediaType = mediaType,
+                        playlist = playlist,
+                        isTvMode = isTvMode,
+                        onOpenItem = { item ->
+                            if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM) {
+                                activeSeries = item
+                                loadingEpisodes = true
+                                scope.launch {
+                                    episodes = repo.fetchSeriesEpisodes(playlist, item.streamId)
+                                    loadingEpisodes = false
+                                }
+                            } else {
+                                repo.db.markWatched(item.id)
+                                // Launch player in Portrait first (manual fullscreen button inside player!)
+                                onLaunchPlayer(item, channels, false)
+                            }
+                        },
+                        onToggleFav = { item ->
+                            repo.db.toggleFavorite(item.id, !item.isFavorite)
+                            refreshTrigger++
+                        },
+                        modifier = Modifier.weight(1f).fillMaxWidth()
+                    )
+                }
+            }
+        } else {
+            // ---- LANDSCAPE / ANDROID TV LAYOUT ----
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 78.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Left Sidebar
+                Column(
+                    modifier = Modifier
+                        .width(235.dp)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(c.surface)
+                        .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
+                        .padding(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text(strings.searchInPlaylist, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(strings.longPressPinHint, color = c.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
+                    Spacer(Modifier.height(6.dp))
+
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                        item { CategoryRowItem(strings.allChannels, allCount, selectedCategory == "ALL", false, isTvMode, { selectedCategory = "ALL" }, {}) }
+                        item { CategoryRowItem(strings.favourites, favCount, selectedCategory == "FAV", false, isTvMode, { selectedCategory = "FAV" }, {}) }
+                        item { CategoryRowItem(strings.history, histCount, selectedCategory == "HIST", false, isTvMode, { selectedCategory = "HIST" }, {}) }
+                        item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
+                        items(categories, key = { it.name }) { cat ->
+                            CategoryRowItem(
+                                name = cat.name,
+                                count = cat.count,
+                                selected = selectedCategory == cat.name,
+                                locked = lockedCategories.contains(cat.name),
+                                isTvMode = isTvMode,
+                                onClick = { handleCategoryClick(cat.name) },
+                                onLongClick = { handleCategoryLongClick(cat.name) }
+                            )
+                        }
+                    }
+                }
+
+                if (mediaType == MediaType.LIVE) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(c.surface)
+                            .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        items(channels, key = { it.id }) { ch ->
+                            val active = activeChannel?.id == ch.id
+                            ChannelListRow(
+                                ch = ch,
+                                active = active,
+                                isTvMode = isTvMode,
+                                onClick = {
+                                    if (active) onLaunchPlayer(ch, channels, true)
+                                    else onSelectChannelInline(ch, channels)
+                                },
+                                onToggleFav = {
+                                    repo.db.toggleFavorite(ch.id, !ch.isFavorite)
+                                    refreshTrigger++
+                                }
+                            )
+                        }
+                    }
+
+                    // Right Preview Pane
+                    Column(
+                        modifier = Modifier
+                            .weight(0.95f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(c.surface)
+                            .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color.Black)
+                                .clickable(enabled = activeChannel != null) {
+                                    activeChannel?.let { onLaunchPlayer(it, channels, true) }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (activeChannel != null && playerMode == PlayerMode.NONE) {
+                                AndroidView(
+                                    factory = { ctx ->
+                                        PlayerView(ctx).apply {
+                                            player = sharedPlayer
+                                            useController = false
+                                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                        }
+                                    },
+                                    update = { it.player = sharedPlayer },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = Color.White.copy(alpha = 0.35f), modifier = Modifier.size(40.dp))
+                                    Text(strings.tapToWatch, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
+                                }
+                            }
+                        }
+
+                        activeChannel?.let { ch ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(ch.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(ch.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
+                                }
+                                Button(
+                                    onClick = { onLaunchPlayer(ch, channels, true) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = c.accent),
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(strings.fullscreen, color = Color.White, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    PosterGrid(
+                        channels = channels,
+                        mediaType = mediaType,
+                        playlist = playlist,
+                        isTvMode = isTvMode,
+                        onOpenItem = { item ->
+                            if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM) {
+                                activeSeries = item
+                                loadingEpisodes = true
+                                scope.launch {
+                                    episodes = repo.fetchSeriesEpisodes(playlist, item.streamId)
+                                    loadingEpisodes = false
+                                }
+                            } else {
+                                repo.db.markWatched(item.id)
+                                onLaunchPlayer(item, channels, isTvMode)
+                            }
+                        },
+                        onToggleFav = { item ->
+                            repo.db.toggleFavorite(item.id, !item.isFavorite)
+                            refreshTrigger++
+                        },
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    )
                 }
             }
         }
     }
 
-    // PIN Dialog for Lock/Unlock or Opening Locked Category
+    // PIN Dialog
     pinActionCategory?.let { catName ->
         val currentlyLocked = lockedCategories.contains(catName)
         val dialogTitle = when (pinActionMode) {
@@ -480,14 +507,14 @@ fun BrowseScreen(
         )
     }
 
-    // Series Episodes Picker
+    // Series Episodes Dialog
     activeSeries?.let { series ->
         AlertDialog(
             onDismissRequest = { activeSeries = null },
             containerColor = c.surface,
             title = { Text(series.name, color = c.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
-                Box(modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 280.dp)) {
+                Box(modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 300.dp)) {
                     if (loadingEpisodes) {
                         CircularProgressIndicator(color = c.accent, modifier = Modifier.align(Alignment.Center))
                     } else if (episodes.isEmpty()) {
@@ -515,7 +542,7 @@ fun BrowseScreen(
                                                 )
                                             }
                                             val picked = epChannels.first { it.streamUrl == ep.streamUrl }
-                                            onLaunchFullscreen(picked, epChannels)
+                                            onLaunchPlayer(picked, epChannels, isTvMode)
                                         }
                                         .padding(10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -540,6 +567,154 @@ fun BrowseScreen(
                 }
             }
         )
+    }
+}
+
+@kotlin.OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CategoryChip(
+    name: String,
+    count: Int,
+    selected: Boolean,
+    locked: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val c = LocalYlowColors.current
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) c.accent else c.surface)
+            .border(1.dp, if (selected) c.accent else c.glassBorder, RoundedCornerShape(16.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        if (locked) {
+            Icon(Icons.Rounded.Lock, contentDescription = null, tint = if (selected) Color.White else c.accent, modifier = Modifier.size(13.dp))
+        }
+        Text(name, color = if (selected) Color.White else c.textPrimary, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+        Text(count.toString(), color = if (selected) Color.White.copy(alpha = 0.8f) else c.textSecondary, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun ChannelListRow(
+    ch: ChannelItem,
+    active: Boolean,
+    isTvMode: Boolean,
+    onClick: () -> Unit,
+    onToggleFav: () -> Unit
+) {
+    val c = LocalYlowColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (active) c.accent.copy(alpha = 0.20f) else c.surface)
+            .border(1.dp, if (active) c.accent.copy(alpha = 0.55f) else c.glassBorder, RoundedCornerShape(14.dp))
+            .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        ChannelLogo(ch.logoUrl, 36.dp)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                ch.name,
+                color = if (active) c.accent else c.textPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(ch.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        IconButton(onClick = onToggleFav, modifier = Modifier.size(32.dp)) {
+            Icon(
+                if (ch.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                contentDescription = "Fav",
+                tint = if (ch.isFavorite) c.accent else c.textSecondary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PosterGrid(
+    channels: List<ChannelItem>,
+    mediaType: MediaType,
+    playlist: PlaylistProfile,
+    isTvMode: Boolean,
+    onOpenItem: (ChannelItem) -> Unit,
+    onToggleFav: (ChannelItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val c = LocalYlowColors.current
+    val context = LocalContext.current
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 114.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier
+    ) {
+        items(channels, key = { it.id }) { item ->
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(c.surface)
+                    .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
+                    .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
+                    .clickable { onOpenItem(item) }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(146.dp)
+                        .background(c.surfaceElevated),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(item.logoUrl)
+                            .crossfade(true)
+                            .size(260)
+                            .build(),
+                        contentDescription = item.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    IconButton(
+                        onClick = { onToggleFav(item) },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f))
+                    ) {
+                        Icon(
+                            if (item.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            contentDescription = "Fav",
+                            tint = if (item.isFavorite) c.accent else Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = item.name,
+                    color = c.textPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(8.dp)
+                )
+            }
+        }
     }
 }
 
@@ -572,12 +747,7 @@ private fun CategoryRowItem(
             modifier = Modifier.weight(1f)
         ) {
             if (locked) {
-                Icon(
-                    Icons.Rounded.Lock,
-                    contentDescription = "Locked",
-                    tint = if (selected) Color.White else c.accent,
-                    modifier = Modifier.size(14.dp)
-                )
+                Icon(Icons.Rounded.Lock, contentDescription = "Locked", tint = if (selected) Color.White else c.accent, modifier = Modifier.size(14.dp))
             }
             Text(
                 text = name,
@@ -604,7 +774,7 @@ private fun ChannelLogo(url: String, size: androidx.compose.ui.unit.Dp) {
         modifier = Modifier
             .size(size)
             .clip(RoundedCornerShape(8.dp))
-            .background(c.surface),
+            .background(c.surfaceElevated),
         contentAlignment = Alignment.Center
     ) {
         if (url.isNotBlank()) {

@@ -3,6 +3,7 @@ package com.ylowstone.tv.ui.screens
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,13 +20,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ylowstone.tv.R
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.DeviceMode
 import com.ylowstone.tv.ui.components.YlowstoneLogoBadge
@@ -35,26 +38,20 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun SplashOverlayScreen(onFinished: () -> Unit) {
-    val c = LocalYlowColors.current
-    val scale = remember { Animatable(0.75f) }
+    val scale = remember { Animatable(0.84f) }
     val alpha = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
         alpha.animateTo(1f, tween(450))
-        scale.animateTo(1f, tween(500, easing = FastOutSlowInEasing))
-        delay(850)
+        scale.animateTo(1f, tween(520, easing = FastOutSlowInEasing))
+        delay(900)
         onFinished()
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(c.accent.copy(alpha = 0.22f), Color.Black),
-                    radius = 750f
-                )
-            )
+            .background(Color(0xFF0E121B))
             .systemBarsPadding(),
         contentAlignment = Alignment.Center
     ) {
@@ -63,21 +60,22 @@ fun SplashOverlayScreen(onFinished: () -> Unit) {
             modifier = Modifier
                 .scale(scale.value)
                 .alpha(alpha.value)
+                .padding(horizontal = 28.dp)
         ) {
-            YlowstoneLogoBadge(size = 86.dp)
-            Spacer(Modifier.height(18.dp))
-            Text(
-                text = "YlowstoneTV",
-                color = Color.White,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-0.5).sp
+            Image(
+                painter = painterResource(id = R.drawable.splash_logo),
+                contentDescription = "YlowstoneTV",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .widthIn(max = 360.dp)
+                    .aspectRatio(2f)
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
-                text = "Smooth Native Media Player",
-                color = Color.White.copy(alpha = 0.55f),
-                fontSize = 13.sp
+                text = "Aesthetic Xtream & IPTV Player",
+                color = Color.White.copy(alpha = 0.52f),
+                fontSize = 12.sp
             )
         }
 
@@ -117,7 +115,7 @@ fun DeviceModeSelectionScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp),
             modifier = Modifier.widthIn(max = 520.dp)
         ) {
-            YlowstoneLogoBadge(size = 56.dp)
+            YlowstoneLogoBadge(size = 64.dp)
             Text(
                 text = strings.chooseDeviceTitle,
                 color = c.textPrimary,

@@ -1,6 +1,7 @@
 package com.ylowstone.tv.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,37 +23,30 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ylowstone.tv.R
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 
 @Composable
 fun YlowstoneLogoBadge(size: Dp = 44.dp) {
-    val c = LocalYlowColors.current
-    Box(
+    val shape = RoundedCornerShape(size * 0.28f)
+    Image(
+        painter = painterResource(id = R.drawable.app_icon_art),
+        contentDescription = "YlowstoneTV",
+        contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(size)
-            .clip(RoundedCornerShape(size * 0.28f))
-            .background(
-                Brush.linearGradient(
-                    listOf(c.accent, c.accent.copy(alpha = 0.72f), Color(0xFF2B1028))
-                )
-            )
-            .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(size * 0.28f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.LiveTv,
-            contentDescription = "YlowstoneTV",
-            tint = Color.White,
-            modifier = Modifier.size(size * 0.56f)
-        )
-    }
+            .clip(shape)
+            .border(1.dp, Color.White.copy(alpha = 0.22f), shape)
+    )
 }
 
 @Composable
@@ -95,13 +89,13 @@ fun FloatingGlassNavbar(
 
     Row(
         modifier = modifier
-            .shadow(18.dp, RoundedCornerShape(32.dp), ambientColor = Color.Black.copy(alpha = 0.45f))
+            .shadow(18.dp, RoundedCornerShape(32.dp), ambientColor = Color.Black.copy(alpha = 0.48f))
             .clip(RoundedCornerShape(32.dp))
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        c.glassBg.copy(alpha = if (c.isDark) 0.86f else 0.90f),
-                        c.glassBg.copy(alpha = if (c.isDark) 0.72f else 0.82f)
+                        c.glassBg.copy(alpha = if (c.isDark) 0.88f else 0.92f),
+                        c.glassBg.copy(alpha = if (c.isDark) 0.74f else 0.84f)
                     )
                 )
             )
@@ -109,14 +103,14 @@ fun FloatingGlassNavbar(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
                     listOf(
-                        Color.White.copy(alpha = if (c.isDark) 0.28f else 0.7f),
+                        Color.White.copy(alpha = if (c.isDark) 0.28f else 0.72f),
                         c.glassBorder
                     )
                 ),
                 shape = RoundedCornerShape(32.dp)
             )
             .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         items.forEach { (tab, icon, label) ->
@@ -136,16 +130,16 @@ fun FloatingGlassNavbar(
                     .background(pillBg)
                     .tvFocusBorder(isTvMode, RoundedCornerShape(24.dp))
                     .clickable { onSelect(tab) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                    .padding(horizontal = if (active) 13.dp else 11.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(19.dp))
                 if (active) {
                     Text(
                         text = label,
                         color = tint,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1
                     )

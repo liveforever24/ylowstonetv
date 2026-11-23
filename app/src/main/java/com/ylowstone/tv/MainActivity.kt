@@ -1,12 +1,19 @@
 package com.ylowstone.tv
 
+import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
@@ -23,6 +30,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var prefs: AppPrefs
     private lateinit var repo: IptvRepository
 
+    private var isInPipMode by mutableStateOf(false)
+    private var isPipEligible: Boolean = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -36,6 +46,7 @@ class MainActivity : ComponentActivity() {
             YlowstoneApp(
                 prefs = prefs,
                 repo = repo,
+                isInPipMode = isInPipMode,
                 onRequestLandscape = { landscape ->
                     val target = if (landscape) {
                         ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -49,11 +60,55 @@ class MainActivity : ComponentActivity() {
                 onRequestImmersive = { immersive ->
                     setImmersiveMode(immersive)
                 },
+                onPipEligibilityChanged = { eligible ->
+                    isPipEligible = eligible
+                    updateAutoPipParams(eligible)
+                },
+                onEnterSystemPip = {
+                    enterPipNow()
+                },
                 onInstallApk = { apkFile ->
                     installApkFile(apkFile)
                 }
             )
         }
+    }
+
+    private fun buildPipParams(autoEnter: Boolean): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(16, 9))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(autoEnter)
+            builder.setSeamlessResizeEnabled(true)
+        }
+        return builder.build()
+    }
+
+    private fun updateAutoPipParams(eligible: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching { setPictureInPictureParams(buildPipParams(eligible)) }
+        }
+    }
+
+    private fun enterPipNow() {
+        runCatching {
+            enterPictureInPictureMode(buildPipParams(isPipEligible))
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (isPipEligible && !isInPictureInPictureMode && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            enterPipNow()
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        isInPipMode = isInPictureInPictureMode
     }
 
     private fun setImmersiveMode(enabled: Boolean) {

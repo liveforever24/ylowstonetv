@@ -11,7 +11,7 @@ class AppPrefs(context: Context) {
             hasSelectedMode = prefs.getBoolean("has_selected_mode", false),
             deviceMode = runCatching { DeviceMode.valueOf(prefs.getString("device_mode", "SMARTPHONE")!!) }.getOrDefault(DeviceMode.SMARTPHONE),
             themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "AMOLED")!!) }.getOrDefault(ThemeMode.AMOLED),
-            accent = runCatching { AccentTheme.valueOf(prefs.getString("accent", "APPLE_ROSE")!!) }.getOrDefault(AccentTheme.APPLE_ROSE),
+            stylePreset = runCatching { StylePreset.valueOf(prefs.getString("style_preset", "APPLE_MUSIC")!!) }.getOrDefault(StylePreset.APPLE_MUSIC),
             language = runCatching { AppLanguage.valueOf(prefs.getString("language", "ID")!!) }.getOrDefault(AppLanguage.ID),
             showPlayerGestures = prefs.getBoolean("show_gestures", true),
             streamFormat = runCatching { StreamFormat.valueOf(prefs.getString("stream_format", "HLS")!!) }.getOrDefault(StreamFormat.HLS),
@@ -26,7 +26,7 @@ class AppPrefs(context: Context) {
             .putBoolean("has_selected_mode", s.hasSelectedMode)
             .putString("device_mode", s.deviceMode.name)
             .putString("theme_mode", s.themeMode.name)
-            .putString("accent", s.accent.name)
+            .putString("style_preset", s.stylePreset.name)
             .putString("language", s.language.name)
             .putBoolean("show_gestures", s.showPlayerGestures)
             .putString("stream_format", s.streamFormat.name)

@@ -1,25 +1,52 @@
-# YlowstoneTV
+<p align="center">
+  <img src="docs/banner.png" alt="YlowstoneTV Banner" width="100%" />
+</p>
 
-> **An aesthetic Xtream & IPTV player, inspired by Apple Music.**
+<h1 align="center">YlowstoneTV</h1>
 
-![Platform](https://img.shields.io/badge/Platform-Android%2010%2B%20%7C%20Android%20TV-000000?style=flat-square)
-![Language](https://img.shields.io/badge/Built%20with-Kotlin%20%26%20Jetpack%20Compose-FA2D48?style=flat-square)
-![Engine](https://img.shields.io/badge/Player-Media3%20ExoPlayer-0A84FF?style=flat-square)
+<p align="center">
+  <strong>An aesthetic Xtream &amp; IPTV player, inspired by Apple Music.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-Android%2010%2B%20%7C%20Android%20TV-000000?style=flat-square" alt="Platform" />
+  <img src="https://img.shields.io/badge/Built%20with-Kotlin%20%26%20Jetpack%20Compose-FA2D48?style=flat-square" alt="Kotlin Compose" />
+  <img src="https://img.shields.io/badge/Engine-Media3%20ExoPlayer-0A84FF?style=flat-square" alt="Media3 ExoPlayer" />
+  <img src="https://img.shields.io/badge/Version-v1.0.1-30D158?style=flat-square" alt="Version" />
+</p>
 
 **YlowstoneTV** is a lightweight, native media player for Android smartphones and Google/Android TV. Built from the ground up with Kotlin, Jetpack Compose, indexed local SQLite storage, and Media3 ExoPlayer, it delivers smooth high-refresh-rate browsing—even across playlists containing tens of thousands of channels—wrapped in a clean, distraction-free interface.
 
 ---
 
+## Interface & Player Preview
+
+### Animated UI, Style Presets & Floating Player
+<p align="center">
+  <img src="docs/preview-ui.gif" alt="YlowstoneTV Animated UI Preview" width="92%" />
+</p>
+
+### Fullscreen Media3 Player & Track Controls
+<p align="center">
+  <img src="docs/preview-player.png" alt="YlowstoneTV Fullscreen Player Preview" width="92%" />
+</p>
+
+---
+
 ## Key Features
 
-### Design & Performance
-* **Apple Music-Inspired Aesthetics:** Minimalist layout featuring a floating translucent glass navigation bar, smooth transitions, and native system typography.
-* **Adaptive Themes:** Switch between Pure Black AMOLED, Light, or System Default, paired with customizable accent colors.
-* **Built for Large Playlists:** Indexed local database storage and lazy logo caching keep scrolling and searching instantaneous without memory bloat.
+### Design & Streaming Style Presets
+* **Apple Music-Inspired Aesthetics:** Minimalist layout featuring a floating translucent glass navigation bar, smooth animations, and native device typography.
+* **5 Signature Style Presets:** Switch seamlessly between **Apple Music (Default)**, **YouTube**, **Prime Video**, **Netflix**, and **HBO** palettes—paired with **AMOLED Pure Black**, **Light**, or **System Default** themes.
+* **Built for Large Playlists:** Indexed SQLite storage and lazy logo caching keep scrolling and searching instantaneous without memory bloat.
 
-### Dual-Device Experience
-* **Smartphone & TV Modes:** Dedicated profiles selectable on first launch or anytime in Settings, including D-Pad remote focus navigation and Android TV launcher banner support.
-* **Smart Orientation:** Stays in portrait while managing playlists on mobile, then automatically switches to full landscape when browsing channels and watching content.
+### Floating Player & Picture-in-Picture (PiP)
+* **In-App Floating Mini-Player:** Return to Home, browse categories, or switch playlists while your channel continues playing in a sleek, draggable rounded-corner floating window.
+* **System Picture-in-Picture:** Automatically transitions into a floating rounded PiP window when pressing Home or switching to other apps.
+
+### Dual-Device Experience & Manual Fullscreen
+* **Smartphone & Google/Android TV Modes:** Select your device profile on first launch or anytime in Settings, complete with D-Pad focus highlights and native Android TV launcher banner support.
+* **Manual Fullscreen Orientation:** Browse and manage playlists comfortably in Portrait on mobile, and enter Landscape Fullscreen strictly when you tap the Fullscreen button.
 
 ### Playlist Management & Privacy
 * **Multi-Playlist Support:** Save, switch, refresh, edit credentials, or inspect and copy playlist URLs without re-entering data from scratch.
@@ -31,7 +58,7 @@
 * **Full Player Controls:** Video, audio, and subtitle track selection, aspect ratio switching (*Fit, Fill, Zoom, 16:9*), screen lock, quick channel drawer, optional brightness/volume swipe gestures, and external player handoff.
 
 ### Utility
-* **Bilingual Interface:** Available in English (US) and Bahasa Indonesia.
+* **Bilingual Interface:** Available in **English (US)** and **Bahasa Indonesia**.
 * **In-App Updates:** Check, download, and install new releases directly from GitHub Releases inside the app.
 
 ---
@@ -47,7 +74,7 @@ YlowstoneTV focuses on three reliable, standard media loaders:
 
 ## Installation
 
-1. Go to the [Releases](https://github.com/liveforever24/ylowstonetv/releases) page.
+1. Open the [Releases](https://github.com/liveforever24/ylowstonetv/releases) page.
 2. Download the latest `YlowstoneTV-vX.X.X-by-ylowstone.apk` file.
 3. Install the APK on your Android smartphone (Android 10+) or Google/Android TV.
 4. Future updates can be installed directly via **Settings → Check for App Updates**.

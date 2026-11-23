@@ -3,12 +3,19 @@ package com.ylowstone.tv.model
 enum class DeviceMode { SMARTPHONE, TV }
 enum class ThemeMode { AMOLED, LIGHT, SYSTEM }
 enum class AppLanguage { ID, EN }
-enum class AccentTheme(val hex: Long, val label: String) {
-    APPLE_ROSE(0xFFFA2D48, "Apple Rose"),
-    COBALT_BLUE(0xFF0A84FF, "Cobalt Blue"),
-    EMERALD(0xFF30D158, "Emerald"),
-    AMBER(0xFFFF9F0A, "Warm Amber"),
-    PURPLE(0xFFBF5AF2, "Ultra Violet")
+
+enum class StylePreset(
+    val accentHex: Long,
+    val secondaryHex: Long,
+    val darkSurfaceHex: Long,
+    val darkElevatedHex: Long,
+    val label: String
+) {
+    APPLE_MUSIC(0xFFFA2D48, 0xFFFF6B81, 0xFF121216, 0xFF1C1C24, "Apple Music"),
+    YOUTUBE(0xFFFF0033, 0xFFCC0022, 0xFF0F0F0F, 0xFF212121, "YouTube"),
+    PRIME_VIDEO(0xFF00A8E1, 0xFF006EA8, 0xFF0F171E, 0xFF1A2634, "Prime Video"),
+    NETFLIX(0xFFE50914, 0xFF99070E, 0xFF141414, 0xFF231F20, "Netflix"),
+    HBO(0xFF9D4EDD, 0xFF5A189A, 0xFF100B1C, 0xFF1E1633, "HBO")
 }
 
 enum class PlaylistType { XTREAM, M3U, DIRECT }
@@ -17,6 +24,8 @@ enum class StreamFormat(val ext: String, val label: String) {
     HLS("m3u8", "HLS (.m3u8)"),
     TS("ts", "MPEG-TS (.ts)")
 }
+
+enum class PlayerMode { NONE, FULLSCREEN, FLOATING }
 
 data class PlaylistProfile(
     val id: Long = 0L,
@@ -87,7 +96,7 @@ data class AppSettings(
     val hasSelectedMode: Boolean = false,
     val deviceMode: DeviceMode = DeviceMode.SMARTPHONE,
     val themeMode: ThemeMode = ThemeMode.AMOLED,
-    val accent: AccentTheme = AccentTheme.APPLE_ROSE,
+    val stylePreset: StylePreset = StylePreset.APPLE_MUSIC,
     val language: AppLanguage = AppLanguage.ID,
     val showPlayerGestures: Boolean = true,
     val streamFormat: StreamFormat = StreamFormat.HLS,

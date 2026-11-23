@@ -10,7 +10,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.ylowstone.tv.model.AccentTheme
+import com.ylowstone.tv.model.StylePreset
 import com.ylowstone.tv.model.ThemeMode
 
 data class YlowColors(
@@ -22,27 +22,29 @@ data class YlowColors(
     val glassBorder: Color,
     val textPrimary: Color,
     val textSecondary: Color,
-    val accent: Color
+    val accent: Color,
+    val accentSecondary: Color
 )
 
 val LocalYlowColors = staticCompositionLocalOf {
     YlowColors(
         isDark = true,
         bg = Color.Black,
-        surface = Color(0xFF111114),
-        surfaceElevated = Color(0xFF1C1C22),
-        glassBg = Color(0xCC16161C),
-        glassBorder = Color(0x33FFFFFF),
+        surface = Color(0xFF121216),
+        surfaceElevated = Color(0xFF1C1C24),
+        glassBg = Color(0xD916161C),
+        glassBorder = Color(0x2EFFFFFF),
         textPrimary = Color.White,
         textSecondary = Color(0xFFA0A0AE),
-        accent = Color(0xFFFA2D48)
+        accent = Color(0xFFFA2D48),
+        accentSecondary = Color(0xFFFF6B81)
     )
 }
 
 @Composable
 fun YlowstoneTheme(
     themeMode: ThemeMode,
-    accent: AccentTheme,
+    stylePreset: StylePreset,
     content: @Composable () -> Unit
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -51,35 +53,40 @@ fun YlowstoneTheme(
         ThemeMode.LIGHT -> false
         ThemeMode.SYSTEM -> systemDark
     }
-    val accentColor = Color(accent.hex)
+    val accentColor = Color(stylePreset.accentHex)
+    val accentSec = Color(stylePreset.secondaryHex)
+    val darkSurface = Color(stylePreset.darkSurfaceHex)
+    val darkElevated = Color(stylePreset.darkElevatedHex)
 
     val ylow = if (isDark) {
         YlowColors(
             isDark = true,
-            bg = Color(0xFF000000),
-            surface = Color(0xFF111114),
-            surfaceElevated = Color(0xFF1B1B21),
-            glassBg = Color(0xD916161C),
+            bg = if (themeMode == ThemeMode.AMOLED) Color(0xFF000000) else darkSurface.copy(alpha = 0.96f),
+            surface = darkSurface,
+            surfaceElevated = darkElevated,
+            glassBg = darkSurface.copy(alpha = 0.86f),
             glassBorder = Color(0x2EFFFFFF),
             textPrimary = Color(0xFFFFFFFF),
             textSecondary = Color(0xFF9E9EAC),
-            accent = accentColor
+            accent = accentColor,
+            accentSecondary = accentSec
         )
     } else {
         YlowColors(
             isDark = false,
-            bg = Color(0xFFF4F4F7),
+            bg = Color(0xFFF4F4F8),
             surface = Color(0xFFFFFFFF),
-            surfaceElevated = Color(0xFFEAEAF0),
-            glassBg = Color(0xDCFFFFFF),
+            surfaceElevated = Color(0xFFEBEBF2),
+            glassBg = Color(0xE0FFFFFF),
             glassBorder = Color(0x24000000),
             textPrimary = Color(0xFF111116),
             textSecondary = Color(0xFF5D5D6C),
-            accent = accentColor
+            accent = accentColor,
+            accentSecondary = accentSec
         )
     }
 
-    // Uses FontFamily.Default to inherit Motorola Edge 60 Fusion / device native system font
+    // Native FontFamily.Default inherits device system font (Motorola Edge 60 Fusion default)
     val typography = Typography(
         headlineLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 28.sp),
         headlineMedium = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 22.sp),
@@ -93,6 +100,7 @@ fun YlowstoneTheme(
     val colorScheme = if (isDark) {
         darkColorScheme(
             primary = accentColor,
+            secondary = accentSec,
             background = ylow.bg,
             surface = ylow.surface,
             onPrimary = Color.White,
@@ -102,6 +110,7 @@ fun YlowstoneTheme(
     } else {
         lightColorScheme(
             primary = accentColor,
+            secondary = accentSec,
             background = ylow.bg,
             surface = ylow.surface,
             onPrimary = Color.White,
