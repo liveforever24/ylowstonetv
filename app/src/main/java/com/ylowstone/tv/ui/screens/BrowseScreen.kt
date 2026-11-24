@@ -16,8 +16,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -50,6 +52,9 @@ import com.ylowstone.tv.model.*
 import com.ylowstone.tv.ui.components.ChannelLogoBox
 import com.ylowstone.tv.ui.components.PinDialog
 import com.ylowstone.tv.ui.components.ProfileYBadgeButton
+import com.ylowstone.tv.ui.components.GlossyGridScrollPositionPill
+import com.ylowstone.tv.ui.components.GlossyScrollPositionPill
+import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import kotlinx.coroutines.Dispatchers
@@ -244,8 +249,11 @@ fun BrowseScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
+                            val catListState = rememberLazyListState()
+                            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                             LazyColumn(
-                                modifier = Modifier.weight(1f),
+                                state = catListState,
+                                modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(bottom = 20.dp),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
@@ -308,6 +316,12 @@ fun BrowseScreen(
                                         }
                                     )
                                 }
+                            }
+                            GlossyScrollPositionPill(
+                                listState = catListState,
+                                totalItemsCount = filteredCategories.size + 4,
+                                modifier = Modifier.align(Alignment.CenterEnd)
+                            )
                             }
                         }
                     } else {
@@ -428,8 +442,11 @@ fun BrowseScreen(
                             }
 
                             if (mediaType == MediaType.LIVE) {
+                                val liveListState = rememberLazyListState()
+                                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                                 LazyColumn(
-                                    modifier = Modifier.weight(1f),
+                                    state = liveListState,
+                                    modifier = Modifier.fillMaxSize(),
                                     contentPadding = PaddingValues(bottom = 20.dp),
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
@@ -452,6 +469,12 @@ fun BrowseScreen(
                                             }
                                         )
                                     }
+                                }
+                                GlossyScrollPositionPill(
+                                    listState = liveListState,
+                                    totalItemsCount = channels.size,
+                                    modifier = Modifier.align(Alignment.CenterEnd)
+                                )
                                 }
                             } else {
                                 PosterGrid(
@@ -770,6 +793,7 @@ private fun VerticalCategoryCard(
             .clip(RoundedCornerShape(14.dp))
             .background(if (highlight) c.accentContainer else c.surface)
             .border(1.dp, if (highlight) c.accent.copy(alpha = 0.5f) else c.glassBorder, RoundedCornerShape(14.dp))
+            .glossyPressPill(14f)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -821,6 +845,7 @@ private fun ChannelListRow(
             .background(if (active) c.accentContainer else c.surface)
             .border(1.dp, if (active) c.accent else c.glassBorder, RoundedCornerShape(14.dp))
             .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
+            .glossyPressPill(14f)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -859,12 +884,15 @@ private fun PosterGrid(
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
+    val gridState = rememberLazyGridState()
+    Box(modifier = modifier) {
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Adaptive(minSize = 112.dp),
         contentPadding = PaddingValues(bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = modifier
+        modifier = Modifier.fillMaxSize()
     ) {
         items(channels, key = { it.id }) { item ->
             Column(
@@ -873,6 +901,7 @@ private fun PosterGrid(
                     .background(c.surface)
                     .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
                     .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
+                    .glossyPressPill(14f)
                     .clickable { onOpenItem(item) }
             ) {
                 Box(
@@ -921,6 +950,12 @@ private fun PosterGrid(
             }
         }
     }
+    GlossyGridScrollPositionPill(
+        gridState = gridState,
+        totalItemsCount = channels.size,
+        modifier = Modifier.align(Alignment.CenterEnd)
+    )
+    }
 }
 
 @kotlin.OptIn(ExperimentalFoundationApi::class)
@@ -941,6 +976,7 @@ private fun CategoryRowItem(
             .clip(RoundedCornerShape(12.dp))
             .background(if (selected) c.accent else Color.Transparent)
             .tvFocusBorder(isTvMode, RoundedCornerShape(12.dp))
+            .glossyPressPill(14f)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,

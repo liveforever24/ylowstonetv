@@ -27,6 +27,7 @@ import com.ylowstone.tv.model.*
 import com.ylowstone.tv.ui.components.ChannelLogoBox
 import com.ylowstone.tv.ui.components.ProfileYBadgeButton
 import com.ylowstone.tv.ui.components.SmallIconPill
+import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 
@@ -122,6 +123,7 @@ fun HomeScreen(
                                     shape = RoundedCornerShape(16.dp)
                                 )
                                 .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
+                                .glossyPressPill(16f)
                                 .clickable { onSwitchPlaylist(pl) }
                                 .padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -161,6 +163,7 @@ fun HomeScreen(
                                 .background(c.surface)
                                 .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
                                 .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
+                                .glossyPressPill(16f)
                                 .clickable(onClick = onOpenPlaylistManager)
                                 .padding(horizontal = 14.dp, vertical = 13.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -239,6 +242,7 @@ fun HomeScreen(
                                     .background(c.surface)
                                     .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
                                     .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
+                                .glossyPressPill(16f)
                                     .clickable { onPlayTaggedChannel(tagged, favourites) }
                                     .padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -304,6 +308,7 @@ fun HomeScreen(
                         .background(c.surface)
                         .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
                         .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
+                        .glossyPressPill(14f)
                         .clickable { onPlayTaggedChannel(tagged, history) }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -376,6 +381,7 @@ private fun ExploreTileCard(
             .background(bg)
             .border(1.dp, if (featured) c.accent else c.glassBorder, RoundedCornerShape(16.dp))
             .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
+                                .glossyPressPill(16f)
             .clickable(onClick = onClick)
             .padding(13.dp),
         verticalArrangement = Arrangement.SpaceBetween

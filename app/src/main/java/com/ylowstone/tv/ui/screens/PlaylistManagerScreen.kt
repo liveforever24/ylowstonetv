@@ -41,6 +41,7 @@ import com.ylowstone.tv.model.PlaylistType
 import com.ylowstone.tv.model.StreamFormat
 import com.ylowstone.tv.ui.components.ProfileYBadgeButton
 import com.ylowstone.tv.ui.components.YlowstoneLogoBadge
+import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 
@@ -58,6 +59,7 @@ private val avatarColors = listOf(
 fun PlaylistManagerScreen(
     playlists: List<PlaylistProfile>,
     adminPlaylistIds: Set<Long>,
+    isLoggedIn: Boolean,
     streamFormat: StreamFormat,
     strings: AppStrings,
     isTvMode: Boolean,
@@ -67,6 +69,7 @@ fun PlaylistManagerScreen(
     onSavePlaylist: (PlaylistProfile, Uri?) -> Unit,
     onRefreshPlaylist: (PlaylistProfile) -> Unit,
     onDeletePlaylist: (PlaylistProfile) -> Unit,
+    onOpenLogin: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val c = LocalYlowColors.current
@@ -105,10 +108,31 @@ fun PlaylistManagerScreen(
                         Text(strings.choosePlaylist, color = c.textSecondary, fontSize = 12.sp)
                     }
                 }
-                ProfileYBadgeButton(
-                    isTvMode = isTvMode,
-                    onClick = onOpenSettings
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (!isLoggedIn) {
+                        Row(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(c.accent.copy(alpha = 0.16f))
+                                .border(1.dp, c.accent.copy(alpha = 0.45f), CircleShape)
+                                .glossyPressPill(18f)
+                                .clickable(onClick = onOpenLogin)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(Icons.Rounded.Login, contentDescription = null, tint = c.accent, modifier = Modifier.size(16.dp))
+                            Text(strings.adminMenuLogin, color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    ProfileYBadgeButton(
+                        isTvMode = isTvMode,
+                        onClick = onOpenSettings
+                    )
+                }
             }
 
             Spacer(Modifier.height(18.dp))
@@ -137,15 +161,30 @@ fun PlaylistManagerScreen(
                         Text(strings.noPlaylistYet, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                         Text(strings.noPlaylistDesc, color = c.textSecondary, fontSize = 13.sp)
                         Spacer(Modifier.height(6.dp))
-                        Button(
-                            onClick = { editingProfile = null; showEditor = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.height(48.dp)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Rounded.Add, contentDescription = null, tint = c.onAccent)
-                            Spacer(Modifier.width(8.dp))
-                            Text(strings.addPlaylist, color = c.onAccent, fontWeight = FontWeight.Bold)
+                            Button(
+                                onClick = onOpenLogin,
+                                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                            ) {
+                                Icon(Icons.Rounded.Login, contentDescription = null, tint = c.onAccent)
+                                Spacer(Modifier.width(8.dp))
+                                Text(strings.adminMenuLogin, color = c.onAccent, fontWeight = FontWeight.Bold)
+                            }
+                            OutlinedButton(
+                                onClick = { editingProfile = null; showEditor = true },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth().height(46.dp)
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = null, tint = c.textPrimary)
+                                Spacer(Modifier.width(8.dp))
+                                Text(strings.addPlaylist, color = c.textPrimary, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
@@ -164,6 +203,7 @@ fun PlaylistManagerScreen(
                                 .background(c.surface)
                                 .border(1.dp, c.glassBorder, RoundedCornerShape(22.dp))
                                 .tvFocusBorder(isTvMode, RoundedCornerShape(22.dp))
+                                .glossyPressPill(22f)
                                 .combinedClickable(
                                     onClick = { onOpenPlaylist(profile) },
                                     onLongClick = { actionTarget = profile }
@@ -228,6 +268,7 @@ fun PlaylistManagerScreen(
                                 .background(c.accent.copy(alpha = 0.10f))
                                 .border(1.dp, c.accent.copy(alpha = 0.4f), RoundedCornerShape(22.dp))
                                 .tvFocusBorder(isTvMode, RoundedCornerShape(22.dp))
+                                .glossyPressPill(22f)
                                 .clickable { editingProfile = null; showEditor = true }
                                 .padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,

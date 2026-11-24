@@ -50,6 +50,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.ylowstone.tv.data.IptvRepository
+import com.ylowstone.tv.data.SrtCue
 import com.ylowstone.tv.data.SubtitleCandidate
 import com.ylowstone.tv.data.SubtitleFetcher
 import com.ylowstone.tv.i18n.AppStrings
@@ -163,6 +164,7 @@ fun DraggableFloatingPlayer(
                 indication = null
             ) {
                 controlsVisible = !controlsVisible
+                                    clockTriggerNonce++
             }
     ) {
         AndroidView(
@@ -441,12 +443,13 @@ fun FullscreenPlayerScreen(
     var showTrackDrawer by remember { mutableStateOf(false) }
     var isSeekDragging by remember { mutableStateOf(false) }
 
-    // Indonesian Subtitle (SubDL via Vercel + Local .srt/.vtt + Time Sync Offset)
+    // Indonesian Subtitle (SubDL via Vercel + Local .srt/.vtt + Direct Overlay & Instant Sync Offset)
     var subCandidates by remember(currentChannel.streamUrl) { mutableStateOf<List<SubtitleCandidate>>(emptyList()) }
     var subSearching by remember(currentChannel.streamUrl) { mutableStateOf(false) }
     var subDownloadingId by remember(currentChannel.streamUrl) { mutableStateOf<String?>(null) }
     var subError by remember(currentChannel.streamUrl) { mutableStateOf<String?>(null) }
     var activeSubRawFile by remember(currentChannel.streamUrl) { mutableStateOf<File?>(null) }
+    var activeSubCues by remember(currentChannel.streamUrl) { mutableStateOf<List<SrtCue>>(emptyList()) }
     var activeSubLabel by remember(currentChannel.streamUrl) { mutableStateOf("") }
     var subOffsetMs by remember(currentChannel.streamUrl) { mutableLongStateOf(0L) }
 
@@ -467,44 +470,23 @@ fun FullscreenPlayerScreen(
     }
 
     fun applyExternalSubtitleFile(rawFile: File, label: String, offsetMs: Long) {
-        runCatching {
-            val subUri = SubtitleFetcher.buildShiftedSubtitleUri(context, rawFile, offsetMs)
-            val subConfig = MediaItem.SubtitleConfiguration.Builder(subUri)
-                .setMimeType(MimeTypes.APPLICATION_SUBRIP)
-                .setLanguage("id")
-                .setLabel(label)
-                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_FORCED)
-                .build()
-            val mediaItem = MediaItem.Builder()
-                .setUri(currentChannel.streamUrl)
-                .setSubtitleConfigurations(listOf(subConfig))
-                .build()
-            val resumePos = exoPlayer.currentPosition.coerceAtLeast(0L)
-            val wasPlaying = exoPlayer.playWhenReady
-            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
-                .buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                .setPreferredTextLanguages("id", "in", "en")
-                .build()
-            exoPlayer.setMediaItem(mediaItem, resumePos)
-            exoPlayer.prepare()
-            exoPlayer.playWhenReady = wasPlaying
+        coroutineScope.launch {
+            val cues = SubtitleFetcher.parseSrtCues(rawFile)
+            if (cues.isEmpty()) {
+                Toast.makeText(context, "Isi file subtitle kosong atau format tidak didukung", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
             activeSubRawFile = rawFile
+            activeSubCues = cues
             activeSubLabel = label
             subOffsetMs = offsetMs
             onTracksModified()
-        }.onFailure { err ->
-            Toast.makeText(context, "Gagal pasang subtitle: ${err.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
     fun clearExternalSubtitle() {
-        val resumePos = exoPlayer.currentPosition.coerceAtLeast(0L)
-        val wasPlaying = exoPlayer.playWhenReady
-        exoPlayer.setMediaItem(MediaItem.fromUri(currentChannel.streamUrl), resumePos)
-        exoPlayer.prepare()
-        exoPlayer.playWhenReady = wasPlaying
         activeSubRawFile = null
+        activeSubCues = emptyList()
         activeSubLabel = ""
         subOffsetMs = 0L
         onTracksModified()
@@ -518,7 +500,7 @@ fun FullscreenPlayerScreen(
                 SubtitleFetcher.copyLocalSubtitleToCache(context, uri)
                     .onSuccess { rawFile ->
                         applyExternalSubtitleFile(rawFile, "Subtitle Lokal (ID)", 0L)
-                        Toast.makeText(context, "Subtitle lokal berhasil dipasang", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Subtitle lokal aktif", Toast.LENGTH_SHORT).show()
                     }
                     .onFailure { err ->
                         Toast.makeText(context, err.message ?: "Gagal memuat file subtitle", Toast.LENGTH_SHORT).show()
@@ -527,31 +509,37 @@ fun FullscreenPlayerScreen(
         }
     }
 
-    // Movie & Series playback progress polling
+    // Movie & Series playback + high-precision 150ms subtitle timeline polling
     var positionMs by remember(currentChannel.streamUrl) { mutableLongStateOf(0L) }
     var durationMs by remember(currentChannel.streamUrl) { mutableLongStateOf(0L) }
-    LaunchedEffect(exoPlayer, currentChannel.streamUrl, isVod) {
-        if (!isVod) return@LaunchedEffect
+    LaunchedEffect(exoPlayer, currentChannel.streamUrl, isVod, activeSubCues.isNotEmpty()) {
+        if (!isVod && activeSubCues.isEmpty()) return@LaunchedEffect
         while (true) {
             val dur = exoPlayer.duration
             if (dur > 0L) durationMs = dur
             positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
-            delay(450)
+            delay(150)
         }
     }
 
-    // Subtle 2-line 24h Digital Clock (Date Month Year / HH:mm), updated only when controls visible
+    val currentSubtitleText = remember(activeSubCues, positionMs, subOffsetMs) {
+        SubtitleFetcher.findCueTextAt(activeSubCues, positionMs + subOffsetMs)
+    }
+
+    // In-Video 5-Second Auto-Fading Glossy Clock & Date Pill (medium size, non-intrusive)
     var dateLine by remember { mutableStateOf("") }
     var timeLine by remember { mutableStateOf("") }
-    LaunchedEffect(controlsVisible) {
+    var clockPillVisible by remember { mutableStateOf(true) }
+    var clockTriggerNonce by remember { mutableIntStateOf(0) }
+    LaunchedEffect(currentChannel.streamUrl, clockTriggerNonce) {
         val dateFmt = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
         val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
-        while (controlsVisible) {
-            val now = Date()
-            dateLine = dateFmt.format(now)
-            timeLine = timeFmt.format(now)
-            delay(10_000)
-        }
+        val now = Date()
+        dateLine = dateFmt.format(now)
+        timeLine = timeFmt.format(now)
+        clockPillVisible = true
+        delay(5000L)
+        clockPillVisible = false
     }
 
     // Double-Tap ±10s Skip HUD (Movies & Series ONLY)
@@ -640,6 +628,95 @@ fun FullscreenPlayerScreen(
             modifier = Modifier.fillMaxSize()
         )
 
+        // Direct Indonesian Subtitle Overlay inside video frame
+        if (currentSubtitleText.isNotEmpty()) {
+            val subBottomPad = when {
+                controlsVisible && !isScreenLocked && isVod -> 112.dp
+                controlsVisible && !isScreenLocked -> 76.dp
+                else -> 26.dp
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 28.dp, end = 28.dp, bottom = subBottomPad)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color.Black.copy(alpha = 0.74f))
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = currentSubtitleText,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 21.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+
+        // In-Video 5-Second Auto-Fading Transparent Glossy Clock & Date Capsule (Medium size)
+        AnimatedVisibility(
+            visible = clockPillVisible && timeLine.isNotEmpty() && !showChannelDrawer && !showTrackDrawer,
+            enter = fadeIn(androidx.compose.animation.core.tween(320)),
+            exit = fadeOut(androidx.compose.animation.core.tween(480)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .systemBarsPadding()
+                .padding(top = 14.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0x99182028),
+                                Color(0x770C1014)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.28f),
+                                c.accent.copy(alpha = 0.28f)
+                            )
+                        ),
+                        shape = CircleShape
+                    )
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(c.accent)
+                )
+                Text(
+                    text = timeLine,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp
+                )
+                Text(
+                    text = "•",
+                    color = Color.White.copy(alpha = 0.50f),
+                    fontSize = 12.sp
+                )
+                Text(
+                    text = dateLine,
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
         // Tap + Double-Tap (±10s for Movies/Series) + Optional Left/Right Vertical Gestures
         Row(modifier = Modifier.fillMaxSize()) {
             // Left Half: Tap toggle controls, Double-Tap -10s (VOD only), Vertical Drag Brightness
@@ -655,6 +732,7 @@ fun FullscreenPlayerScreen(
                                     showTrackDrawer = false
                                 } else {
                                     controlsVisible = !controlsVisible
+                                    clockTriggerNonce++
                                 }
                             },
                             onDoubleTap = {
@@ -697,6 +775,7 @@ fun FullscreenPlayerScreen(
                                     showTrackDrawer = false
                                 } else {
                                     controlsVisible = !controlsVisible
+                                    clockTriggerNonce++
                                 }
                             },
                             onDoubleTap = {
@@ -822,29 +901,8 @@ fun FullscreenPlayerScreen(
                     .systemBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
-                // Top Bar: Left Minimize/Back + Title | Center Subtle 2-Line Clock | Right Search, Lock, Settings (PiP & External REMOVED!)
+                // Top Bar: Left Minimize/Back + Title | Right Search, Lock, Settings
                 Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
-                    // Subtle 2-Line 24h Digital Clock (only visible on tap, non-intrusive opacity!)
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 2.dp)
-                    ) {
-                        Text(
-                            text = dateLine,
-                            color = Color.White.copy(alpha = 0.54f),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium,
-                            letterSpacing = 0.4.sp
-                        )
-                        Text(
-                            text = timeLine,
-                            color = Color.White.copy(alpha = 0.68f),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 0.8.sp
-                        )
-                    }
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -853,7 +911,7 @@ fun FullscreenPlayerScreen(
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.weight(1f).padding(end = 100.dp)
+                            modifier = Modifier.weight(1f).padding(end = 12.dp)
                         ) {
                             IconButton(
                                 onClick = onMinimizeToFloat,
@@ -1192,9 +1250,7 @@ fun FullscreenPlayerScreen(
                                                 .clip(RoundedCornerShape(6.dp))
                                                 .background(Color.White.copy(alpha = 0.15f))
                                                 .clickable {
-                                                    activeSubRawFile?.let { f ->
-                                                        applyExternalSubtitleFile(f, activeSubLabel, subOffsetMs - 500L)
-                                                    }
+                                                    subOffsetMs -= 500L
                                                 }
                                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                                         ) {
@@ -1205,9 +1261,7 @@ fun FullscreenPlayerScreen(
                                                 .clip(RoundedCornerShape(6.dp))
                                                 .background(Color.White.copy(alpha = 0.15f))
                                                 .clickable {
-                                                    activeSubRawFile?.let { f ->
-                                                        applyExternalSubtitleFile(f, activeSubLabel, 0L)
-                                                    }
+                                                    subOffsetMs = 0L
                                                 }
                                                 .padding(horizontal = 7.dp, vertical = 4.dp)
                                         ) {
@@ -1218,9 +1272,7 @@ fun FullscreenPlayerScreen(
                                                 .clip(RoundedCornerShape(6.dp))
                                                 .background(Color.White.copy(alpha = 0.15f))
                                                 .clickable {
-                                                    activeSubRawFile?.let { f ->
-                                                        applyExternalSubtitleFile(f, activeSubLabel, subOffsetMs + 500L)
-                                                    }
+                                                    subOffsetMs += 500L
                                                 }
                                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                                         ) {

@@ -19,9 +19,16 @@ data class SubtitleCandidate(
     val zipUrl: String
 )
 
+data class SrtCue(
+    val startMs: Long,
+    val endMs: Long,
+    val text: String
+)
+
 object SubtitleFetcher {
     private const val BASE_API = "https://ylowstonetv.vercel.app/api/subtitles"
-    private val SRT_TIME_REGEX = Regex("""(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})""")
+    private val SRT_TIME_REGEX = Regex("""(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})""")
+    private val HTML_TAG_REGEX = Regex("""<[^>]+>""")
 
     suspend fun searchIndoSubtitles(
         rawTitle: String,
@@ -39,7 +46,7 @@ object SubtitleFetcher {
             val conn = (URL(sb.toString()).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15000
                 readTimeout = 20000
-                setRequestProperty("User-Agent", "YlowstoneTV/2.2.5")
+                setRequestProperty("User-Agent", "YlowstoneTV/2.2.6")
             }
             val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             conn.disconnect()
@@ -81,7 +88,7 @@ object SubtitleFetcher {
             val conn = (URL(sb.toString()).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 20000
                 readTimeout = 30000
-                setRequestProperty("User-Agent", "YlowstoneTV/2.2.5")
+                setRequestProperty("User-Agent", "YlowstoneTV/2.2.6")
             }
             if (conn.responseCode !in 200..299) {
                 conn.disconnect()
@@ -111,32 +118,47 @@ object SubtitleFetcher {
         }
     }
 
-    fun buildShiftedSubtitleUri(context: Context, rawFile: File, offsetMs: Long): Uri {
-        val rawText = rawFile.readText(Charsets.UTF_8)
-        val shiftedText = if (offsetMs == 0L) {
-            rawText
-        } else {
-            SRT_TIME_REGEX.replace(rawText) { m ->
-                val startMs = toMillis(m.groupValues[1], m.groupValues[2], m.groupValues[3], m.groupValues[4]) + offsetMs
-                val endMs = toMillis(m.groupValues[5], m.groupValues[6], m.groupValues[7], m.groupValues[8]) + offsetMs
-                "${formatMillis(startMs.coerceAtLeast(0L))} --> ${formatMillis(endMs.coerceAtLeast(0L))}"
+    suspend fun parseSrtCues(rawFile: File): List<SrtCue> = withContext(Dispatchers.IO) {
+        runCatching {
+            val content = rawFile.readText(Charsets.UTF_8)
+                .replace("\uFEFF", "")
+                .replace("\r\n", "\n")
+                .replace("\r", "\n")
+            val blocks = content.split(Regex("""\n\s*\n+"""))
+            val result = ArrayList<SrtCue>(blocks.size)
+            for (block in blocks) {
+                val lines = block.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                if (lines.size < 2) continue
+                val timeLineIdx = lines.indexOfFirst { SRT_TIME_REGEX.containsMatchIn(it) }
+                if (timeLineIdx < 0 || timeLineIdx + 1 >= lines.size) continue
+                val m = SRT_TIME_REGEX.find(lines[timeLineIdx]) ?: continue
+                val startMs = toMillis(m.groupValues[1], m.groupValues[2], m.groupValues[3], m.groupValues[4])
+                val endMs = toMillis(m.groupValues[5], m.groupValues[6], m.groupValues[7], m.groupValues[8])
+                val body = lines.drop(timeLineIdx + 1)
+                    .joinToString("\n")
+                    .replace(HTML_TAG_REGEX, "")
+                    .trim()
+                if (body.isNotEmpty() && endMs >= startMs) {
+                    result.add(SrtCue(startMs = startMs, endMs = endMs, text = body))
+                }
+            }
+            result.sortedBy { it.startMs }
+        }.getOrDefault(emptyList())
+    }
+
+    fun findCueTextAt(cues: List<SrtCue>, timeMs: Long): String {
+        if (cues.isEmpty() || timeMs < 0L) return ""
+        val active = mutableListOf<String>()
+        for (cue in cues) {
+            if (cue.startMs > timeMs) break
+            if (timeMs in cue.startMs..cue.endMs) {
+                active.add(cue.text)
             }
         }
-        context.cacheDir.listFiles { f -> f.name.startsWith("ylowstone_sub_active_") }?.forEach { it.delete() }
-        val outFile = File(context.cacheDir, "ylowstone_sub_active_${System.currentTimeMillis()}.srt")
-        outFile.writeText(shiftedText, Charsets.UTF_8)
-        return Uri.fromFile(outFile)
+        return active.joinToString("\n")
     }
 
     private fun toMillis(h: String, m: String, s: String, ms: String): Long {
         return h.toLong() * 3_600_000L + m.toLong() * 60_000L + s.toLong() * 1_000L + ms.toLong()
-    }
-
-    private fun formatMillis(totalMs: Long): String {
-        val h = totalMs / 3_600_000L
-        val m = (totalMs % 3_600_000L) / 60_000L
-        val s = (totalMs % 60_000L) / 1_000L
-        val ms = totalMs % 1_000L
-        return String.format(Locale.US, "%02d:%02d:%02d,%03d", h, m, s, ms)
     }
 }

@@ -5,6 +5,11 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -220,15 +225,28 @@ fun YlowstoneApp(
         homeDataVersion++
     }
 
+    fun hasDefaultServerPlaylist(list: List<PlaylistProfile>, serverIds: Set<Long>): Boolean {
+        return list.any { p ->
+            serverIds.contains(p.id) ||
+                p.name.equals("US/UK/ID", ignoreCase = true) ||
+                p.name.equals("USA", ignoreCase = true)
+        }
+    }
+
     fun proceedToAppOrLogin() {
-        if (!prefs.hasPassedLoginGate()) {
+        val currentList = repo.db.getAllPlaylists()
+        playlists = currentList
+        val hasDefault = hasDefaultServerPlaylist(currentList, adminPlaylistIds)
+        if (!hasDefault && !prefs.hasPassedLoginGate()) {
             returnStageAfterLogin = null
             loginError = ""
             stage = AppStage.ADMIN_LOGIN
-        } else if (playlists.isNotEmpty()) {
-            openWorkspace(playlists.first())
+        } else if (currentList.isNotEmpty()) {
+            openWorkspace(currentList.first())
         } else {
-            stage = AppStage.PLAYLISTS
+            returnStageAfterLogin = null
+            loginError = ""
+            stage = AppStage.ADMIN_LOGIN
         }
     }
 
@@ -540,6 +558,7 @@ fun YlowstoneApp(
                     PlaylistManagerScreen(
                         playlists = playlists,
                         adminPlaylistIds = adminPlaylistIds,
+                        isLoggedIn = isAdminLoggedIn,
                         streamFormat = settings.streamFormat,
                         strings = strings,
                         isTvMode = isTvMode,
@@ -558,15 +577,32 @@ fun YlowstoneApp(
                         },
                         onRefreshPlaylist = { profile -> syncAndEnter(profile, null, enterAfter = false) },
                         onDeletePlaylist = { profile ->
+                            val wasDefault = adminPlaylistIds.contains(profile.id) ||
+                                profile.name.equals("US/UK/ID", ignoreCase = true) ||
+                                profile.name.equals("USA", ignoreCase = true)
                             repo.db.deletePlaylist(profile.id)
-                            if (adminPlaylistIds.contains(profile.id)) {
-                                val nextIds = adminPlaylistIds - profile.id
-                                adminPlaylistIds = nextIds
-                                prefs.setAdminPlaylistIds(nextIds)
-                            }
-                            playlists = repo.db.getAllPlaylists()
-                            if (activePlaylist?.id == profile.id) activePlaylist = playlists.firstOrNull()
+                            val nextIds = adminPlaylistIds - profile.id
+                            adminPlaylistIds = nextIds
+                            prefs.setAdminPlaylistIds(nextIds)
+
+                            val remaining = repo.db.getAllPlaylists()
+                            playlists = remaining
+                            if (activePlaylist?.id == profile.id) activePlaylist = remaining.firstOrNull()
                             homeDataVersion++
+
+                            if (wasDefault || !hasDefaultServerPlaylist(remaining, nextIds)) {
+                                prefs.setAdminSession(false, "")
+                                prefs.setPassedLoginGate(false)
+                                isAdminLoggedIn = false
+                                returnStageAfterLogin = AppStage.PLAYLISTS
+                                loginError = ""
+                                stage = AppStage.ADMIN_LOGIN
+                            }
+                        },
+                        onOpenLogin = {
+                            returnStageAfterLogin = AppStage.PLAYLISTS
+                            loginError = ""
+                            stage = AppStage.ADMIN_LOGIN
                         },
                         onOpenSettings = {
                             returnStageAfterSettings = AppStage.PLAYLISTS
@@ -610,8 +646,15 @@ fun YlowstoneApp(
                         stage = AppStage.PLAYLISTS
                     } else {
                         Column(modifier = Modifier.fillMaxSize()) {
-                            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                                when (activeTab) {
+                            AnimatedContent(
+                                targetState = activeTab,
+                                transitionSpec = {
+                                    fadeIn(tween(260)) togetherWith fadeOut(tween(200))
+                                },
+                                label = "mainTabTransition",
+                                modifier = Modifier.weight(1f).fillMaxWidth()
+                            ) { currentTab ->
+                                when (currentTab) {
                                     MainTab.HOME -> HomeScreen(
                                         activePlaylist = pl,
                                         allPlaylists = playlists,

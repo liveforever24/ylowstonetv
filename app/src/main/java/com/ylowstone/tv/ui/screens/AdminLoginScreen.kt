@@ -28,6 +28,7 @@ import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.AppIconOption
 import com.ylowstone.tv.ui.components.YlowstoneLogoBadge
+import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 
@@ -75,6 +76,7 @@ fun AdminLoginScreen(
                     .clip(CircleShape)
                     .background(c.surface)
                     .border(1.dp, c.glassBorder, CircleShape)
+                    .glossyPressPill(CircleShape)
                     .clickable(enabled = !isVerifying, onClick = onBack),
                 contentAlignment = Alignment.Center
             ) {
@@ -103,7 +105,7 @@ fun AdminLoginScreen(
                 Text(
                     text = strings.adminLoginTitle,
                     color = c.textPrimary,
-                    fontSize = 22.sp,
+                    fontSize = 21.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
@@ -115,7 +117,7 @@ fun AdminLoginScreen(
                 )
             }
 
-            // Locked Permanent Username Row ("YlowstoneTV")
+            // Fixed Username Row: YlowstoneTV
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(
                     text = strings.adminUsernameLabel,
@@ -138,7 +140,7 @@ fun AdminLoginScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Icon(
-                            Icons.Rounded.AdminPanelSettings,
+                            Icons.Rounded.AccountCircle,
                             contentDescription = null,
                             tint = c.accent,
                             modifier = Modifier.size(20.dp)
@@ -153,7 +155,7 @@ fun AdminLoginScreen(
                     }
                     Icon(
                         Icons.Rounded.Lock,
-                        contentDescription = "Locked",
+                        contentDescription = null,
                         tint = c.textSecondary,
                         modifier = Modifier.size(16.dp)
                     )
