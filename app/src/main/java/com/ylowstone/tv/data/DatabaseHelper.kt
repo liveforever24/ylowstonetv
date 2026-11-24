@@ -6,7 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.ylowstone.tv.model.*
 
-class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv.db", null, 3) {
+class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv.db", null, 4) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -47,9 +47,33 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             """.trimIndent()
         )
 
+        createWatchHistoryTable(db)
+
         db.execSQL("CREATE INDEX idx_channels_main ON channels(playlist_id, media_type, category)")
         db.execSQL("CREATE INDEX idx_channels_name ON channels(playlist_id, name)")
         db.execSQL("CREATE INDEX idx_channels_fav ON channels(playlist_id, media_type, is_favorite)")
+    }
+
+    private fun createWatchHistoryTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS watch_history (
+                stream_url TEXT PRIMARY KEY,
+                playlist_id INTEGER NOT NULL,
+                playlist_name TEXT NOT NULL,
+                channel_id INTEGER NOT NULL DEFAULT 0,
+                stream_id TEXT NOT NULL DEFAULT '',
+                name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                logo_url TEXT NOT NULL DEFAULT '',
+                media_type TEXT NOT NULL,
+                position_ms INTEGER NOT NULL DEFAULT 0,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                last_watched INTEGER NOT NULL DEFAULT 0
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_watch_history_time ON watch_history(last_watched DESC)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -66,23 +90,44 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                 db.execSQL("ALTER TABLE playlists ADD COLUMN series_categories TEXT NOT NULL DEFAULT ''")
             }
         }
+        if (oldVersion < 4) {
+            runCatching { createWatchHistoryTable(db) }
+        }
     }
 
     fun getAllPlaylists(): List<PlaylistProfile> {
         val list = mutableListOf<PlaylistProfile>()
         readableDatabase.rawQuery("SELECT * FROM playlists ORDER BY id DESC", null).use { c ->
+            val idxId = c.getColumnIndex("id")
+            val idxName = c.getColumnIndex("name")
+            val idxType = c.getColumnIndex("type")
+            val idxUrl = c.getColumnIndex("url")
+            val idxUser = c.getColumnIndex("username")
+            val idxPass = c.getColumnIndex("password")
+            val idxUa = c.getColumnIndex("user_agent")
+            val idxLive = c.getColumnIndex("live_categories")
+            val idxMovie = c.getColumnIndex("movie_categories")
+            val idxSeries = c.getColumnIndex("series_categories")
+            val idxColor = c.getColumnIndex("color_index")
+            val idxUpdated = c.getColumnIndex("last_updated")
+
             while (c.moveToNext()) {
                 list.add(
                     PlaylistProfile(
-                        id = c.getLong(0),
-                        name = c.getString(1),
-                        type = runCatching { PlaylistType.valueOf(c.getString(2)) }.getOrDefault(PlaylistType.M3U),
-                        url = c.getString(3),
-                        username = c.getString(4),
-                        password = c.getString(5),
-                        userAgent = c.getString(6),
-                        colorIndex = c.getInt(7),
-                        lastUpdated = c.getLong(8)
+                        id = if (idxId >= 0) c.getLong(idxId) else 0L,
+                        name = if (idxName >= 0) c.getString(idxName) ?: "" else "",
+                        type = runCatching {
+                            PlaylistType.valueOf(if (idxType >= 0) c.getString(idxType) ?: "M3U" else "M3U")
+                        }.getOrDefault(PlaylistType.M3U),
+                        url = if (idxUrl >= 0) c.getString(idxUrl) ?: "" else "",
+                        username = if (idxUser >= 0) c.getString(idxUser) ?: "" else "",
+                        password = if (idxPass >= 0) c.getString(idxPass) ?: "" else "",
+                        userAgent = if (idxUa >= 0) c.getString(idxUa) ?: "" else "",
+                        liveCategories = if (idxLive >= 0) parseCategoryList(c.getString(idxLive)) else emptyList(),
+                        movieCategories = if (idxMovie >= 0) parseCategoryList(c.getString(idxMovie)) else emptyList(),
+                        seriesCategories = if (idxSeries >= 0) parseCategoryList(c.getString(idxSeries)) else emptyList(),
+                        colorIndex = if (idxColor >= 0) c.getInt(idxColor) else 0,
+                        lastUpdated = if (idxUpdated >= 0) c.getLong(idxUpdated) else 0L
                     )
                 )
             }
@@ -121,6 +166,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         writableDatabase.beginTransaction()
         try {
             writableDatabase.delete("channels", "playlist_id = ?", arrayOf(playlistId.toString()))
+            writableDatabase.delete("watch_history", "playlist_id = ?", arrayOf(playlistId.toString()))
             writableDatabase.delete("playlists", "id = ?", arrayOf(playlistId.toString()))
             writableDatabase.setTransactionSuccessful()
         } finally {
@@ -131,11 +177,17 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
     fun replaceChannels(playlistId: Long, items: List<ChannelItem>) {
         val db = writableDatabase
         val favUrls = HashSet<String>()
+        val watchedMap = HashMap<String, Long>()
         db.rawQuery(
-            "SELECT stream_url FROM channels WHERE playlist_id = ? AND is_favorite = 1",
+            "SELECT stream_url, is_favorite, last_watched FROM channels WHERE playlist_id = ? AND (is_favorite = 1 OR last_watched > 0)",
             arrayOf(playlistId.toString())
         ).use { c ->
-            while (c.moveToNext()) favUrls.add(c.getString(0))
+            while (c.moveToNext()) {
+                val url = c.getString(0) ?: continue
+                if (c.getInt(1) == 1) favUrls.add(url)
+                val lw = c.getLong(2)
+                if (lw > 0L) watchedMap[url] = lw
+            }
         }
 
         db.beginTransaction()
@@ -156,7 +208,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                 stmt.bindString(8, item.containerExtension)
                 stmt.bindString(9, item.rating)
                 stmt.bindLong(10, if (favUrls.contains(item.streamUrl)) 1L else 0L)
-                stmt.bindLong(11, 0L)
+                stmt.bindLong(11, watchedMap[item.streamUrl] ?: 0L)
                 stmt.executeInsert()
             }
             stmt.close()
@@ -173,8 +225,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             arrayOf(playlistId.toString())
         ).use { c ->
             while (c.moveToNext()) {
-                val type = runCatching { MediaType.valueOf(c.getString(0)) }.getOrNull()
-                if (type != null) result[type] = c.getInt(1)
+                val mt = runCatching { MediaType.valueOf(c.getString(0)) }.getOrNull() ?: continue
+                result[mt] = c.getInt(1)
             }
         }
         return result
@@ -213,23 +265,18 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
 
     fun queryChannels(
         playlistId: Long,
-        mediaType: MediaType?,
+        mediaType: MediaType,
         specialFilter: String,
-        searchQuery: String,
-        lockedCategories: Set<String>,
+        searchQuery: String = "",
+        lockedCategories: Set<String> = emptySet(),
         allowLockedCategory: Boolean = false,
         limit: Int = 500
     ): List<ChannelItem> {
         val args = mutableListOf<String>()
-        val where = StringBuilder("playlist_id = ?")
+        val where = StringBuilder("playlist_id = ? AND media_type = ?")
         args.add(playlistId.toString())
+        args.add(mediaType.name)
 
-        if (mediaType != null) {
-            where.append(" AND media_type = ?")
-            args.add(mediaType.name)
-        }
-
-        val trimmedSearch = searchQuery.trim()
         when (specialFilter) {
             "ALL" -> {}
             "FAV" -> where.append(" AND is_favorite = 1")
@@ -240,10 +287,11 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             }
         }
 
-        if (trimmedSearch.isNotEmpty()) {
+        if (searchQuery.isNotBlank()) {
             where.append(" AND (name LIKE ? OR category LIKE ?)")
-            args.add("%$trimmedSearch%")
-            args.add("%$trimmedSearch%")
+            val like = "%${searchQuery.trim()}%"
+            args.add(like)
+            args.add(like)
         }
 
         if (!allowLockedCategory && lockedCategories.isNotEmpty()) {
@@ -254,7 +302,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
 
         val orderBy = if (specialFilter == "HIST") "last_watched DESC" else "id ASC"
         val sql = "SELECT * FROM channels WHERE $where ORDER BY $orderBy LIMIT $limit"
-
         val list = mutableListOf<ChannelItem>()
         readableDatabase.rawQuery(sql, args.toTypedArray()).use { c ->
             while (c.moveToNext()) {
@@ -290,26 +337,116 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         return list
     }
 
+    fun recordWatchHistory(
+        ch: ChannelItem,
+        playlistName: String,
+        positionMs: Long = -1L,
+        durationMs: Long = -1L
+    ) {
+        if (ch.streamUrl.isBlank()) return
+        val db = writableDatabase
+        val now = System.currentTimeMillis()
+        var finalPos = if (positionMs >= 0L) positionMs else 0L
+        var finalDur = if (durationMs >= 0L) durationMs else 0L
+
+        if (positionMs < 0L || durationMs < 0L) {
+            db.rawQuery(
+                "SELECT position_ms, duration_ms FROM watch_history WHERE stream_url = ?",
+                arrayOf(ch.streamUrl)
+            ).use { c ->
+                if (c.moveToFirst()) {
+                    if (positionMs < 0L) finalPos = c.getLong(0)
+                    if (durationMs < 0L) finalDur = c.getLong(1)
+                }
+            }
+        }
+
+        val cv = ContentValues().apply {
+            put("stream_url", ch.streamUrl)
+            put("playlist_id", ch.playlistId)
+            put("playlist_name", playlistName)
+            put("channel_id", ch.id)
+            put("stream_id", ch.streamId)
+            put("name", ch.name)
+            put("category", ch.category)
+            put("logo_url", ch.logoUrl)
+            put("media_type", ch.mediaType.name)
+            put("position_ms", finalPos)
+            put("duration_ms", finalDur)
+            put("last_watched", now)
+        }
+        db.insertWithOnConflict("watch_history", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+
+        if (ch.id > 0L) {
+            markWatched(ch.id)
+        }
+    }
+
+    fun saveWatchProgress(streamUrl: String, positionMs: Long, durationMs: Long) {
+        if (streamUrl.isBlank()) return
+        val cv = ContentValues().apply {
+            put("position_ms", positionMs.coerceAtLeast(0L))
+            if (durationMs > 0L) put("duration_ms", durationMs)
+            put("last_watched", System.currentTimeMillis())
+        }
+        writableDatabase.update("watch_history", cv, "stream_url = ?", arrayOf(streamUrl))
+    }
+
+    fun getWatchProgress(streamUrl: String): Pair<Long, Long>? {
+        if (streamUrl.isBlank()) return null
+        readableDatabase.rawQuery(
+            "SELECT position_ms, duration_ms FROM watch_history WHERE stream_url = ?",
+            arrayOf(streamUrl)
+        ).use { c ->
+            if (c.moveToFirst()) {
+                return c.getLong(0) to c.getLong(1)
+            }
+        }
+        return null
+    }
+
     fun getRecentHistoryAcrossPlaylists(
         lockedByPlaylist: Map<Long, Set<String>>,
         limit: Int = 40
     ): List<TaggedChannel> {
         val list = mutableListOf<TaggedChannel>()
         val sql = """
-            SELECT c.*, p.name AS pl_name
-            FROM channels c
-            JOIN playlists p ON p.id = c.playlist_id
-            WHERE c.last_watched > 0
-            ORDER BY c.last_watched DESC
+            SELECT h.stream_url, h.playlist_id, COALESCE(p.name, h.playlist_name) AS pl_name,
+                   h.channel_id, h.stream_id, h.name, h.category, h.logo_url, h.media_type,
+                   h.position_ms, h.duration_ms, h.last_watched
+            FROM watch_history h
+            JOIN playlists p ON p.id = h.playlist_id
+            WHERE h.last_watched > 0
+            ORDER BY h.last_watched DESC
             LIMIT ?
         """.trimIndent()
         readableDatabase.rawQuery(sql, arrayOf((limit * 2).toString())).use { c ->
             while (c.moveToNext() && list.size < limit) {
-                val ch = readChannel(c)
-                val plName = c.getString(12) ?: ""
-                val locked = lockedByPlaylist[ch.playlistId]
-                if (locked != null && locked.contains(ch.category)) continue
-                list.add(TaggedChannel(ch, plName))
+                val streamUrl = c.getString(0) ?: continue
+                val plId = c.getLong(1)
+                val plName = c.getString(2) ?: ""
+                val category = c.getString(6) ?: ""
+                val locked = lockedByPlaylist[plId]
+                if (locked != null && locked.contains(category)) continue
+                val ch = ChannelItem(
+                    id = c.getLong(3),
+                    playlistId = plId,
+                    streamId = c.getString(4) ?: "",
+                    name = c.getString(5) ?: "",
+                    category = category,
+                    logoUrl = c.getString(7) ?: "",
+                    streamUrl = streamUrl,
+                    mediaType = runCatching { MediaType.valueOf(c.getString(8)) }.getOrDefault(MediaType.LIVE),
+                    lastWatchedAt = c.getLong(11)
+                )
+                list.add(
+                    TaggedChannel(
+                        channel = ch,
+                        playlistName = plName,
+                        positionMs = c.getLong(9),
+                        durationMs = c.getLong(10)
+                    )
+                )
             }
         }
         return list
@@ -317,7 +454,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
 
     fun searchAcrossPlaylists(
         query: String,
-        playlistIdFilter: Long?, // null = all playlists
+        playlistIdFilter: Long?,
         mediaType: MediaType?,
         lockedByPlaylist: Map<Long, Set<String>>,
         limit: Int = 120
@@ -393,5 +530,4 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         if (raw.isNullOrBlank()) return emptyList()
         return raw.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.distinct()
     }
-
 }

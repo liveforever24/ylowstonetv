@@ -212,6 +212,14 @@ fun PlaylistManagerScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Box(modifier = Modifier.fillMaxWidth()) {
+                                IconButton(
+                                    onClick = { onRefreshPlaylist(profile) },
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .size(28.dp)
+                                ) {
+                                    Icon(Icons.Rounded.Refresh, contentDescription = strings.refresh, tint = c.accent, modifier = Modifier.size(18.dp))
+                                }
                                 Box(
                                     modifier = Modifier
                                         .size(56.dp)

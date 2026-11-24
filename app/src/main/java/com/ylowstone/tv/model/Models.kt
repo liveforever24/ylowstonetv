@@ -129,7 +129,9 @@ data class ChannelItem(
 
 data class TaggedChannel(
     val channel: ChannelItem,
-    val playlistName: String
+    val playlistName: String,
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L
 )
 
 data class CategoryInfo(

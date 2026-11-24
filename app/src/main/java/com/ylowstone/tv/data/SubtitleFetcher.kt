@@ -25,6 +25,15 @@ data class SrtCue(
     val text: String
 )
 
+data class ActiveSubtitleSession(
+    val streamUrl: String = "",
+    val candidates: List<SubtitleCandidate> = emptyList(),
+    val rawFile: File? = null,
+    val cues: List<SrtCue> = emptyList(),
+    val label: String = "",
+    val offsetMs: Long = 0L
+)
+
 object SubtitleFetcher {
     private const val BASE_API = "https://ylowstonetv.vercel.app/api/subtitles"
     private val SRT_TIME_REGEX = Regex("""(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})""")
@@ -46,7 +55,7 @@ object SubtitleFetcher {
             val conn = (URL(sb.toString()).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15000
                 readTimeout = 20000
-                setRequestProperty("User-Agent", "YlowstoneTV/2.2.6")
+                setRequestProperty("User-Agent", "YlowstoneTV/2.2.7")
             }
             val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             conn.disconnect()
@@ -88,7 +97,7 @@ object SubtitleFetcher {
             val conn = (URL(sb.toString()).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 20000
                 readTimeout = 30000
-                setRequestProperty("User-Agent", "YlowstoneTV/2.2.6")
+                setRequestProperty("User-Agent", "YlowstoneTV/2.2.7")
             }
             if (conn.responseCode !in 200..299) {
                 conn.disconnect()

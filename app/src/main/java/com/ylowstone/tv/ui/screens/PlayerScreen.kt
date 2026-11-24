@@ -9,6 +9,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -35,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -49,6 +53,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.ylowstone.tv.data.ActiveSubtitleSession
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.data.SrtCue
 import com.ylowstone.tv.data.SubtitleCandidate
@@ -422,6 +427,8 @@ fun FullscreenPlayerScreen(
     strings: AppStrings,
     onSelectChannel: (ChannelItem) -> Unit,
     onToggleFullscreenOrientation: () -> Unit,
+    subtitleSession: ActiveSubtitleSession,
+    onUpdateSubtitleSession: (ActiveSubtitleSession) -> Unit,
     onMinimizeToFloat: () -> Unit,
     onTracksModified: () -> Unit
 ) {
@@ -442,15 +449,21 @@ fun FullscreenPlayerScreen(
     var showTrackDrawer by remember { mutableStateOf(false) }
     var isSeekDragging by remember { mutableStateOf(false) }
 
-    // Indonesian Subtitle (SubDL via Vercel + Local .srt/.vtt + Direct Overlay & Instant Sync Offset)
-    var subCandidates by remember(currentChannel.streamUrl) { mutableStateOf<List<SubtitleCandidate>>(emptyList()) }
+    // Indonesian Subtitle (Hoisted in YlowstoneApp so it survives PiP, Minimize, and App Switching!)
+    val currentSubSession = if (subtitleSession.streamUrl == currentChannel.streamUrl) {
+        subtitleSession
+    } else {
+        ActiveSubtitleSession(streamUrl = currentChannel.streamUrl)
+    }
+    val subCandidates = currentSubSession.candidates
+    val activeSubRawFile = currentSubSession.rawFile
+    val activeSubCues = currentSubSession.cues
+    val activeSubLabel = currentSubSession.label
+    val subOffsetMs = currentSubSession.offsetMs
+
     var subSearching by remember(currentChannel.streamUrl) { mutableStateOf(false) }
     var subDownloadingId by remember(currentChannel.streamUrl) { mutableStateOf<String?>(null) }
     var subError by remember(currentChannel.streamUrl) { mutableStateOf<String?>(null) }
-    var activeSubRawFile by remember(currentChannel.streamUrl) { mutableStateOf<File?>(null) }
-    var activeSubCues by remember(currentChannel.streamUrl) { mutableStateOf<List<SrtCue>>(emptyList()) }
-    var activeSubLabel by remember(currentChannel.streamUrl) { mutableStateOf("") }
-    var subOffsetMs by remember(currentChannel.streamUrl) { mutableLongStateOf(0L) }
 
     val parsedSeriesInfo = remember(currentChannel) {
         if (currentChannel.mediaType != MediaType.SERIES) {
@@ -475,19 +488,28 @@ fun FullscreenPlayerScreen(
                 Toast.makeText(context, "Isi file subtitle kosong atau format tidak didukung", Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            activeSubRawFile = rawFile
-            activeSubCues = cues
-            activeSubLabel = label
-            subOffsetMs = offsetMs
+            onUpdateSubtitleSession(
+                currentSubSession.copy(
+                    streamUrl = currentChannel.streamUrl,
+                    rawFile = rawFile,
+                    cues = cues,
+                    label = label,
+                    offsetMs = offsetMs
+                )
+            )
             onTracksModified()
         }
     }
 
     fun clearExternalSubtitle() {
-        activeSubRawFile = null
-        activeSubCues = emptyList()
-        activeSubLabel = ""
-        subOffsetMs = 0L
+        onUpdateSubtitleSession(
+            currentSubSession.copy(
+                rawFile = null,
+                cues = emptyList(),
+                label = "",
+                offsetMs = 0L
+            )
+        )
         onTracksModified()
     }
 
@@ -509,8 +531,8 @@ fun FullscreenPlayerScreen(
     }
 
     // Movie & Series playback + high-precision 150ms subtitle timeline polling
-    var positionMs by remember(currentChannel.streamUrl) { mutableLongStateOf(0L) }
-    var durationMs by remember(currentChannel.streamUrl) { mutableLongStateOf(0L) }
+    var positionMs by remember(currentChannel.streamUrl) { mutableLongStateOf(exoPlayer.currentPosition.coerceAtLeast(0L)) }
+    var durationMs by remember(currentChannel.streamUrl) { mutableLongStateOf(exoPlayer.duration.coerceAtLeast(0L)) }
     LaunchedEffect(exoPlayer, currentChannel.streamUrl, isVod, activeSubCues.isNotEmpty()) {
         if (!isVod && activeSubCues.isEmpty()) return@LaunchedEffect
         while (true) {
@@ -525,10 +547,10 @@ fun FullscreenPlayerScreen(
         SubtitleFetcher.findCueTextAt(activeSubCues, positionMs + subOffsetMs)
     }
 
-    // In-Video 5-Second Auto-Fading Glossy Clock & Date Pill (medium size, non-intrusive)
+    // Top-Left In-Video Clock & Date Pill: 0-5s Bright (100%) -> 5-10s Dimmed (35%) -> Fade Out Completely
     var dateLine by remember { mutableStateOf("") }
     var timeLine by remember { mutableStateOf("") }
-    var clockPillVisible by remember { mutableStateOf(true) }
+    var clockStage by remember { mutableIntStateOf(2) } // 2 = bright, 1 = dim, 0 = hidden
     var clockTriggerNonce by remember { mutableIntStateOf(0) }
     LaunchedEffect(currentChannel.streamUrl, clockTriggerNonce) {
         val dateFmt = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
@@ -536,9 +558,11 @@ fun FullscreenPlayerScreen(
         val now = Date()
         dateLine = dateFmt.format(now)
         timeLine = timeFmt.format(now)
-        clockPillVisible = true
+        clockStage = 2
         delay(5000L)
-        clockPillVisible = false
+        clockStage = 1
+        delay(5000L)
+        clockStage = 0
     }
 
     // Double-Tap ±10s Skip HUD (Movies & Series ONLY)
@@ -654,24 +678,35 @@ fun FullscreenPlayerScreen(
             }
         }
 
-        // In-Video 5-Second Auto-Fading Transparent Glossy Clock & Date Capsule (Medium size)
+        // Top-Left In-Video Clock & Date Capsule: Bright (5s) -> Dimmed (5s) -> Hidden
+        val clockTargetAlpha by animateFloatAsState(
+            targetValue = if (clockStage == 2) 1f else 0.34f,
+            animationSpec = tween(durationMillis = 550),
+            label = "clockDimAlpha"
+        )
+        val clockTopPad by animateDpAsState(
+            targetValue = if (controlsVisible && !isScreenLocked) 68.dp else 14.dp,
+            animationSpec = tween(durationMillis = 280),
+            label = "clockTopPad"
+        )
         AnimatedVisibility(
-            visible = clockPillVisible && timeLine.isNotEmpty() && !showChannelDrawer && !showTrackDrawer,
-            enter = fadeIn(androidx.compose.animation.core.tween(320)),
-            exit = fadeOut(androidx.compose.animation.core.tween(480)),
+            visible = clockStage > 0 && timeLine.isNotEmpty() && !showChannelDrawer && !showTrackDrawer,
+            enter = fadeIn(tween(320)),
+            exit = fadeOut(tween(520)),
             modifier = Modifier
-                .align(Alignment.TopCenter)
+                .align(Alignment.TopStart)
                 .systemBarsPadding()
-                .padding(top = 14.dp)
+                .padding(start = 18.dp, top = clockTopPad)
         ) {
             Row(
                 modifier = Modifier
+                    .graphicsLayer { alpha = clockTargetAlpha }
                     .clip(CircleShape)
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0x99182028),
-                                Color(0x770C1014)
+                                Color(0xAA182028),
+                                Color(0x880C1014)
                             )
                         )
                     )
@@ -679,15 +714,15 @@ fun FullscreenPlayerScreen(
                         width = 1.dp,
                         brush = Brush.verticalGradient(
                             listOf(
-                                Color.White.copy(alpha = 0.28f),
-                                c.accent.copy(alpha = 0.28f)
+                                Color.White.copy(alpha = 0.30f),
+                                c.accent.copy(alpha = 0.30f)
                             )
                         ),
                         shape = CircleShape
                     )
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                    .padding(horizontal = 13.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -709,7 +744,7 @@ fun FullscreenPlayerScreen(
                 )
                 Text(
                     text = dateLine,
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = Color.White.copy(alpha = 0.86f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -1184,7 +1219,7 @@ fun FullscreenPlayerScreen(
                                                 season = sNum,
                                                 episode = eNum
                                             ).onSuccess { list ->
-                                                subCandidates = list
+                                                onUpdateSubtitleSession(currentSubSession.copy(streamUrl = currentChannel.streamUrl, candidates = list))
                                                 if (list.isEmpty()) {
                                                     subError = "Subtitle Indonesia belum ditemukan"
                                                 }
@@ -1249,7 +1284,7 @@ fun FullscreenPlayerScreen(
                                                 .clip(RoundedCornerShape(6.dp))
                                                 .background(Color.White.copy(alpha = 0.15f))
                                                 .clickable {
-                                                    subOffsetMs -= 500L
+                                                    onUpdateSubtitleSession(currentSubSession.copy(offsetMs = subOffsetMs - 500L))
                                                 }
                                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                                         ) {
@@ -1260,7 +1295,7 @@ fun FullscreenPlayerScreen(
                                                 .clip(RoundedCornerShape(6.dp))
                                                 .background(Color.White.copy(alpha = 0.15f))
                                                 .clickable {
-                                                    subOffsetMs = 0L
+                                                    onUpdateSubtitleSession(currentSubSession.copy(offsetMs = 0L))
                                                 }
                                                 .padding(horizontal = 7.dp, vertical = 4.dp)
                                         ) {
@@ -1271,7 +1306,7 @@ fun FullscreenPlayerScreen(
                                                 .clip(RoundedCornerShape(6.dp))
                                                 .background(Color.White.copy(alpha = 0.15f))
                                                 .clickable {
-                                                    subOffsetMs += 500L
+                                                    onUpdateSubtitleSession(currentSubSession.copy(offsetMs = subOffsetMs + 500L))
                                                 }
                                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                                         ) {

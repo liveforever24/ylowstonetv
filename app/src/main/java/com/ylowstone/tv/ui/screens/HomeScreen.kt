@@ -26,7 +26,6 @@ import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.*
 import com.ylowstone.tv.ui.components.ChannelLogoBox
 import com.ylowstone.tv.ui.components.ProfileYBadgeButton
-import com.ylowstone.tv.ui.components.SmallIconPill
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
@@ -43,7 +42,6 @@ fun HomeScreen(
     onSwitchPlaylist: (PlaylistProfile) -> Unit,
     onOpenPlaylistManager: () -> Unit,
     onOpenSection: (MediaType) -> Unit,
-    onRefreshActive: () -> Unit,
     onPlayTaggedChannel: (TaggedChannel, List<TaggedChannel>) -> Unit,
     onOpenProfileMenu: () -> Unit
 ) {
@@ -91,13 +89,7 @@ fun HomeScreen(
                     }
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    SmallIconPill(Icons.Rounded.Refresh, strings.refresh, isTvMode, onRefreshActive)
-                    ProfileYBadgeButton(isTvMode = isTvMode, onClick = onOpenProfileMenu)
-                }
+                ProfileYBadgeButton(isTvMode = isTvMode, onClick = onOpenProfileMenu)
             }
         }
 
@@ -300,8 +292,14 @@ fun HomeScreen(
         if (history.isEmpty()) {
             item { EmptyHintCard(Icons.Rounded.History, strings.noHistoryYet) }
         } else {
-            items(history.take(15), key = { "hist_${it.channel.id}" }) { tagged ->
-                Row(
+            items(history.take(20), key = { "hist_${it.channel.streamUrl}" }) { tagged ->
+                val isVodItem = tagged.channel.mediaType == MediaType.MOVIE || tagged.channel.mediaType == MediaType.SERIES
+                val hasProgress = isVodItem && tagged.positionMs > 5_000L
+                val progressFraction = if (hasProgress && tagged.durationMs > 0L) {
+                    (tagged.positionMs.toFloat() / tagged.durationMs.toFloat()).coerceIn(0f, 1f)
+                } else 0f
+
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
@@ -311,29 +309,59 @@ fun HomeScreen(
                         .glossyPressPill(14f)
                         .clickable { onPlayTaggedChannel(tagged, history) }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    ChannelLogoBox(tagged.channel.logoUrl, 42.dp, corner = 10.dp)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = tagged.channel.name,
-                            color = c.textPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = "${tagged.playlistName} • ${tagged.channel.category}",
-                            color = c.textSecondary,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ChannelLogoBox(tagged.channel.logoUrl, 42.dp, corner = 10.dp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = tagged.channel.name,
+                                color = c.textPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            val subText = if (hasProgress) {
+                                val posStr = formatHistoryTime(tagged.positionMs)
+                                val durStr = if (tagged.durationMs > 0L) " / ${formatHistoryTime(tagged.durationMs)}" else ""
+                                "${tagged.playlistName} • Lanjut $posStr$durStr"
+                            } else {
+                                "${tagged.playlistName} • ${tagged.channel.category}"
+                            }
+                            Text(
+                                text = subText,
+                                color = if (hasProgress) c.accent else c.textSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = if (hasProgress) FontWeight.Medium else FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = c.accent, modifier = Modifier.size(22.dp))
                     }
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = c.accent, modifier = Modifier.size(22.dp))
+                    if (hasProgress && progressFraction > 0.01f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(c.surfaceElevated)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(progressFraction)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(c.accent)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -424,4 +452,13 @@ private fun EmptyHintCard(icon: ImageVector, message: String) {
         Icon(icon, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(22.dp))
         Text(message, color = c.textSecondary, fontSize = 12.sp, lineHeight = 16.sp)
     }
+}
+
+private fun formatHistoryTime(ms: Long): String {
+    val totalSec = (ms / 1000L).coerceAtLeast(0L)
+    val h = totalSec / 3600L
+    val m = (totalSec % 3600L) / 60L
+    val s = totalSec % 60L
+    return if (h > 0L) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
+    else String.format(java.util.Locale.US, "%02d:%02d", m, s)
 }

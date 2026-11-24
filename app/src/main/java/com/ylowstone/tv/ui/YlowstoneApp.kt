@@ -34,6 +34,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.ylowstone.tv.data.AppPrefs
+import com.ylowstone.tv.data.ActiveSubtitleSession
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.stringsFor
 import com.ylowstone.tv.model.*
@@ -43,6 +44,7 @@ import com.ylowstone.tv.ui.components.ProfileQuickDropdown
 import com.ylowstone.tv.ui.screens.*
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import com.ylowstone.tv.ui.theme.YlowstoneTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private enum class AppStage {
@@ -109,9 +111,10 @@ fun YlowstoneApp(
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var tracksVersion by remember { mutableIntStateOf(0) }
+    var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
 
     val sharedPlayer = remember {
-        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.2.5")
+        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.2.7")
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dsFactory))
             .build()
@@ -146,16 +149,71 @@ fun YlowstoneApp(
         }
     }
 
+    fun saveCurrentVodProgress(refreshHome: Boolean = false) {
+        val cur = activeChannel ?: return
+        if (cur.mediaType == MediaType.MOVIE || cur.mediaType == MediaType.SERIES) {
+            val pos = sharedPlayer.currentPosition.coerceAtLeast(0L)
+            val dur = sharedPlayer.duration.coerceAtLeast(0L)
+            if (pos > 0L) {
+                repo.db.saveWatchProgress(cur.streamUrl, pos, dur)
+                if (refreshHome) homeDataVersion++
+            }
+        }
+    }
+
+    fun formatResumeMs(ms: Long): String {
+        val sec = (ms / 1000L).coerceAtLeast(0L)
+        val h = sec / 3600L
+        val m = (sec % 3600L) / 60L
+        val s = sec % 60L
+        return if (h > 0L) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
+        else String.format(java.util.Locale.US, "%02d:%02d", m, s)
+    }
+
+    // Periodic watch progress saver for Movies & Series (every 3s while playing, plus immediately on pause)
+    LaunchedEffect(activeChannel?.streamUrl, isPlaying) {
+        val cur = activeChannel ?: return@LaunchedEffect
+        val isVod = cur.mediaType == MediaType.MOVIE || cur.mediaType == MediaType.SERIES
+        if (!isVod) return@LaunchedEffect
+        if (!isPlaying) {
+            saveCurrentVodProgress(refreshHome = true)
+            return@LaunchedEffect
+        }
+        while (isPlaying) {
+            delay(3000L)
+            saveCurrentVodProgress(refreshHome = false)
+        }
+    }
+
     fun playStream(ch: ChannelItem, queue: List<ChannelItem>) {
         val sameStream = activeChannel?.streamUrl == ch.streamUrl
+        if (!sameStream) {
+            saveCurrentVodProgress(refreshHome = false)
+            if (subtitleSession.streamUrl != ch.streamUrl) {
+                subtitleSession = ActiveSubtitleSession(streamUrl = ch.streamUrl)
+            }
+        }
         activeChannel = ch
         activeQueue = queue.ifEmpty { listOf(ch) }
-        if (ch.id > 0L) {
-            repo.db.markWatched(ch.id)
-            homeDataVersion++
-        }
+        val plName = playlists.firstOrNull { it.id == ch.playlistId }?.name ?: activePlaylist?.name ?: "YlowstoneTV"
+        repo.db.recordWatchHistory(ch, plName)
+        homeDataVersion++
+
         if (!sameStream) {
-            sharedPlayer.setMediaItem(MediaItem.fromUri(ch.streamUrl))
+            val isVod = ch.mediaType == MediaType.MOVIE || ch.mediaType == MediaType.SERIES
+            val resumeMs = if (isVod) {
+                val saved = repo.db.getWatchProgress(ch.streamUrl)
+                if (saved != null && saved.first > 5_000L && (saved.second <= 0L || saved.first < (saved.second * 95L) / 100L)) {
+                    saved.first
+                } else 0L
+            } else 0L
+
+            if (resumeMs > 0L) {
+                sharedPlayer.setMediaItem(MediaItem.fromUri(ch.streamUrl), resumeMs)
+                Toast.makeText(context, "Melanjutkan dari ${formatResumeMs(resumeMs)}", Toast.LENGTH_SHORT).show()
+            } else {
+                sharedPlayer.setMediaItem(MediaItem.fromUri(ch.streamUrl))
+            }
             sharedPlayer.prepare()
             sharedPlayer.playWhenReady = true
         } else if (!sharedPlayer.isPlaying) {
@@ -172,9 +230,11 @@ fun YlowstoneApp(
     }
 
     fun stopPlaybackCompletely() {
+        saveCurrentVodProgress(refreshHome = true)
         sharedPlayer.stop()
         sharedPlayer.clearMediaItems()
         activeChannel = null
+        subtitleSession = ActiveSubtitleSession()
         playerMode = PlayerMode.NONE
         isLandscapeFullscreen = false
     }
@@ -438,6 +498,7 @@ fun YlowstoneApp(
     BackHandler(enabled = stage != AppStage.SPLASH) {
         when {
             playerMode == PlayerMode.FULLSCREEN -> {
+                saveCurrentVodProgress(refreshHome = true)
                 playerMode = PlayerMode.FLOATING
                 isLandscapeFullscreen = false
             }
@@ -575,7 +636,10 @@ fun YlowstoneApp(
                             playlists = repo.db.getAllPlaylists()
                             syncAndEnter(savedProfile, uri, enterAfter = true)
                         },
-                        onRefreshPlaylist = { profile -> syncAndEnter(profile, null, enterAfter = false) },
+                        onRefreshPlaylist = { profile ->
+                            val freshProfile = repo.db.getAllPlaylists().firstOrNull { it.id == profile.id } ?: profile
+                            syncAndEnter(freshProfile, null, enterAfter = false)
+                        },
                         onDeletePlaylist = { profile ->
                             val wasDefault = adminPlaylistIds.contains(profile.id) ||
                                 profile.name.equals("US/UK/ID", ignoreCase = true) ||
@@ -681,7 +745,6 @@ fun YlowstoneApp(
                                                 MediaType.SERIES -> MainTab.SERIES
                                             }
                                         },
-                                        onRefreshActive = { syncAndEnter(pl, null, enterAfter = false) },
                                         onPlayTaggedChannel = { tagged, list ->
                                             launchPlayer(tagged.channel, list.map { it.channel }, isTvMode)
                                         },
@@ -934,7 +997,10 @@ fun YlowstoneApp(
                     strings = strings,
                     onSelectChannel = { nextCh -> playStream(nextCh, activeQueue) },
                     onToggleFullscreenOrientation = { isLandscapeFullscreen = !isLandscapeFullscreen },
+                    subtitleSession = subtitleSession,
+                    onUpdateSubtitleSession = { nextSub -> subtitleSession = nextSub },
                     onMinimizeToFloat = {
+                        saveCurrentVodProgress(refreshHome = true)
                         playerMode = PlayerMode.FLOATING
                         isLandscapeFullscreen = false
                     },

@@ -55,7 +55,6 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var searchQuery by remember { mutableStateOf("") }
     var expandedSection by remember { mutableStateOf("THEME") }
     var showChangePin by remember { mutableStateOf(false) }
     var showResetPinConfirm by remember { mutableStateOf(false) }
@@ -65,11 +64,7 @@ fun SettingsScreen(
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var updateStatusMsg by remember { mutableStateOf("") }
 
-    fun matches(vararg keys: String): Boolean {
-        val q = searchQuery.trim()
-        if (q.isEmpty()) return true
-        return keys.any { it.contains(q, ignoreCase = true) }
-    }
+
 
     val themeLabel = when (settings.themeMode) {
         ThemeMode.SYSTEM -> strings.themeSystem
@@ -112,33 +107,15 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 32.dp)
         ) {
-            // Search Settings
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text(strings.searchSettings, fontSize = 13.sp) },
-                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            )
+
 
             // 1. Theme (Strictly System / Light / Dark AMOLED with Google Pixel Fog palette!)
-            if (matches(strings.appearanceTheme, "tema", "theme", "gelap", "terang", "sistem", "dark", "light")) {
+            run {
                 FotMobSettingsRow(
                     icon = Icons.Rounded.Contrast,
                     title = strings.appearanceTheme,
                     subtitle = themeLabel,
-                    expanded = expandedSection == "THEME" || searchQuery.isNotBlank(),
+                    expanded = expandedSection == "THEME",
                     onClick = { expandedSection = if (expandedSection == "THEME") "" else "THEME" }
                 ) {
                     SegmentedChoiceRow(
@@ -154,12 +131,12 @@ fun SettingsScreen(
             }
 
             // 2. Device Mode (Phone / Android TV)
-            if (matches(strings.deviceMode, "mode", "tv", "phone", "ponsel")) {
+            run {
                 FotMobSettingsRow(
                     icon = Icons.Rounded.Devices,
                     title = strings.deviceMode,
                     subtitle = if (settings.deviceMode == DeviceMode.TV) strings.androidTv else strings.smartphone,
-                    expanded = expandedSection == "DEVICE" || searchQuery.isNotBlank(),
+                    expanded = expandedSection == "DEVICE",
                     onClick = { expandedSection = if (expandedSection == "DEVICE") "" else "DEVICE" }
                 ) {
                     SegmentedChoiceRow(
@@ -171,12 +148,12 @@ fun SettingsScreen(
             }
 
             // 3. 12 Switchable 3D App Icons
-            if (matches(strings.appIconTitle, "icon", "ikon", "logo")) {
+            run {
                 FotMobSettingsRow(
                     icon = Icons.Rounded.Apps,
                     title = strings.appIconTitle,
                     subtitle = settings.appIcon.label,
-                    expanded = expandedSection == "ICONS" || searchQuery.isNotBlank(),
+                    expanded = expandedSection == "ICONS",
                     onClick = { expandedSection = if (expandedSection == "ICONS") "" else "ICONS" }
                 ) {
                     Text(strings.appIconDesc, color = c.textSecondary, fontSize = 12.sp)
@@ -234,12 +211,12 @@ fun SettingsScreen(
             }
 
             // 4. Category PIN Management (4-digit PIN + Reset PIN + Locked Categories!)
-            if (matches(strings.privacyStorageSection, strings.parentalPin, "pin", "reset", "cache", "kunci", "lock")) {
+            run {
                 FotMobSettingsRow(
                     icon = Icons.Rounded.Lock,
                     title = strings.privacyStorageSection,
                     subtitle = "${strings.parentalPin} (${lockedCategories.size})",
-                    expanded = expandedSection == "PIN" || searchQuery.isNotBlank(),
+                    expanded = expandedSection == "PIN",
                     onClick = { expandedSection = if (expandedSection == "PIN") "" else "PIN" }
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -319,12 +296,12 @@ fun SettingsScreen(
             }
 
             // 5. Playback & Streaming
-            if (matches(strings.playbackSection, strings.playerGestures, "gestur", "volume", "hls", "external", "pemain")) {
+            run {
                 FotMobSettingsRow(
                     icon = Icons.Rounded.PlayCircleOutline,
                     title = strings.playbackSection,
                     subtitle = settings.streamFormat.label,
-                    expanded = expandedSection == "PLAYBACK" || searchQuery.isNotBlank(),
+                    expanded = expandedSection == "PLAYBACK",
                     onClick = { expandedSection = if (expandedSection == "PLAYBACK") "" else "PLAYBACK" }
                 ) {
                     Row(
@@ -376,12 +353,12 @@ fun SettingsScreen(
             }
 
             // 6. Language
-            if (matches(strings.appLanguage, "language", "bahasa", "english", "indonesia")) {
+            run {
                 FotMobSettingsRow(
                     icon = Icons.Rounded.Language,
                     title = strings.appLanguage,
                     subtitle = if (settings.language == AppLanguage.ID) "Bahasa Indonesia" else "English (US)",
-                    expanded = expandedSection == "LANGUAGE" || searchQuery.isNotBlank(),
+                    expanded = expandedSection == "LANGUAGE",
                     onClick = { expandedSection = if (expandedSection == "LANGUAGE") "" else "LANGUAGE" }
                 ) {
                     SegmentedChoiceRow(
@@ -393,12 +370,12 @@ fun SettingsScreen(
             }
 
             // 7. Check Updates
-            if (matches(strings.checkUpdates, "update", "versi", "version")) {
+            run {
                 FotMobSettingsRow(
                     icon = Icons.Rounded.SystemUpdate,
                     title = strings.checkUpdates,
                     subtitle = "v${BuildConfig.VERSION_NAME}",
-                    expanded = expandedSection == "UPDATE" || searchQuery.isNotBlank(),
+                    expanded = expandedSection == "UPDATE",
                     onClick = { expandedSection = if (expandedSection == "UPDATE") "" else "UPDATE" }
                 ) {
                     Row(
