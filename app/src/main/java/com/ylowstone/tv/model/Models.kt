@@ -60,13 +60,17 @@ data class PlaylistProfile(
             val r = rule.trim().lowercase()
             if (r.isEmpty()) continue
             if (cat == r) return true
-            if (cat.startsWith("$r ") || cat.startsWith("$r♦") || cat.startsWith("$r|") || cat.startsWith("$r-") || cat.startsWith("$r:")) return true
+            if (cat.length > r.length && cat.startsWith(r)) {
+                val afterChar = cat[r.length]
+                if (!afterChar.isLetterOrDigit()) return true
+            }
             var idx = cat.indexOf(r)
             while (idx >= 0) {
-                val leftOk = idx == 0 || !cat[idx - 1].isLetterOrDigit()
+                val leftOk = idx == 0 || !cat[idx - 1].isLetter()
                 val rightIdx = idx + r.length
-                val rightOk = rightIdx >= cat.length || !cat[rightIdx].isLetterOrDigit()
-                if (leftOk && rightOk) return true
+                val rightOk = rightIdx >= cat.length || !cat[rightIdx].isLetter()
+                if (leftOk && rightOk && idx == 0) return true
+                if (leftOk && rightOk && (r == "vip" || r.length > 2)) return true
                 idx = cat.indexOf(r, idx + 1)
             }
         }
