@@ -106,10 +106,17 @@ fun YlowstoneApp(
     var tracksVersion by remember { mutableIntStateOf(0) }
 
     val sharedPlayer = remember {
-        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.2")
+        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.2.5")
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dsFactory))
             .build()
+            .apply {
+                trackSelectionParameters = trackSelectionParameters
+                    .buildUpon()
+                    .setPreferredAudioLanguages("id", "in", "en")
+                    .setPreferredTextLanguages("id", "in", "en")
+                    .build()
+            }
     }
 
     DisposableEffect(sharedPlayer) {

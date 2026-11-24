@@ -117,7 +117,6 @@ module.exports = async function handler(req, res) {
   try {
     const { zip, title, type, season, episode } = req.query || {};
 
-    // Mode 1: Unduh & ekstrak .srt dari arsip .zip SubDL
     if (zip) {
       let dlUrl = zip.startsWith('http') ? zip : `https://dl.subdl.com${zip.startsWith('/') ? '' : '/'}${zip}`;
       if (!dlUrl.includes('api_key=')) {
@@ -136,7 +135,6 @@ module.exports = async function handler(req, res) {
       return res.status(200).send(text);
     }
 
-    // Mode 2: Cari daftar kandidat subtitle Bahasa Indonesia
     if (!title) {
       return res.status(400).json({ ok: false, error: 'Parameter title wajib diisi' });
     }

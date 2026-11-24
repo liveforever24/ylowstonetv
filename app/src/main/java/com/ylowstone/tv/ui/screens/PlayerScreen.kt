@@ -3,6 +3,10 @@ package com.ylowstone.tv.ui.screens
 import android.app.Activity
 import android.content.Context
 import android.media.AudioManager
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -46,13 +50,17 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.ylowstone.tv.data.IptvRepository
+import com.ylowstone.tv.data.SubtitleCandidate
+import com.ylowstone.tv.data.SubtitleFetcher
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.ChannelItem
 import com.ylowstone.tv.model.MediaType
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -426,11 +434,98 @@ fun FullscreenPlayerScreen(
         channelList.indexOfFirst { it.id == currentChannel.id && it.streamUrl == currentChannel.streamUrl }.coerceAtLeast(0)
     }
 
+    val coroutineScope = rememberCoroutineScope()
     var controlsVisible by remember { mutableStateOf(true) }
     var isScreenLocked by remember { mutableStateOf(false) }
     var showChannelDrawer by remember { mutableStateOf(false) }
     var showTrackDrawer by remember { mutableStateOf(false) }
     var isSeekDragging by remember { mutableStateOf(false) }
+
+    // Indonesian Subtitle (SubDL via Vercel + Local .srt/.vtt + Time Sync Offset)
+    var subCandidates by remember(currentChannel.streamUrl) { mutableStateOf<List<SubtitleCandidate>>(emptyList()) }
+    var subSearching by remember(currentChannel.streamUrl) { mutableStateOf(false) }
+    var subDownloadingId by remember(currentChannel.streamUrl) { mutableStateOf<String?>(null) }
+    var subError by remember(currentChannel.streamUrl) { mutableStateOf<String?>(null) }
+    var activeSubRawFile by remember(currentChannel.streamUrl) { mutableStateOf<File?>(null) }
+    var activeSubLabel by remember(currentChannel.streamUrl) { mutableStateOf("") }
+    var subOffsetMs by remember(currentChannel.streamUrl) { mutableLongStateOf(0L) }
+
+    val parsedSeriesInfo = remember(currentChannel) {
+        if (currentChannel.mediaType != MediaType.SERIES) {
+            Triple(currentChannel.name, null as Int?, null as Int?)
+        } else {
+            val m = Regex("[Ss](\d+)[Ee](\d+)").find(currentChannel.name)
+            val sNum = m?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val eNum = m?.groupValues?.getOrNull(2)?.toIntOrNull()
+            val titleCandidate = if (sNum != null && currentChannel.category.isNotBlank()) {
+                currentChannel.category
+            } else {
+                currentChannel.name
+            }
+            Triple(titleCandidate, sNum, eNum)
+        }
+    }
+
+    fun applyExternalSubtitleFile(rawFile: File, label: String, offsetMs: Long) {
+        runCatching {
+            val subUri = SubtitleFetcher.buildShiftedSubtitleUri(context, rawFile, offsetMs)
+            val subConfig = MediaItem.SubtitleConfiguration.Builder(subUri)
+                .setMimeType(MimeTypes.APPLICATION_SUBRIP)
+                .setLanguage("id")
+                .setLabel(label)
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_FORCED)
+                .build()
+            val mediaItem = MediaItem.Builder()
+                .setUri(currentChannel.streamUrl)
+                .setSubtitleConfigurations(listOf(subConfig))
+                .build()
+            val resumePos = exoPlayer.currentPosition.coerceAtLeast(0L)
+            val wasPlaying = exoPlayer.playWhenReady
+            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setPreferredTextLanguages("id", "in", "en")
+                .build()
+            exoPlayer.setMediaItem(mediaItem, resumePos)
+            exoPlayer.prepare()
+            exoPlayer.playWhenReady = wasPlaying
+            activeSubRawFile = rawFile
+            activeSubLabel = label
+            subOffsetMs = offsetMs
+            onTracksModified()
+        }.onFailure { err ->
+            Toast.makeText(context, "Gagal pasang subtitle: ${err.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun clearExternalSubtitle() {
+        val resumePos = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val wasPlaying = exoPlayer.playWhenReady
+        exoPlayer.setMediaItem(MediaItem.fromUri(currentChannel.streamUrl), resumePos)
+        exoPlayer.prepare()
+        exoPlayer.playWhenReady = wasPlaying
+        activeSubRawFile = null
+        activeSubLabel = ""
+        subOffsetMs = 0L
+        onTracksModified()
+    }
+
+    val localSubtitlePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                SubtitleFetcher.copyLocalSubtitleToCache(context, uri)
+                    .onSuccess { rawFile ->
+                        applyExternalSubtitleFile(rawFile, "Subtitle Lokal (ID)", 0L)
+                        Toast.makeText(context, "Subtitle lokal berhasil dipasang", Toast.LENGTH_SHORT).show()
+                    }
+                    .onFailure { err ->
+                        Toast.makeText(context, err.message ?: "Gagal memuat file subtitle", Toast.LENGTH_SHORT).show()
+                    }
+            }
+        }
+    }
 
     // Movie & Series playback progress polling
     var positionMs by remember(currentChannel.streamUrl) { mutableLongStateOf(0L) }
@@ -868,9 +963,6 @@ fun FullscreenPlayerScreen(
                         PlayerBottomPill(Icons.Rounded.AspectRatio, aspectModes[aspectIndex].second) {
                             aspectIndex = (aspectIndex + 1) % aspectModes.size
                         }
-                        PlayerBottomPill(Icons.Rounded.Tune, strings.tracks) {
-                            showTrackDrawer = true
-                        }
                         if (!isTvMode) {
                             PlayerBottomPill(
                                 if (isLandscapeFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
@@ -967,7 +1059,7 @@ fun FullscreenPlayerScreen(
             }
         }
 
-        // Right Track Selection Drawer
+        // Right Settings & Tracks Drawer (with Indonesian Subtitles + Sync Controls)
         AnimatedVisibility(
             visible = showTrackDrawer,
             enter = fadeIn(),
@@ -977,9 +1069,9 @@ fun FullscreenPlayerScreen(
             val tracks = remember(tracksVersion) { exoPlayer.currentTracks }
             Column(
                 modifier = Modifier
-                    .width(300.dp)
+                    .width(325.dp)
                     .fillMaxHeight()
-                    .background(Color(0xF2101215))
+                    .background(Color(0xF5101215))
                     .systemBarsPadding()
                     .padding(16.dp)
                     .verticalScroll(rememberScrollState()),
@@ -992,9 +1084,222 @@ fun FullscreenPlayerScreen(
                     ) {
                         Icon(Icons.Rounded.ArrowBack, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(18.dp))
                     }
-                    Text(strings.tracks, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(strings.settings, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 HorizontalDivider(color = Color.White.copy(alpha = 0.16f))
+
+                if (isVod) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Rounded.ClosedCaption, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
+                            Text(
+                                "Subtitle Bahasa Indonesia",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    if (!subSearching) {
+                                        subSearching = true
+                                        subError = null
+                                        coroutineScope.launch {
+                                            val (qTitle, sNum, eNum) = parsedSeriesInfo
+                                            SubtitleFetcher.searchIndoSubtitles(
+                                                rawTitle = qTitle,
+                                                isSeries = currentChannel.mediaType == MediaType.SERIES,
+                                                season = sNum,
+                                                episode = eNum
+                                            ).onSuccess { list ->
+                                                subCandidates = list
+                                                if (list.isEmpty()) {
+                                                    subError = "Subtitle Indonesia belum ditemukan"
+                                                }
+                                            }.onFailure { err ->
+                                                subError = err.message ?: "Gagal mencari subtitle"
+                                            }
+                                            subSearching = false
+                                        }
+                                    }
+                                },
+                                enabled = !subSearching,
+                                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    if (subSearching) "Mencari..." else "Cari Sub Indo",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = { localSubtitlePicker.launch(arrayOf("*/*")) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("File .SRT", color = Color.White, fontSize = 12.sp, maxLines = 1)
+                            }
+                        }
+
+                        if (activeSubRawFile != null) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(c.accent.copy(alpha = 0.14f))
+                                    .padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    "Aktif: $activeSubLabel",
+                                    color = c.accent,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val offsetSec = subOffsetMs / 1000.0
+                                val offsetLabel = String.format(Locale.US, "%+.1fs", offsetSec)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Sinkron: $offsetLabel", color = Color.White, fontSize = 11.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color.White.copy(alpha = 0.15f))
+                                                .clickable {
+                                                    activeSubRawFile?.let { f ->
+                                                        applyExternalSubtitleFile(f, activeSubLabel, subOffsetMs - 500L)
+                                                    }
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("-0.5s", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color.White.copy(alpha = 0.15f))
+                                                .clickable {
+                                                    activeSubRawFile?.let { f ->
+                                                        applyExternalSubtitleFile(f, activeSubLabel, 0L)
+                                                    }
+                                                }
+                                                .padding(horizontal = 7.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("0s", color = Color.White, fontSize = 11.sp)
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color.White.copy(alpha = 0.15f))
+                                                .clickable {
+                                                    activeSubRawFile?.let { f ->
+                                                        applyExternalSubtitleFile(f, activeSubLabel, subOffsetMs + 500L)
+                                                    }
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("+0.5s", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                                Text(
+                                    "Lepas Subtitle",
+                                    color = Color(0xFFFF8A80),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable { clearExternalSubtitle() }
+                                )
+                            }
+                        }
+
+                        if (!subError.isNullOrBlank()) {
+                            Text(subError!!, color = Color(0xFFFFAB91), fontSize = 11.sp)
+                        }
+
+                        if (subCandidates.isNotEmpty()) {
+                            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                subCandidates.forEach { cand ->
+                                    val isLoadingThis = subDownloadingId == cand.id
+                                    val isSelectedThis = activeSubLabel == cand.releaseName
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (isSelectedThis) c.accent.copy(alpha = 0.22f)
+                                                else Color.White.copy(alpha = 0.06f)
+                                            )
+                                            .clickable(enabled = subDownloadingId == null) {
+                                                subDownloadingId = cand.id
+                                                coroutineScope.launch {
+                                                    val (_, sNum, eNum) = parsedSeriesInfo
+                                                    SubtitleFetcher.downloadSubtitleToCache(
+                                                        context = context,
+                                                        zipUrl = cand.zipUrl,
+                                                        season = sNum,
+                                                        episode = eNum
+                                                    ).onSuccess { rawFile ->
+                                                        applyExternalSubtitleFile(rawFile, cand.releaseName, 0L)
+                                                        Toast.makeText(context, "Subtitle Indo dipasang", Toast.LENGTH_SHORT).show()
+                                                    }.onFailure { err ->
+                                                        Toast.makeText(context, err.message ?: "Gagal unduh subtitle", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                    subDownloadingId = null
+                                                }
+                                            }
+                                            .padding(8.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isLoadingThis) "Memasang: ${cand.releaseName}..." else cand.releaseName,
+                                            color = if (isSelectedThis) c.accent else Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        val meta = buildString {
+                                            if (cand.fullSeason) append("Paket Full Season")
+                                            if (cand.author.isNotBlank()) {
+                                                if (isNotEmpty()) append(" • ")
+                                                append(cand.author)
+                                            }
+                                        }
+                                        if (meta.isNotBlank()) {
+                                            Text(meta, color = Color.White.copy(alpha = 0.55f), fontSize = 10.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.16f))
+                }
 
                 TrackGroupSection(strings.videoTrack, Icons.Rounded.Videocam, C.TRACK_TYPE_VIDEO, tracks, exoPlayer, strings, onTracksModified)
                 TrackGroupSection(strings.audioTrack, Icons.Rounded.Audiotrack, C.TRACK_TYPE_AUDIO, tracks, exoPlayer, strings, onTracksModified)
