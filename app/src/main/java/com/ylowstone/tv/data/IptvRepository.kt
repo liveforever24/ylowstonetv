@@ -67,7 +67,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                         httpClient.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
                             val bodyStream = resp.body?.byteStream() ?: throw Exception("Empty response")
-                            parseM3uStream(profile.id, bodyStream)
+                            parseM3uStream(profile, bodyStream)
                         }
                     }
                 }

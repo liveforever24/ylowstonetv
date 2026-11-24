@@ -56,19 +56,23 @@ data class PlaylistProfile(
         if (liveCategories.isEmpty()) return true
         val cat = categoryName.trim().lowercase()
         if (cat.isEmpty()) return false
-        return liveCategories.any { rule ->
+        for (rule in liveCategories) {
             val r = rule.trim().lowercase()
-            if (r.isEmpty()) return@any false
-            cat == r ||
-                cat.startsWith("$r ") ||
-                cat.startsWith("$r♦") ||
-                cat.startsWith("$r|") ||
-                cat.startsWith("$r-") ||
-                cat.startsWith("$r:") ||
-                Regex("(^|[^a-z0-9])${Regex.escape(r)}([^a-z0-9]|$)").containsMatchIn(cat)
+            if (r.isEmpty()) continue
+            if (cat == r) return true
+            if (cat.startsWith("$r ") || cat.startsWith("$r♦") || cat.startsWith("$r|") || cat.startsWith("$r-") || cat.startsWith("$r:")) return true
+            var idx = cat.indexOf(r)
+            while (idx >= 0) {
+                val leftOk = idx == 0 || !cat[idx - 1].isLetterOrDigit()
+                val rightIdx = idx + r.length
+                val rightOk = rightIdx >= cat.length || !cat[rightIdx].isLetterOrDigit()
+                if (leftOk && rightOk) return true
+                idx = cat.indexOf(r, idx + 1)
+            }
         }
+        return false
     }
-} {
+
     fun buildShareableLink(format: StreamFormat = StreamFormat.HLS): String {
         return when (type) {
             PlaylistType.XTREAM -> {
