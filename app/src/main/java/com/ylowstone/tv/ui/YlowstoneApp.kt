@@ -5,14 +5,21 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -38,6 +45,7 @@ private enum class AppStage {
     WELCOME_QUOTE,
     ONBOARDING_GUIDE,
     MODE_SELECT,
+    ADMIN_LOGIN,
     PLAYLISTS,
     SETTINGS,
     WORKSPACE
@@ -66,6 +74,13 @@ fun YlowstoneApp(
 
     var stage by remember { mutableStateOf(AppStage.SPLASH) }
     var returnStageAfterSettings by remember { mutableStateOf(AppStage.WORKSPACE) }
+    var returnStageAfterLogin by remember { mutableStateOf<AppStage?>(null) }
+
+    var isAdminLoggedIn by remember { mutableStateOf(prefs.isAdminLoggedIn()) }
+    var adminPlaylistIds by remember { mutableStateOf(prefs.getAdminPlaylistIds()) }
+    var isVerifyingLogin by remember { mutableStateOf(false) }
+    var loginError by remember { mutableStateOf("") }
+
     var playlists by remember { mutableStateOf(repo.db.getAllPlaylists()) }
     var activePlaylist by remember { mutableStateOf<PlaylistProfile?>(null) }
     var activeCounts by remember { mutableStateOf<Map<MediaType, Int>>(emptyMap()) }
@@ -91,7 +106,7 @@ fun YlowstoneApp(
     var tracksVersion by remember { mutableIntStateOf(0) }
 
     val sharedPlayer = remember {
-        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.1")
+        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.2")
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dsFactory))
             .build()
@@ -174,7 +189,6 @@ fun YlowstoneApp(
         }
     }
 
-    // Manual Fullscreen Orientation Rule
     LaunchedEffect(isTvMode, playerMode, isLandscapeFullscreen, isInPipMode) {
         val wantLandscape = when {
             isInPipMode -> false
@@ -199,9 +213,11 @@ fun YlowstoneApp(
         homeDataVersion++
     }
 
-    fun proceedAfterWelcome() {
-        if (!settings.hasSelectedMode) {
-            stage = AppStage.MODE_SELECT
+    fun proceedToAppOrLogin() {
+        if (!prefs.hasPassedLoginGate()) {
+            returnStageAfterLogin = null
+            loginError = ""
+            stage = AppStage.ADMIN_LOGIN
         } else if (playlists.isNotEmpty()) {
             openWorkspace(playlists.first())
         } else {
@@ -209,17 +225,11 @@ fun YlowstoneApp(
         }
     }
 
-    fun runQuickUpdateCheck() {
-        Toast.makeText(context, strings.checkingUpdate, Toast.LENGTH_SHORT).show()
-        scope.launch {
-            repo.checkGitHubUpdate()
-                .onSuccess { info ->
-                    if (info.hasUpdate) quickUpdateDialogInfo = info
-                    else Toast.makeText(context, strings.upToDate, Toast.LENGTH_SHORT).show()
-                }
-                .onFailure { err ->
-                    Toast.makeText(context, "Error: ${err.message}", Toast.LENGTH_SHORT).show()
-                }
+    fun proceedAfterWelcome() {
+        if (!settings.hasSelectedMode) {
+            stage = AppStage.MODE_SELECT
+        } else {
+            proceedToAppOrLogin()
         }
     }
 
@@ -244,7 +254,136 @@ fun YlowstoneApp(
                 }
             }.onFailure { err ->
                 Toast.makeText(context, "${strings.syncFailed}: ${err.message}", Toast.LENGTH_LONG).show()
+                if (enterAfter) {
+                    val fresh = playlists.firstOrNull { it.id == profile.id } ?: profile
+                    openWorkspace(fresh)
+                }
             }
+        }
+    }
+
+    // Apply server playlists from Vercel & auto-sync primary playlist
+    fun applyAdminPlaylists(remotePlaylists: List<PlaylistProfile>, pin: String) {
+        prefs.setAdminSession(true, pin)
+        prefs.setPassedLoginGate(true)
+        isAdminLoggedIn = true
+
+        val currentAll = repo.db.getAllPlaylists()
+        val oldAdminIds = prefs.getAdminPlaylistIds()
+        val newAdminIds = mutableSetOf<Long>()
+        val savedProfiles = mutableListOf<PlaylistProfile>()
+
+        remotePlaylists.forEachIndexed { idx, remote ->
+            val existingMatch = currentAll.firstOrNull {
+                (oldAdminIds.contains(it.id) && it.name.equals(remote.name, ignoreCase = true)) ||
+                    (it.url.equals(remote.url, ignoreCase = true) && it.username == remote.username && it.type == remote.type)
+            }
+            val toSave = remote.copy(
+                id = existingMatch?.id ?: 0L,
+                colorIndex = idx % 6,
+                lastUpdated = System.currentTimeMillis()
+            )
+            val savedId = repo.db.upsertPlaylist(toSave)
+            newAdminIds.add(savedId)
+            savedProfiles.add(toSave.copy(id = savedId))
+        }
+
+        // Remove stale old admin playlists that were deleted from Vercel
+        for (oldId in oldAdminIds) {
+            if (!newAdminIds.contains(oldId)) {
+                repo.db.deletePlaylist(oldId)
+            }
+        }
+
+        prefs.setAdminPlaylistIds(newAdminIds)
+        adminPlaylistIds = newAdminIds
+        playlists = repo.db.getAllPlaylists()
+        homeDataVersion++
+        returnStageAfterLogin = null
+
+        val primary = savedProfiles.firstOrNull() ?: playlists.firstOrNull()
+        if (primary != null) {
+            syncAndEnter(primary, null, enterAfter = true)
+        } else {
+            stage = AppStage.PLAYLISTS
+        }
+    }
+
+    fun performAdminLogin(pin: String) {
+        isVerifyingLogin = true
+        loginError = ""
+        scope.launch {
+            val res = repo.loginAdmin(pin)
+            isVerifyingLogin = false
+            res.onSuccess { auth ->
+                Toast.makeText(context, strings.adminLoginSuccess, Toast.LENGTH_SHORT).show()
+                applyAdminPlaylists(auth.playlists, pin)
+            }.onFailure { err ->
+                loginError = err.message ?: strings.wrongPin
+            }
+        }
+    }
+
+    fun performAdminLogout() {
+        stopPlaybackCompletely()
+        val idsToDelete = prefs.getAdminPlaylistIds()
+        for (id in idsToDelete) {
+            repo.db.deletePlaylist(id)
+        }
+        prefs.setAdminPlaylistIds(emptySet())
+        prefs.setAdminSession(false, "")
+        prefs.setPassedLoginGate(false)
+        adminPlaylistIds = emptySet()
+        isAdminLoggedIn = false
+        playlists = repo.db.getAllPlaylists()
+        if (activePlaylist != null && idsToDelete.contains(activePlaylist!!.id)) {
+            activePlaylist = playlists.firstOrNull()
+        }
+        homeDataVersion++
+        returnStageAfterLogin = null
+        loginError = ""
+        Toast.makeText(context, strings.adminLogoutDone, Toast.LENGTH_SHORT).show()
+        stage = AppStage.ADMIN_LOGIN
+    }
+
+    fun syncAdminFromServer() {
+        val savedPin = prefs.getAdminPin()
+        if (savedPin.isBlank()) {
+            returnStageAfterLogin = stage
+            loginError = ""
+            stage = AppStage.ADMIN_LOGIN
+            return
+        }
+        isLoading = true
+        loadingMessage = strings.adminSyncing
+        scope.launch {
+            val res = repo.loginAdmin(savedPin)
+            res.onSuccess { auth ->
+                applyAdminPlaylists(auth.playlists, savedPin)
+            }.onFailure { err ->
+                isLoading = false
+                val msg = err.message.orEmpty()
+                if (msg.contains("salah", ignoreCase = true) || msg.contains("401")) {
+                    Toast.makeText(context, strings.adminSessionExpired, Toast.LENGTH_LONG).show()
+                    performAdminLogout()
+                } else {
+                    Toast.makeText(context, "Error: $msg", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    fun runQuickUpdateCheck() {
+        Toast.makeText(context, strings.checkingUpdate, Toast.LENGTH_SHORT).show()
+        scope.launch {
+            repo.checkGitHubUpdate()
+                .onSuccess { info ->
+                    if (info.hasUpdate) quickUpdateDialogInfo = info
+                    else Toast.makeText(context, strings.upToDate, Toast.LENGTH_SHORT).show()
+                }
+                .onFailure { err ->
+                    Toast.makeText(context, "Error: ${err.message}", Toast.LENGTH_SHORT).show()
+                }
         }
     }
 
@@ -269,7 +408,6 @@ fun YlowstoneApp(
         }
     }
 
-    // Unified Back Handler + Double-Tap Back to Exit at root!
     BackHandler(enabled = stage != AppStage.SPLASH) {
         when {
             playerMode == PlayerMode.FULLSCREEN -> {
@@ -282,6 +420,15 @@ fun YlowstoneApp(
                 settings = updated
                 prefs.saveSettings(updated)
                 proceedAfterWelcome()
+            }
+            stage == AppStage.ADMIN_LOGIN -> {
+                val ret = returnStageAfterLogin
+                if (ret != null) {
+                    returnStageAfterLogin = null
+                    stage = ret
+                } else {
+                    handleDoubleBackExit()
+                }
             }
             stage == AppStage.SETTINGS -> stage = returnStageAfterSettings
             stage == AppStage.WORKSPACE -> {
@@ -352,8 +499,30 @@ fun YlowstoneApp(
                             val updated = settings.copy(deviceMode = chosen, hasSelectedMode = true)
                             settings = updated
                             prefs.saveSettings(updated)
+                            proceedToAppOrLogin()
+                        }
+                    )
+                }
+
+                AppStage.ADMIN_LOGIN -> {
+                    AdminLoginScreen(
+                        appIcon = settings.appIcon,
+                        strings = strings,
+                        isTvMode = isTvMode,
+                        isVerifying = isVerifyingLogin,
+                        errorMessage = loginError,
+                        canGoBack = returnStageAfterLogin != null,
+                        onSubmitPin = { enteredPin -> performAdminLogin(enteredPin) },
+                        onContinueGuest = {
+                            prefs.setPassedLoginGate(true)
+                            returnStageAfterLogin = null
                             if (playlists.isNotEmpty()) openWorkspace(playlists.first())
                             else stage = AppStage.PLAYLISTS
+                        },
+                        onBack = {
+                            val ret = returnStageAfterLogin ?: AppStage.PLAYLISTS
+                            returnStageAfterLogin = null
+                            stage = ret
                         }
                     )
                 }
@@ -361,6 +530,7 @@ fun YlowstoneApp(
                 AppStage.PLAYLISTS -> {
                     PlaylistManagerScreen(
                         playlists = playlists,
+                        adminPlaylistIds = adminPlaylistIds,
                         streamFormat = settings.streamFormat,
                         strings = strings,
                         isTvMode = isTvMode,
@@ -380,6 +550,11 @@ fun YlowstoneApp(
                         onRefreshPlaylist = { profile -> syncAndEnter(profile, null, enterAfter = false) },
                         onDeletePlaylist = { profile ->
                             repo.db.deletePlaylist(profile.id)
+                            if (adminPlaylistIds.contains(profile.id)) {
+                                val nextIds = adminPlaylistIds - profile.id
+                                adminPlaylistIds = nextIds
+                                prefs.setAdminPlaylistIds(nextIds)
+                            }
                             playlists = repo.db.getAllPlaylists()
                             if (activePlaylist?.id == profile.id) activePlaylist = playlists.firstOrNull()
                             homeDataVersion++
@@ -428,7 +603,6 @@ fun YlowstoneApp(
                     if (pl == null) {
                         stage = AppStage.PLAYLISTS
                     } else {
-                        // Clean FotMob Full-Width Column Layout (Zero overlap with bottom navbar!)
                         Column(modifier = Modifier.fillMaxSize()) {
                             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                                 when (activeTab) {
@@ -598,6 +772,37 @@ fun YlowstoneApp(
                 }
             }
 
+            // Global Sync / Indexing Overlay (when syncing right after Admin Login or from Home)
+            if (isLoading && stage != AppStage.PLAYLISTS) {
+                val c = LocalYlowColors.current
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.68f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .widthIn(min = 240.dp, max = 320.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(c.surface)
+                            .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        CircularProgressIndicator(color = c.accent, strokeWidth = 3.dp)
+                        Text(
+                            text = loadingMessage.ifBlank { strings.loadingPlaylist },
+                            color = c.textPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+
             // Top-Right Anchored Quick Profile Dropdown
             Box(
                 modifier = Modifier
@@ -609,6 +814,7 @@ fun YlowstoneApp(
                     expanded = showProfileDropdown,
                     activePlaylistName = activePlaylist?.name,
                     deviceMode = settings.deviceMode,
+                    isAdminLoggedIn = isAdminLoggedIn,
                     strings = strings,
                     onDismiss = { showProfileDropdown = false },
                     onOpenSettings = {
@@ -625,6 +831,17 @@ fun YlowstoneApp(
                             playerMode = PlayerMode.FLOATING
                         }
                         stage = AppStage.PLAYLISTS
+                    },
+                    onOpenAdminLogin = {
+                        returnStageAfterLogin = stage
+                        loginError = ""
+                        stage = AppStage.ADMIN_LOGIN
+                    },
+                    onSyncAdminPlaylists = {
+                        syncAdminFromServer()
+                    },
+                    onLogoutAdmin = {
+                        performAdminLogout()
                     },
                     onCheckUpdates = { runQuickUpdateCheck() }
                 )

@@ -51,6 +51,38 @@ class AppPrefs(context: Context) {
             .apply()
     }
 
+    // ---- Vercel Admin Auth Session ----
+    fun isAdminLoggedIn(): Boolean = prefs.getBoolean("admin_logged_in", false)
+
+    fun getAdminPin(): String = prefs.getString("admin_pin_token", "") ?: ""
+
+    fun setAdminSession(loggedIn: Boolean, pin: String = "") {
+        prefs.edit()
+            .putBoolean("admin_logged_in", loggedIn)
+            .putString("admin_pin_token", if (loggedIn) pin else "")
+            .apply()
+    }
+
+    fun hasPassedLoginGate(): Boolean = prefs.getBoolean("passed_login_gate", false)
+
+    fun setPassedLoginGate(passed: Boolean) {
+        prefs.edit().putBoolean("passed_login_gate", passed).apply()
+    }
+
+    fun getAdminPlaylistIds(): Set<Long> {
+        return prefs.getStringSet("admin_playlist_ids", emptySet())
+            ?.mapNotNull { it.toLongOrNull() }
+            ?.toSet()
+            ?: emptySet()
+    }
+
+    fun setAdminPlaylistIds(ids: Set<Long>) {
+        prefs.edit()
+            .putStringSet("admin_playlist_ids", ids.map { it.toString() }.toSet())
+            .apply()
+    }
+
+    // ---- Category PIN Locks ----
     fun getLockedCategories(playlistId: Long): Set<String> {
         return prefs.getStringSet("locked_cats_$playlistId", emptySet())?.toSet() ?: emptySet()
     }

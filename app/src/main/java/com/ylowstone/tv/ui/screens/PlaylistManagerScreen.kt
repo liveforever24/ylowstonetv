@@ -57,6 +57,7 @@ private val avatarColors = listOf(
 @Composable
 fun PlaylistManagerScreen(
     playlists: List<PlaylistProfile>,
+    adminPlaylistIds: Set<Long>,
     streamFormat: StreamFormat,
     strings: AppStrings,
     isTvMode: Boolean,
@@ -142,9 +143,9 @@ fun PlaylistManagerScreen(
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.height(48.dp)
                         ) {
-                            Icon(Icons.Rounded.Add, contentDescription = null, tint = Color.White)
+                            Icon(Icons.Rounded.Add, contentDescription = null, tint = c.onAccent)
                             Spacer(Modifier.width(8.dp))
-                            Text(strings.addPlaylist, color = Color.White, fontWeight = FontWeight.SemiBold)
+                            Text(strings.addPlaylist, color = c.onAccent, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -286,22 +287,33 @@ fun PlaylistManagerScreen(
         }
     }
 
-    // Long-press action menu dialog
+    // Long-press action menu dialog (Admin playlists hide Edit & Show Link for credential privacy!)
     actionTarget?.let { target ->
+        val isAdminProtected = adminPlaylistIds.contains(target.id)
         AlertDialog(
             onDismissRequest = { actionTarget = null },
             containerColor = c.surface,
             title = { Text(target.name, color = c.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    ActionRow(Icons.Rounded.Edit, strings.editPlaylist) {
-                        actionTarget = null
-                        editingProfile = target
-                        showEditor = true
-                    }
-                    ActionRow(Icons.Rounded.Link, strings.showLink) {
-                        actionTarget = null
-                        inspectLinkTarget = target
+                    if (isAdminProtected) {
+                        Text(
+                            text = strings.adminProtectedPlaylist,
+                            color = c.accent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                    } else {
+                        ActionRow(Icons.Rounded.Edit, strings.editPlaylist) {
+                            actionTarget = null
+                            editingProfile = target
+                            showEditor = true
+                        }
+                        ActionRow(Icons.Rounded.Link, strings.showLink) {
+                            actionTarget = null
+                            inspectLinkTarget = target
+                        }
                     }
                     ActionRow(Icons.Rounded.Refresh, strings.refresh) {
                         actionTarget = null
@@ -361,9 +373,9 @@ fun PlaylistManagerScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Rounded.ContentCopy, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Rounded.ContentCopy, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(strings.copyLink, color = Color.White, fontSize = 12.sp)
+                            Text(strings.copyLink, color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 }

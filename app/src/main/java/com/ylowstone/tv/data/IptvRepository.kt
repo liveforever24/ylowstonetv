@@ -6,8 +6,10 @@ import com.ylowstone.tv.BuildConfig
 import com.ylowstone.tv.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -394,4 +396,71 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
         }
         return 0
     }
+
+    companion object {
+        const val FIXED_ADMIN_USERNAME = "YlowstoneTV"
+        const val ADMIN_AUTH_URL = "https://ylowstonetv.vercel.app/api/login"
+    }
+
+    suspend fun loginAdmin(pin: String): Result<AdminAuthResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject().apply {
+                put("username", FIXED_ADMIN_USERNAME)
+                put("pin", pin.trim())
+            }
+            val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+            val req = Request.Builder()
+                .url(ADMIN_AUTH_URL)
+                .header("User-Agent", "YlowstoneTV-Android/${BuildConfig.VERSION_NAME}")
+                .header("Accept", "application/json")
+                .post(body)
+                .build()
+
+            httpClient.newCall(req).execute().use { resp ->
+                val raw = resp.body?.string().orEmpty()
+                val json = runCatching { JSONObject(raw) }.getOrNull()
+                if (!resp.isSuccessful || json == null || !json.optBoolean("ok", false)) {
+                    val serverMsg = json?.optString("error").orEmpty()
+                    throw Exception(
+                        serverMsg.ifBlank {
+                            if (resp.code == 401) "Username atau PIN salah"
+                            else "Server error (HTTP ${resp.code})"
+                        }
+                    )
+                }
+
+                val arr = json.optJSONArray("playlists") ?: JSONArray()
+                val parsedPlaylists = mutableListOf<PlaylistProfile>()
+                for (i in 0 until arr.length()) {
+                    val item = arr.optJSONObject(i) ?: continue
+                    val pName = item.optString("name", "").trim()
+                    val pUrl = item.optString("url", "").trim()
+                    if (pName.isBlank() || pUrl.isBlank()) continue
+                    val pType = runCatching {
+                        PlaylistType.valueOf(item.optString("type", "XTREAM").trim().uppercase())
+                    }.getOrDefault(PlaylistType.XTREAM)
+                    parsedPlaylists.add(
+                        PlaylistProfile(
+                            id = 0L,
+                            name = pName,
+                            type = pType,
+                            url = pUrl,
+                            username = item.optString("username", "").trim(),
+                            password = item.optString("password", "").trim(),
+                            userAgent = item.optString("userAgent", "").trim(),
+                            colorIndex = i % 6,
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    )
+                }
+
+                AdminAuthResult(
+                    username = json.optString("username", FIXED_ADMIN_USERNAME),
+                    role = json.optString("role", "admin"),
+                    playlists = parsedPlaylists
+                )
+            }
+        }
+    }
+
 }

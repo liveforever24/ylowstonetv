@@ -131,3 +131,9 @@ data class UpdateInfo(
     val htmlUrl: String,
     val hasUpdate: Boolean
 )
+
+data class AdminAuthResult(
+    val username: String,
+    val role: String,
+    val playlists: List<PlaylistProfile>
+)

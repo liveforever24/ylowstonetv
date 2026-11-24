@@ -53,6 +53,9 @@ jobs:
           name: YlowstoneTV v${{ env.APP_VERSION }}
           body: |
             ## YlowstoneTV v${{ env.APP_VERSION }} (by ylowstone)
+            - Admin Login gate via Vercel Auth API (fixed YlowstoneTV username + 4-digit PIN)
+            - Auto-load & live remote sync for Admin playlists with protected link privacy
+            - Guest mode option (BYO Playlist) & 1-tap Admin Logout / Re-sync
             - Clean FotMob-inspired flat navigation bar & Google Pixel Fog color system (System / Light / Dark AMOLED)
             - Drag-only anti-accidental-tap seekbar + double-tap ±10s skip for Movies & Series
             - Streamlined Smarters-style player controls + subtle 2-line 24h digital clock on tap

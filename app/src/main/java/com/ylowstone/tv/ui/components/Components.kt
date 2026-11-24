@@ -87,11 +87,15 @@ fun ProfileQuickDropdown(
     expanded: Boolean,
     activePlaylistName: String?,
     deviceMode: DeviceMode,
+    isAdminLoggedIn: Boolean,
     strings: AppStrings,
     onDismiss: () -> Unit,
     onOpenSettings: () -> Unit,
     onSwitchDeviceMode: (DeviceMode) -> Unit,
     onManagePlaylists: () -> Unit,
+    onOpenAdminLogin: () -> Unit,
+    onSyncAdminPlaylists: () -> Unit,
+    onLogoutAdmin: () -> Unit,
     onCheckUpdates: () -> Unit
 ) {
     val c = LocalYlowColors.current
@@ -127,9 +131,10 @@ fun ProfileQuickDropdown(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "YlowstoneTV v${BuildConfig.VERSION_NAME}",
-                    color = c.textSecondary,
-                    fontSize = 11.sp
+                    text = if (isAdminLoggedIn) "Admin • v${BuildConfig.VERSION_NAME}" else "YlowstoneTV v${BuildConfig.VERSION_NAME}",
+                    color = if (isAdminLoggedIn) c.accent else c.textSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = if (isAdminLoggedIn) FontWeight.SemiBold else FontWeight.Normal
                 )
             }
         }
@@ -186,6 +191,27 @@ fun ProfileQuickDropdown(
                     }
                 }
             }
+        }
+
+        HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(horizontal = 12.dp))
+
+        if (isAdminLoggedIn) {
+            DropdownMenuItem(
+                text = { Text(strings.adminMenuSync, color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium) },
+                leadingIcon = { Icon(Icons.Rounded.CloudSync, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp)) },
+                onClick = { onDismiss(); onSyncAdminPlaylists() }
+            )
+            DropdownMenuItem(
+                text = { Text(strings.adminMenuLogout, color = Color(0xFFFF6B6B), fontSize = 14.sp, fontWeight = FontWeight.SemiBold) },
+                leadingIcon = { Icon(Icons.Rounded.Logout, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(20.dp)) },
+                onClick = { onDismiss(); onLogoutAdmin() }
+            )
+        } else {
+            DropdownMenuItem(
+                text = { Text(strings.adminMenuLogin, color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium) },
+                leadingIcon = { Icon(Icons.Rounded.AdminPanelSettings, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp)) },
+                onClick = { onDismiss(); onOpenAdminLogin() }
+            )
         }
 
         HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(horizontal = 12.dp))

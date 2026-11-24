@@ -139,7 +139,22 @@ data class AppStrings(
     val playbackSection: String,
     val privacyStorageSection: String,
     val allFilter: String,
-    val dragToSeekHint: String
+    val dragToSeekHint: String,
+    val adminLoginTitle: String,
+    val adminLoginSubtitle: String,
+    val adminUsernameLabel: String,
+    val adminPinLabel: String,
+    val adminLoginBtn: String,
+    val adminVerifying: String,
+    val adminLoginSuccess: String,
+    val adminContinueGuest: String,
+    val adminMenuLogin: String,
+    val adminMenuSync: String,
+    val adminMenuLogout: String,
+    val adminLogoutDone: String,
+    val adminSyncing: String,
+    val adminSessionExpired: String,
+    val adminProtectedPlaylist: String
 )
 
 fun stringsFor(lang: AppLanguage): AppStrings = when (lang) {
@@ -280,7 +295,22 @@ fun stringsFor(lang: AppLanguage): AppStrings = when (lang) {
         playbackSection = "Pemutar & Streaming",
         privacyStorageSection = "PIN Kategori & Penyimpanan",
         allFilter = "Semua",
-        dragToSeekHint = "Seret untuk geser"
+        dragToSeekHint = "Seret untuk geser",
+        adminLoginTitle = "Akses Admin",
+        adminLoginSubtitle = "Masukkan 4 digit PIN untuk memuat playlist server secara otomatis.",
+        adminUsernameLabel = "Username (Permanen)",
+        adminPinLabel = "Masukkan 4 Digit PIN",
+        adminLoginBtn = "Masuk & Muat Playlist",
+        adminVerifying = "Memverifikasi akses...",
+        adminLoginSuccess = "Login berhasil! Memuat playlist...",
+        adminContinueGuest = "Lanjut dengan Playlist Sendiri",
+        adminMenuLogin = "Login Admin",
+        adminMenuSync = "Sync Playlist Admin",
+        adminMenuLogout = "Keluar Admin",
+        adminLogoutDone = "Sesi Admin ditutup & playlist dihapus",
+        adminSyncing = "Menyinkronkan playlist dari server...",
+        adminSessionExpired = "PIN server berubah, silakan login ulang",
+        adminProtectedPlaylist = "Playlist terproteksi server Admin"
     )
 
     AppLanguage.EN -> AppStrings(
@@ -420,6 +450,21 @@ fun stringsFor(lang: AppLanguage): AppStrings = when (lang) {
         playbackSection = "Playback & Streaming",
         privacyStorageSection = "Category PIN & Storage",
         allFilter = "All",
-        dragToSeekHint = "Drag to seek"
+        dragToSeekHint = "Drag to seek",
+        adminLoginTitle = "Admin Access",
+        adminLoginSubtitle = "Enter your 4-digit PIN to unlock and load your server playlists automatically.",
+        adminUsernameLabel = "Username (Locked)",
+        adminPinLabel = "Enter 4-Digit PIN",
+        adminLoginBtn = "Sign In & Load Playlist",
+        adminVerifying = "Verifying access...",
+        adminLoginSuccess = "Signed in! Loading playlist...",
+        adminContinueGuest = "Continue with Own Playlist",
+        adminMenuLogin = "Admin Login",
+        adminMenuSync = "Sync Admin Playlist",
+        adminMenuLogout = "Admin Logout",
+        adminLogoutDone = "Signed out & admin playlists cleared",
+        adminSyncing = "Syncing playlists from server...",
+        adminSessionExpired = "Server PIN changed, please sign in again",
+        adminProtectedPlaylist = "Protected Admin server playlist"
     )
 }
