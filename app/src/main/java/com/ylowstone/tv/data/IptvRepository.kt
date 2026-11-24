@@ -2,6 +2,8 @@ package com.ylowstone.tv.data
 
 import android.content.Context
 import android.net.Uri
+import android.util.JsonReader
+import android.util.JsonToken
 import com.ylowstone.tv.BuildConfig
 import com.ylowstone.tv.model.*
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +24,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
 
     val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(45, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -34,9 +36,19 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
         onProgress: (String) -> Unit = {}
     ): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
-            val items = when (profile.type) {
+            val session = db.beginChannelSync(profile.id)
+            val batch = ArrayList<ChannelItem>(500)
+
+            fun flushBatch(force: Boolean = false) {
+                if (batch.size >= 500 || (force && batch.isNotEmpty())) {
+                    db.appendChannelBatch(session, batch)
+                    batch.clear()
+                }
+            }
+
+            when (profile.type) {
                 PlaylistType.DIRECT -> {
-                    listOf(
+                    batch.add(
                         ChannelItem(
                             playlistId = profile.id,
                             streamId = "direct_1",
@@ -47,50 +59,60 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                             mediaType = MediaType.LIVE
                         )
                     )
+                    flushBatch(force = true)
                 }
 
                 PlaylistType.M3U -> {
-                    onProgress("Downloading M3U...")
+                    onProgress("Streaming M3U...")
+                    val parseAction: (InputStream) -> Unit = { stream ->
+                        streamM3uIntoSession(profile, stream, session, batch) { flushBatch(false) }
+                        flushBatch(force = true)
+                    }
                     if (localUri != null) {
-                        context.contentResolver.openInputStream(localUri)?.use { stream ->
-                            parseM3uStream(profile, stream)
-                        } ?: emptyList()
+                        context.contentResolver.openInputStream(localUri)?.use(parseAction)
                     } else if (profile.url.startsWith("content://")) {
-                        context.contentResolver.openInputStream(Uri.parse(profile.url))?.use { stream ->
-                            parseM3uStream(profile, stream)
-                        } ?: emptyList()
+                        context.contentResolver.openInputStream(Uri.parse(profile.url))?.use(parseAction)
                     } else {
                         val req = Request.Builder()
                             .url(profile.url.trim())
-                            .header("User-Agent", profile.userAgent.ifBlank { "YlowstoneTV/1.0" })
+                            .header("User-Agent", profile.userAgent.ifBlank { "YlowstoneTV/2.2.8" })
                             .build()
                         httpClient.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
                             val bodyStream = resp.body?.byteStream() ?: throw Exception("Empty response")
-                            parseM3uStream(profile, bodyStream)
+                            bodyStream.use(parseAction)
                         }
                     }
                 }
 
                 PlaylistType.XTREAM -> {
-                    fetchXtreamAll(profile, streamFormat, onProgress)
+                    streamXtreamIntoSession(profile, streamFormat, session, batch, onProgress) { flushBatch(false) }
+                    flushBatch(force = true)
                 }
             }
 
-            onProgress("Indexing ${items.size} items...")
-            db.replaceChannels(profile.id, items)
+            val total = session.insertedCount
+            if (total <= 0) {
+                throw Exception("No channels returned. Check URL, username, or password.")
+            }
             db.updatePlaylistTimestamp(profile.id, System.currentTimeMillis())
-            items.size
+            total
         }
     }
 
-    private fun parseM3uStream(profile: PlaylistProfile, inputStream: InputStream): List<ChannelItem> {
-        val result = ArrayList<ChannelItem>(2048)
+    private fun streamM3uIntoSession(
+        profile: PlaylistProfile,
+        inputStream: InputStream,
+        session: DatabaseHelper.SyncSession,
+        batch: ArrayList<ChannelItem>,
+        onBatchFull: () -> Unit
+    ) {
         val reader = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8), 32768)
         var currentName = ""
         var currentCategory = "Uncategorized"
         var currentLogo = ""
         var currentId = ""
+        var seenCount = 0
         var line: String?
 
         while (reader.readLine().also { line = it } != null) {
@@ -104,9 +126,10 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                 currentName = if (commaIdx != -1 && commaIdx + 1 < trimmed.length) {
                     trimmed.substring(commaIdx + 1).trim()
                 } else {
-                    "Channel ${result.size + 1}"
+                    "Channel ${seenCount + 1}"
                 }
             } else if (!trimmed.startsWith("#")) {
+                seenCount++
                 val lowerUrl = trimmed.lowercase()
                 val mediaType = when {
                     lowerUrl.contains("/series/") -> MediaType.SERIES
@@ -115,17 +138,18 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                 }
                 val resolvedCat = currentCategory.ifBlank { "General" }
                 if (profile.matchesCategoryFilter(resolvedCat, mediaType)) {
-                    result.add(
+                    batch.add(
                         ChannelItem(
                             playlistId = profile.id,
-                            streamId = currentId.ifBlank { result.size.toString() },
-                            name = currentName.ifBlank { "Channel ${result.size + 1}" },
+                            streamId = currentId.ifBlank { seenCount.toString() },
+                            name = currentName.ifBlank { "Channel $seenCount" },
                             category = resolvedCat,
                             logoUrl = currentLogo,
                             streamUrl = trimmed,
                             mediaType = mediaType
                         )
                     )
+                    if (batch.size >= 500) onBatchFull()
                 }
                 currentName = ""
                 currentLogo = ""
@@ -133,11 +157,10 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                 currentId = ""
             }
         }
-        return result
     }
 
     private fun extractAttr(line: String, attr: String): String {
-        val key = "$attr=\""
+        val key = "$attr=""
         val start = line.indexOf(key, ignoreCase = true)
         if (start == -1) return ""
         val valStart = start + key.length
@@ -146,134 +169,220 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
         return line.substring(valStart, end).trim()
     }
 
-    private fun fetchJsonString(url: String, ua: String): String {
+    private fun <T> streamJsonArray(
+        url: String,
+        ua: String,
+        parseItem: (JsonReader) -> T?
+    ) {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", ua.ifBlank { "YlowstoneTV/1.0" })
+            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.2.8" })
             .build()
         httpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
-            return resp.body?.string() ?: ""
+            val stream = resp.body?.byteStream() ?: return
+            JsonReader(BufferedReader(InputStreamReader(stream, Charsets.UTF_8), 32768)).use { reader ->
+                reader.isLenient = true
+                if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+                    reader.skipValue()
+                    return
+                }
+                reader.beginArray()
+                while (reader.hasNext()) {
+                    if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                        parseItem(reader)
+                    } else {
+                        reader.skipValue()
+                    }
+                }
+                reader.endArray()
+            }
+        }
+    }
+
+    private fun readStringSafe(reader: JsonReader): String {
+        return when (reader.peek()) {
+            JsonToken.STRING, JsonToken.NUMBER -> reader.nextString()
+            JsonToken.BOOLEAN -> reader.nextBoolean().toString()
+            else -> {
+                reader.skipValue()
+                ""
+            }
         }
     }
 
     private fun fetchCategoryMap(apiBase: String, action: String, ua: String): Map<String, String> {
         val map = HashMap<String, String>()
         runCatching {
-            val body = fetchJsonString("$apiBase&action=$action", ua)
-            val arr = JSONArray(body)
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                val id = obj.optString("category_id")
-                val name = obj.optString("category_name", "General")
-                if (id.isNotEmpty()) map[id] = name
+            streamJsonArray("$apiBase&action=$action", ua) { reader ->
+                var catId = ""
+                var catName = "General"
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "category_id" -> catId = readStringSafe(reader)
+                        "category_name" -> catName = readStringSafe(reader).ifBlank { "General" }
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+                if (catId.isNotEmpty()) map[catId] = catName
+                null
             }
         }
         return map
     }
 
-    private fun fetchXtreamAll(
+    private fun streamXtreamIntoSession(
         profile: PlaylistProfile,
         streamFormat: StreamFormat,
-        onProgress: (String) -> Unit
-    ): List<ChannelItem> {
+        session: DatabaseHelper.SyncSession,
+        batch: ArrayList<ChannelItem>,
+        onProgress: (String) -> Unit,
+        onBatchFull: () -> Unit
+    ) {
         val base = profile.url.trim().trimEnd('/')
         val u = Uri.encode(profile.username.trim())
         val p = Uri.encode(profile.password.trim())
         val apiBase = "$base/player_api.php?username=$u&password=$p"
         val ua = profile.userAgent
-        val all = ArrayList<ChannelItem>(4096)
 
         // 1. Live TV
-        onProgress("Loading Live TV...")
+        onProgress("Streaming Live TV...")
         val liveCats = fetchCategoryMap(apiBase, "get_live_categories", ua)
         runCatching {
-            val liveArr = JSONArray(fetchJsonString("$apiBase&action=get_live_streams", ua))
             val ext = streamFormat.ext
-            for (i in 0 until liveArr.length()) {
-                val o = liveArr.optJSONObject(i) ?: continue
-                val sid = o.optString("stream_id")
-                if (sid.isEmpty()) continue
-                val catName = liveCats[o.optString("category_id")] ?: "Live TV"
-                if (profile.matchesLiveCategoryFilter(catName)) {
-                    val streamUrl = "$base/live/$u/$p/$sid.$ext"
-                    all.add(
-                        ChannelItem(
-                            playlistId = profile.id,
-                            streamId = sid,
-                            name = o.optString("name", "Live $sid"),
-                            category = catName,
-                            logoUrl = o.optString("stream_icon", ""),
-                            streamUrl = streamUrl,
-                            mediaType = MediaType.LIVE,
-                            containerExtension = ext
-                        )
-                    )
+            streamJsonArray("$apiBase&action=get_live_streams", ua) { reader ->
+                var sid = ""
+                var name = ""
+                var icon = ""
+                var catId = ""
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "stream_id" -> sid = readStringSafe(reader)
+                        "name" -> name = readStringSafe(reader)
+                        "stream_icon" -> icon = readStringSafe(reader)
+                        "category_id" -> catId = readStringSafe(reader)
+                        else -> reader.skipValue()
+                    }
                 }
+                reader.endObject()
+                if (sid.isNotEmpty()) {
+                    val catName = liveCats[catId] ?: "Live TV"
+                    if (profile.matchesLiveCategoryFilter(catName)) {
+                        batch.add(
+                            ChannelItem(
+                                playlistId = profile.id,
+                                streamId = sid,
+                                name = name.ifBlank { "Live $sid" },
+                                category = catName,
+                                logoUrl = icon,
+                                streamUrl = "$base/live/$u/$p/$sid.$ext",
+                                mediaType = MediaType.LIVE,
+                                containerExtension = ext
+                            )
+                        )
+                        if (batch.size >= 500) onBatchFull()
+                    }
+                }
+                null
             }
         }
+        onBatchFull()
 
         // 2. Movies (VOD)
-        onProgress("Loading Movies...")
+        onProgress("Streaming Movies...")
         val vodCats = fetchCategoryMap(apiBase, "get_vod_categories", ua)
         runCatching {
-            val vodArr = JSONArray(fetchJsonString("$apiBase&action=get_vod_streams", ua))
-            for (i in 0 until vodArr.length()) {
-                val o = vodArr.optJSONObject(i) ?: continue
-                val sid = o.optString("stream_id")
-                if (sid.isEmpty()) continue
-                val ext = o.optString("container_extension", "mp4").ifBlank { "mp4" }
-                val catName = vodCats[o.optString("category_id")] ?: "Movies"
-                if (profile.matchesCategoryFilter(catName, MediaType.MOVIE)) {
-                    val streamUrl = "$base/movie/$u/$p/$sid.$ext"
-                    all.add(
-                        ChannelItem(
-                            playlistId = profile.id,
-                            streamId = sid,
-                            name = o.optString("name", "Movie $sid"),
-                            category = catName,
-                            logoUrl = o.optString("stream_icon", ""),
-                            streamUrl = streamUrl,
-                            mediaType = MediaType.MOVIE,
-                            containerExtension = ext,
-                            rating = o.optString("rating", "")
-                        )
-                    )
+            streamJsonArray("$apiBase&action=get_vod_streams", ua) { reader ->
+                var sid = ""
+                var name = ""
+                var icon = ""
+                var catId = ""
+                var ext = "mp4"
+                var rating = ""
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "stream_id" -> sid = readStringSafe(reader)
+                        "name" -> name = readStringSafe(reader)
+                        "stream_icon" -> icon = readStringSafe(reader)
+                        "category_id" -> catId = readStringSafe(reader)
+                        "container_extension" -> ext = readStringSafe(reader).ifBlank { "mp4" }
+                        "rating" -> rating = readStringSafe(reader)
+                        else -> reader.skipValue()
+                    }
                 }
+                reader.endObject()
+                if (sid.isNotEmpty()) {
+                    val catName = vodCats[catId] ?: "Movies"
+                    if (profile.matchesCategoryFilter(catName, MediaType.MOVIE)) {
+                        batch.add(
+                            ChannelItem(
+                                playlistId = profile.id,
+                                streamId = sid,
+                                name = name.ifBlank { "Movie $sid" },
+                                category = catName,
+                                logoUrl = icon,
+                                streamUrl = "$base/movie/$u/$p/$sid.$ext",
+                                mediaType = MediaType.MOVIE,
+                                containerExtension = ext,
+                                rating = rating
+                            )
+                        )
+                        if (batch.size >= 500) onBatchFull()
+                    }
+                }
+                null
             }
         }
+        onBatchFull()
 
         // 3. Series
-        onProgress("Loading Series...")
+        onProgress("Streaming Series...")
         val seriesCats = fetchCategoryMap(apiBase, "get_series_categories", ua)
         runCatching {
-            val serArr = JSONArray(fetchJsonString("$apiBase&action=get_series", ua))
-            for (i in 0 until serArr.length()) {
-                val o = serArr.optJSONObject(i) ?: continue
-                val sid = o.optString("series_id")
-                if (sid.isEmpty()) continue
-                val catName = seriesCats[o.optString("category_id")] ?: "Series"
-                if (profile.matchesCategoryFilter(catName, MediaType.SERIES)) {
-                    all.add(
-                        ChannelItem(
-                            playlistId = profile.id,
-                            streamId = sid,
-                            name = o.optString("name", "Series $sid"),
-                            category = catName,
-                            logoUrl = o.optString("cover", ""),
-                            streamUrl = "$apiBase&action=get_series_info&series_id=$sid",
-                            mediaType = MediaType.SERIES,
-                            rating = o.optString("rating", "")
-                        )
-                    )
+            streamJsonArray("$apiBase&action=get_series", ua) { reader ->
+                var sid = ""
+                var name = ""
+                var cover = ""
+                var catId = ""
+                var rating = ""
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "series_id" -> sid = readStringSafe(reader)
+                        "name" -> name = readStringSafe(reader)
+                        "cover" -> cover = readStringSafe(reader)
+                        "category_id" -> catId = readStringSafe(reader)
+                        "rating" -> rating = readStringSafe(reader)
+                        else -> reader.skipValue()
+                    }
                 }
+                reader.endObject()
+                if (sid.isNotEmpty()) {
+                    val catName = seriesCats[catId] ?: "Series"
+                    if (profile.matchesCategoryFilter(catName, MediaType.SERIES)) {
+                        batch.add(
+                            ChannelItem(
+                                playlistId = profile.id,
+                                streamId = sid,
+                                name = name.ifBlank { "Series $sid" },
+                                category = catName,
+                                logoUrl = cover,
+                                streamUrl = "$apiBase&action=get_series_info&series_id=$sid",
+                                mediaType = MediaType.SERIES,
+                                rating = rating
+                            )
+                        )
+                        if (batch.size >= 500) onBatchFull()
+                    }
+                }
+                null
             }
         }
-
-        if (all.isEmpty()) {
-            throw Exception("No channels returned. Check URL, username, or password.")
-        }
-        return all
+        onBatchFull()
     }
 
     suspend fun fetchSeriesEpisodes(profile: PlaylistProfile, seriesId: String): List<EpisodeItem> =

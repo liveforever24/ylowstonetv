@@ -218,6 +218,69 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         }
     }
 
+    data class SyncSession(
+        val playlistId: Long,
+        val favUrls: Set<String>,
+        val watchedMap: Map<String, Long>,
+        var insertedCount: Int = 0
+    )
+
+    fun beginChannelSync(playlistId: Long): SyncSession {
+        val db = writableDatabase
+        val favUrls = HashSet<String>()
+        val watchedMap = HashMap<String, Long>()
+        db.rawQuery(
+            "SELECT stream_url, is_favorite, last_watched FROM channels WHERE playlist_id = ? AND (is_favorite = 1 OR last_watched > 0)",
+            arrayOf(playlistId.toString())
+        ).use { c ->
+            while (c.moveToNext()) {
+                val url = c.getString(0) ?: continue
+                if (c.getInt(1) == 1) favUrls.add(url)
+                val lw = c.getLong(2)
+                if (lw > 0L) watchedMap[url] = lw
+            }
+        }
+        db.beginTransaction()
+        try {
+            db.delete("channels", "playlist_id = ?", arrayOf(playlistId.toString()))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return SyncSession(playlistId, favUrls, watchedMap)
+    }
+
+    fun appendChannelBatch(session: SyncSession, batch: List<ChannelItem>) {
+        if (batch.isEmpty()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val stmt = db.compileStatement(
+                "INSERT INTO channels (playlist_id, stream_id, name, category, logo_url, stream_url, media_type, container_ext, rating, is_favorite, last_watched) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+            )
+            for (item in batch) {
+                stmt.clearBindings()
+                stmt.bindLong(1, session.playlistId)
+                stmt.bindString(2, item.streamId)
+                stmt.bindString(3, item.name)
+                stmt.bindString(4, item.category)
+                stmt.bindString(5, item.logoUrl)
+                stmt.bindString(6, item.streamUrl)
+                stmt.bindString(7, item.mediaType.name)
+                stmt.bindString(8, item.containerExtension)
+                stmt.bindString(9, item.rating)
+                stmt.bindLong(10, if (session.favUrls.contains(item.streamUrl)) 1L else 0L)
+                stmt.bindLong(11, session.watchedMap[item.streamUrl] ?: 0L)
+                stmt.executeInsert()
+                session.insertedCount++
+            }
+            stmt.close()
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     fun getCountsByMediaType(playlistId: Long): Map<MediaType, Int> {
         val result = mutableMapOf(MediaType.LIVE to 0, MediaType.MOVIE to 0, MediaType.SERIES to 0)
         readableDatabase.rawQuery(
