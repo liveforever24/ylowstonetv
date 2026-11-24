@@ -454,7 +454,7 @@ fun FullscreenPlayerScreen(
         if (currentChannel.mediaType != MediaType.SERIES) {
             Triple(currentChannel.name, null as Int?, null as Int?)
         } else {
-            val m = Regex("[Ss](\d+)[Ee](\d+)").find(currentChannel.name)
+            val m = Regex("""[Ss](\d+)[Ee](\d+)""").find(currentChannel.name)
             val sNum = m?.groupValues?.getOrNull(1)?.toIntOrNull()
             val eNum = m?.groupValues?.getOrNull(2)?.toIntOrNull()
             val titleCandidate = if (sNum != null && currentChannel.category.isNotBlank()) {
