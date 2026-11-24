@@ -9,8 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,7 +20,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -46,18 +43,24 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
+    lockedCategories: Set<String>,
     strings: AppStrings,
     repo: IptvRepository,
     onBack: () -> Unit,
-    onUpdateSettings: (AppSettings) -> Unit
+    onUpdateSettings: (AppSettings) -> Unit,
+    onUnlockCategory: (String) -> Unit,
+    onResetPinAndLocks: () -> Unit,
+    onReplayGuide: () -> Unit
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var searchQuery by remember { mutableStateOf("") }
-    var expandedSection by remember { mutableStateOf("APPEARANCE") }
+    var expandedSection by remember { mutableStateOf("THEME") }
     var showChangePin by remember { mutableStateOf(false) }
+    var showResetPinConfirm by remember { mutableStateOf(false) }
+    var unlockTargetCat by remember { mutableStateOf<String?>(null) }
 
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
@@ -69,27 +72,48 @@ fun SettingsScreen(
         return keys.any { it.contains(q, ignoreCase = true) }
     }
 
-    Box(
+    val themeLabel = when (settings.themeMode) {
+        ThemeMode.SYSTEM -> strings.themeSystem
+        ThemeMode.LIGHT -> strings.themeLight
+        ThemeMode.AMOLED -> strings.themeAmoled
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
             .systemBarsPadding()
     ) {
-        Column(
+        // ---- FotMob Flat Top Header ----
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 66.dp, bottom = 36.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .fillMaxWidth()
+                .background(if (c.isDark) Color(0xFF0C0E10) else c.surface)
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
+            }
             Text(
                 text = strings.settings,
                 color = c.textPrimary,
-                fontSize = 26.sp,
+                fontSize = 21.sp,
                 fontWeight = FontWeight.Bold
             )
+        }
+        HorizontalDivider(color = c.glassBorder, thickness = 0.6.dp)
 
-            // Search Settings Bar (BitChord-style!)
+        // ---- FotMob Pure Flat Scrollable Settings List (AMOLED Pure Black / Light White!) ----
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 32.dp)
+        ) {
+            // Search Settings
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -103,317 +127,356 @@ fun SettingsScreen(
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            // ---- GROUPED BITChORD-STYLE SETTINGS CARD ----
-            Column(
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(c.surface)
-                    .border(1.dp, c.glassBorder, RoundedCornerShape(22.dp))
-            ) {
-                // 1. Device Mode
-                if (matches(strings.deviceMode, "mode", "tv", "phone", "ponsel")) {
-                    SettingsAccordionRow(
-                        icon = Icons.Rounded.Devices,
-                        title = strings.deviceMode,
-                        subtitle = if (settings.deviceMode == DeviceMode.TV) strings.androidTv else strings.smartphone,
-                        expanded = expandedSection == "DEVICE" || searchQuery.isNotBlank(),
-                        onClick = { expandedSection = if (expandedSection == "DEVICE") "" else "DEVICE" }
-                    ) {
-                        SegmentedChoiceRow(
-                            options = listOf(DeviceMode.SMARTPHONE to strings.smartphone, DeviceMode.TV to strings.androidTv),
-                            selected = settings.deviceMode,
-                            onSelect = { onUpdateSettings(settings.copy(deviceMode = it, hasSelectedMode = true)) }
-                        )
-                    }
-                    SettingsDivider()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+
+            // 1. Theme (Strictly System / Light / Dark AMOLED with Google Pixel Fog palette!)
+            if (matches(strings.appearanceTheme, "tema", "theme", "gelap", "terang", "sistem", "dark", "light")) {
+                FotMobSettingsRow(
+                    icon = Icons.Rounded.Contrast,
+                    title = strings.appearanceTheme,
+                    subtitle = themeLabel,
+                    expanded = expandedSection == "THEME" || searchQuery.isNotBlank(),
+                    onClick = { expandedSection = if (expandedSection == "THEME") "" else "THEME" }
+                ) {
+                    SegmentedChoiceRow(
+                        options = listOf(
+                            ThemeMode.SYSTEM to strings.themeSystem,
+                            ThemeMode.LIGHT to strings.themeLight,
+                            ThemeMode.AMOLED to strings.themeAmoled
+                        ),
+                        selected = settings.themeMode,
+                        onSelect = { onUpdateSettings(settings.copy(themeMode = it)) }
+                    )
                 }
+            }
 
-                // 2. Appearance & 5 Elegant Color Styles
-                if (matches(strings.appearanceTheme, strings.colorStyleTitle, "tema", "theme", "amoled", "warna", "color")) {
-                    SettingsAccordionRow(
-                        icon = Icons.Rounded.Palette,
-                        title = strings.appearanceTheme,
-                        subtitle = "${settings.themeMode.name} • ${settings.stylePreset.label}",
-                        expanded = expandedSection == "APPEARANCE" || searchQuery.isNotBlank(),
-                        onClick = { expandedSection = if (expandedSection == "APPEARANCE") "" else "APPEARANCE" }
-                    ) {
-                        SegmentedChoiceRow(
-                            options = listOf(
-                                ThemeMode.AMOLED to strings.themeAmoled,
-                                ThemeMode.LIGHT to strings.themeLight,
-                                ThemeMode.SYSTEM to strings.themeSystem
-                            ),
-                            selected = settings.themeMode,
-                            onSelect = { onUpdateSettings(settings.copy(themeMode = it)) }
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text(strings.colorStyleTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.height(8.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(StylePreset.entries) { preset ->
-                                val active = settings.stylePreset == preset
-                                val swatch = Color(preset.accentHex)
-                                Row(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(if (active) swatch.copy(alpha = 0.22f) else c.surfaceElevated)
-                                        .border(if (active) 1.8.dp else 1.dp, if (active) swatch else c.glassBorder, RoundedCornerShape(14.dp))
-                                        .clickable { onUpdateSettings(settings.copy(stylePreset = preset)) }
-                                        .padding(horizontal = 12.dp, vertical = 9.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
-                                ) {
-                                    Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(swatch))
-                                    Text(
-                                        text = preset.label,
-                                        color = if (active) c.textPrimary else c.textSecondary,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    SettingsDivider()
+            // 2. Device Mode (Phone / Android TV)
+            if (matches(strings.deviceMode, "mode", "tv", "phone", "ponsel")) {
+                FotMobSettingsRow(
+                    icon = Icons.Rounded.Devices,
+                    title = strings.deviceMode,
+                    subtitle = if (settings.deviceMode == DeviceMode.TV) strings.androidTv else strings.smartphone,
+                    expanded = expandedSection == "DEVICE" || searchQuery.isNotBlank(),
+                    onClick = { expandedSection = if (expandedSection == "DEVICE") "" else "DEVICE" }
+                ) {
+                    SegmentedChoiceRow(
+                        options = listOf(DeviceMode.SMARTPHONE to strings.smartphone, DeviceMode.TV to strings.androidTv),
+                        selected = settings.deviceMode,
+                        onSelect = { onUpdateSettings(settings.copy(deviceMode = it, hasSelectedMode = true)) }
+                    )
                 }
+            }
 
-                // 3. 12 Switchable 3D App Icons!
-                if (matches(strings.appIconTitle, "icon", "ikon", "logo")) {
-                    SettingsAccordionRow(
-                        icon = Icons.Rounded.Apps,
-                        title = strings.appIconTitle,
-                        subtitle = settings.appIcon.label,
-                        expanded = expandedSection == "ICONS" || searchQuery.isNotBlank(),
-                        onClick = { expandedSection = if (expandedSection == "ICONS") "" else "ICONS" }
-                    ) {
-                        Text(strings.appIconDesc, color = c.textSecondary, fontSize = 11.sp)
-                        Spacer(Modifier.height(10.dp))
-                        // 4x3 Clean Visual Grid of all 12 Icons
-                        val rows = AppIconOption.entries.chunked(4)
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            rows.forEach { rowIcons ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    rowIcons.forEach { iconOpt ->
-                                        val selected = settings.appIcon == iconOpt
-                                        Column(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clip(RoundedCornerShape(16.dp))
-                                                .background(if (selected) c.accent.copy(alpha = 0.16f) else c.surfaceElevated.copy(alpha = 0.6f))
-                                                .border(
-                                                    width = if (selected) 2.dp else 1.dp,
-                                                    color = if (selected) c.accent else c.glassBorder,
-                                                    shape = RoundedCornerShape(16.dp)
-                                                )
-                                                .clickable {
-                                                    if (!selected) {
-                                                        onUpdateSettings(settings.copy(appIcon = iconOpt))
-                                                        Toast.makeText(context, strings.iconSwitchedToast, Toast.LENGTH_SHORT).show()
-                                                        AppIconManager.applyIcon(context, iconOpt)
-                                                    }
-                                                }
-                                                .padding(vertical = 8.dp, horizontal = 4.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(5.dp)
-                                        ) {
-                                            Image(
-                                                painter = painterResource(id = iconOpt.previewRes),
-                                                contentDescription = iconOpt.label,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier.size(44.dp).clip(CircleShape)
-                                            )
-                                            Text(
-                                                text = iconOpt.label,
-                                                color = if (selected) c.accent else c.textSecondary,
-                                                fontSize = 9.sp,
-                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    SettingsDivider()
-                }
-
-                // 4. Playback & Streaming (Gestures, External Player, HLS/TS)
-                if (matches(strings.playbackSection, strings.playerGestures, "gestur", "volume", "hls", "external", "pemain")) {
-                    SettingsAccordionRow(
-                        icon = Icons.Rounded.PlayCircleOutline,
-                        title = strings.playbackSection,
-                        subtitle = settings.streamFormat.label,
-                        expanded = expandedSection == "PLAYBACK" || searchQuery.isNotBlank(),
-                        onClick = { expandedSection = if (expandedSection == "PLAYBACK") "" else "PLAYBACK" }
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(strings.playerGestures, color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                Text(strings.playerGesturesDesc, color = c.textSecondary, fontSize = 11.sp)
-                            }
-                            Switch(
-                                checked = settings.showPlayerGestures,
-                                onCheckedChange = { onUpdateSettings(settings.copy(showPlayerGestures = it)) },
-                                colors = SwitchDefaults.colors(checkedTrackColor = c.accent)
-                            )
-                        }
-                        HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(strings.preferExternalTitle, color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                Text(strings.preferExternalDesc, color = c.textSecondary, fontSize = 11.sp)
-                            }
-                            Switch(
-                                checked = settings.preferExternalPlayer,
-                                onCheckedChange = { onUpdateSettings(settings.copy(preferExternalPlayer = it)) },
-                                colors = SwitchDefaults.colors(checkedTrackColor = c.accent)
-                            )
-                        }
-                        HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
-                        Text(strings.streamFormatTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.height(6.dp))
-                        SegmentedChoiceRow(
-                            options = listOf(StreamFormat.HLS to StreamFormat.HLS.label, StreamFormat.TS to StreamFormat.TS.label),
-                            selected = settings.streamFormat,
-                            onSelect = { onUpdateSettings(settings.copy(streamFormat = it)) }
-                        )
-                    }
-                    SettingsDivider()
-                }
-
-                // 5. Privacy & Storage (PIN & Clear Cache)
-                if (matches(strings.privacyStorageSection, "pin", "cache", "privasi", "storage")) {
-                    SettingsAccordionRow(
-                        icon = Icons.Rounded.Security,
-                        title = strings.privacyStorageSection,
-                        subtitle = "${strings.parentalPin} • Cache",
-                        expanded = expandedSection == "PRIVACY" || searchQuery.isNotBlank(),
-                        onClick = { expandedSection = if (expandedSection == "PRIVACY") "" else "PRIVACY" }
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                            OutlinedButton(onClick = { showChangePin = true }, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Rounded.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.changePin, fontSize = 12.sp)
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    context.imageLoader.memoryCache?.clear()
-                                    Toast.makeText(context, strings.cacheCleared, Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Rounded.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.clearCache, fontSize = 12.sp)
-                            }
-                        }
-                    }
-                    SettingsDivider()
-                }
-
-                // 6. Language
-                if (matches(strings.appLanguage, "language", "bahasa", "english", "indonesia")) {
-                    SettingsAccordionRow(
-                        icon = Icons.Rounded.Language,
-                        title = strings.appLanguage,
-                        subtitle = if (settings.language == AppLanguage.ID) "Bahasa Indonesia" else "English (US)",
-                        expanded = expandedSection == "LANGUAGE" || searchQuery.isNotBlank(),
-                        onClick = { expandedSection = if (expandedSection == "LANGUAGE") "" else "LANGUAGE" }
-                    ) {
-                        SegmentedChoiceRow(
-                            options = listOf(AppLanguage.ID to "Bahasa Indonesia", AppLanguage.EN to "English (US)"),
-                            selected = settings.language,
-                            onSelect = { onUpdateSettings(settings.copy(language = it)) }
-                        )
-                    }
-                    SettingsDivider()
-                }
-
-                // 7. Check for Updates (Play-Protect friendly browser download)
-                if (matches(strings.checkUpdates, "update", "versi", "version")) {
-                    SettingsAccordionRow(
-                        icon = Icons.Rounded.SystemUpdate,
-                        title = strings.checkUpdates,
-                        subtitle = "v${BuildConfig.VERSION_NAME}",
-                        expanded = expandedSection == "UPDATE" || searchQuery.isNotBlank(),
-                        onClick = { expandedSection = if (expandedSection == "UPDATE") "" else "UPDATE" }
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("${strings.currentVersion}: v${BuildConfig.VERSION_NAME}", color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                if (updateStatusMsg.isNotEmpty()) {
-                                    Text(updateStatusMsg, color = c.accent, fontSize = 11.sp)
-                                }
-                            }
-                            Button(
-                                enabled = !checkingUpdate,
-                                onClick = {
-                                    checkingUpdate = true
-                                    updateStatusMsg = strings.checkingUpdate
-                                    scope.launch {
-                                        val res = repo.checkGitHubUpdate()
-                                        checkingUpdate = false
-                                        res.onSuccess { info ->
-                                            updateInfo = info
-                                            updateStatusMsg = if (info.hasUpdate) "${strings.updateAvailable}: v${info.latestVersion}" else strings.upToDate
-                                        }.onFailure { err ->
-                                            updateStatusMsg = "Error: ${err.message}"
-                                        }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = c.accent),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text(strings.checkUpdates, color = Color.White, fontSize = 12.sp)
-                            }
-                        }
-
-                        updateInfo?.takeIf { it.hasUpdate }?.let { info ->
-                            Spacer(Modifier.height(10.dp))
-                            Button(
-                                onClick = {
-                                    val url = info.apkDownloadUrl.ifBlank { info.htmlUrl }
-                                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF30D158)),
+            // 3. 12 Switchable 3D App Icons
+            if (matches(strings.appIconTitle, "icon", "ikon", "logo")) {
+                FotMobSettingsRow(
+                    icon = Icons.Rounded.Apps,
+                    title = strings.appIconTitle,
+                    subtitle = settings.appIcon.label,
+                    expanded = expandedSection == "ICONS" || searchQuery.isNotBlank(),
+                    onClick = { expandedSection = if (expandedSection == "ICONS") "" else "ICONS" }
+                ) {
+                    Text(strings.appIconDesc, color = c.textSecondary, fontSize = 12.sp)
+                    Spacer(Modifier.height(10.dp))
+                    val rows = AppIconOption.entries.chunked(4)
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        rows.forEach { rowIcons ->
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Icon(Icons.Rounded.CloudDownload, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("${strings.downloadUpdateBrowser} (v${info.latestVersion})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                rowIcons.forEach { iconOpt ->
+                                    val selected = settings.appIcon == iconOpt
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(if (selected) c.accentContainer else c.surface)
+                                            .border(
+                                                width = if (selected) 1.8.dp else 1.dp,
+                                                color = if (selected) c.accent else c.glassBorder,
+                                                shape = RoundedCornerShape(14.dp)
+                                            )
+                                            .clickable {
+                                                if (!selected) {
+                                                    onUpdateSettings(settings.copy(appIcon = iconOpt))
+                                                    Toast.makeText(context, strings.iconSwitchedToast, Toast.LENGTH_SHORT).show()
+                                                    AppIconManager.applyIcon(context, iconOpt)
+                                                }
+                                            }
+                                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Image(
+                                            painter = painterResource(id = iconOpt.previewRes),
+                                            contentDescription = iconOpt.label,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.size(44.dp).clip(CircleShape)
+                                        )
+                                        Text(
+                                            text = iconOpt.label,
+                                            color = if (selected) c.accent else c.textSecondary,
+                                            fontSize = 9.sp,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            // 4. Category PIN Management (4-digit PIN + Reset PIN + Locked Categories!)
+            if (matches(strings.privacyStorageSection, strings.parentalPin, "pin", "reset", "cache", "kunci", "lock")) {
+                FotMobSettingsRow(
+                    icon = Icons.Rounded.Lock,
+                    title = strings.privacyStorageSection,
+                    subtitle = "${strings.parentalPin} (${lockedCategories.size})",
+                    expanded = expandedSection == "PIN" || searchQuery.isNotBlank(),
+                    onClick = { expandedSection = if (expandedSection == "PIN") "" else "PIN" }
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = { showChangePin = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1.3f)
+                        ) {
+                            Icon(Icons.Rounded.Pin, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(strings.setOrChangePin, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
+                        OutlinedButton(
+                            onClick = { showResetPinConfirm = true },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(0.9f)
+                        ) {
+                            Icon(Icons.Rounded.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(strings.resetPinBtn, fontSize = 11.sp, maxLines = 1)
+                        }
+                    }
 
-            // ---- BITChORD-STYLE MINIMALIST FOOTER LINKS ----
+                    Spacer(Modifier.height(12.dp))
+                    Text(strings.lockedCategoriesTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+
+                    if (lockedCategories.isEmpty()) {
+                        Text(strings.noLockedCategories, color = c.textSecondary.copy(alpha = 0.7f), fontSize = 12.sp)
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            lockedCategories.sorted().forEach { catName ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(c.surface)
+                                        .border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Rounded.Lock, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
+                                        Text(catName, color = c.textPrimary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    TextButton(
+                                        onClick = { unlockTargetCat = catName },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(strings.unlockCategory, color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = {
+                            context.imageLoader.memoryCache?.clear()
+                            Toast.makeText(context, strings.cacheCleared, Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Rounded.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(strings.clearCache, fontSize = 12.sp)
+                    }
+                }
+            }
+
+            // 5. Playback & Streaming
+            if (matches(strings.playbackSection, strings.playerGestures, "gestur", "volume", "hls", "external", "pemain")) {
+                FotMobSettingsRow(
+                    icon = Icons.Rounded.PlayCircleOutline,
+                    title = strings.playbackSection,
+                    subtitle = settings.streamFormat.label,
+                    expanded = expandedSection == "PLAYBACK" || searchQuery.isNotBlank(),
+                    onClick = { expandedSection = if (expandedSection == "PLAYBACK") "" else "PLAYBACK" }
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(strings.playerGestures, color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text(strings.playerGesturesDesc, color = c.textSecondary, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = settings.showPlayerGestures,
+                            onCheckedChange = { onUpdateSettings(settings.copy(showPlayerGestures = it)) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = c.onAccent,
+                                checkedTrackColor = c.accent
+                            )
+                        )
+                    }
+                    HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(strings.preferExternalTitle, color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text(strings.preferExternalDesc, color = c.textSecondary, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = settings.preferExternalPlayer,
+                            onCheckedChange = { onUpdateSettings(settings.copy(preferExternalPlayer = it)) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = c.onAccent,
+                                checkedTrackColor = c.accent
+                            )
+                        )
+                    }
+                    HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
+                    Text(strings.streamFormatTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                    SegmentedChoiceRow(
+                        options = listOf(StreamFormat.HLS to StreamFormat.HLS.label, StreamFormat.TS to StreamFormat.TS.label),
+                        selected = settings.streamFormat,
+                        onSelect = { onUpdateSettings(settings.copy(streamFormat = it)) }
+                    )
+                }
+            }
+
+            // 6. Language
+            if (matches(strings.appLanguage, "language", "bahasa", "english", "indonesia")) {
+                FotMobSettingsRow(
+                    icon = Icons.Rounded.Language,
+                    title = strings.appLanguage,
+                    subtitle = if (settings.language == AppLanguage.ID) "Bahasa Indonesia" else "English (US)",
+                    expanded = expandedSection == "LANGUAGE" || searchQuery.isNotBlank(),
+                    onClick = { expandedSection = if (expandedSection == "LANGUAGE") "" else "LANGUAGE" }
+                ) {
+                    SegmentedChoiceRow(
+                        options = listOf(AppLanguage.ID to "Bahasa Indonesia", AppLanguage.EN to "English (US)"),
+                        selected = settings.language,
+                        onSelect = { onUpdateSettings(settings.copy(language = it)) }
+                    )
+                }
+            }
+
+            // 7. Replay Welcome & Quick Guide
+            if (matches(strings.replayGuideTitle, "guide", "panduan", "welcome", "sambutan", "tutorial")) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onReplayGuide)
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = c.textPrimary, modifier = Modifier.size(23.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(strings.replayGuideTitle, color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(strings.replayGuideDesc, color = c.textSecondary, fontSize = 12.sp)
+                    }
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
+                }
+            }
+
+            // 8. Check Updates
+            if (matches(strings.checkUpdates, "update", "versi", "version")) {
+                FotMobSettingsRow(
+                    icon = Icons.Rounded.SystemUpdate,
+                    title = strings.checkUpdates,
+                    subtitle = "v${BuildConfig.VERSION_NAME}",
+                    expanded = expandedSection == "UPDATE" || searchQuery.isNotBlank(),
+                    onClick = { expandedSection = if (expandedSection == "UPDATE") "" else "UPDATE" }
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("${strings.currentVersion}: v${BuildConfig.VERSION_NAME}", color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            if (updateStatusMsg.isNotEmpty()) {
+                                Text(updateStatusMsg, color = c.accent, fontSize = 11.sp)
+                            }
+                        }
+                        Button(
+                            enabled = !checkingUpdate,
+                            onClick = {
+                                checkingUpdate = true
+                                updateStatusMsg = strings.checkingUpdate
+                                scope.launch {
+                                    val res = repo.checkGitHubUpdate()
+                                    checkingUpdate = false
+                                    res.onSuccess { info ->
+                                        updateInfo = info
+                                        updateStatusMsg = if (info.hasUpdate) "${strings.updateAvailable}: v${info.latestVersion}" else strings.upToDate
+                                    }.onFailure { err ->
+                                        updateStatusMsg = "Error: ${err.message}"
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(strings.checkUpdates, color = c.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    updateInfo?.takeIf { it.hasUpdate }?.let { info ->
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = {
+                                val url = info.apkDownloadUrl.ifBlank { info.htmlUrl }
+                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Rounded.CloudDownload, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("${strings.downloadUpdateBrowser} (v${info.latestVersion})", color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(22.dp))
+
+            // ---- Minimalist Footer Links ----
             Column(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -445,36 +508,11 @@ fun SettingsScreen(
                 )
             }
         }
-
-        // ---- FLOATING TOP LIQUID GLASS BACK BUTTON (<) ----
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(c.bg, c.bg.copy(alpha = 0.82f), Color.Transparent)
-                    )
-                )
-                .padding(horizontal = 16.dp, vertical = 10.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(c.glassBg)
-                    .border(1.dp, c.glassHighlight, CircleShape)
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Rounded.ChevronLeft, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(26.dp))
-            }
-        }
     }
 
     if (showChangePin) {
         PinDialog(
-            title = strings.changePin,
+            title = strings.setOrChangePin,
             expectedPin = null,
             strings = strings,
             onDismiss = { showChangePin = false },
@@ -482,6 +520,45 @@ fun SettingsScreen(
                 onUpdateSettings(settings.copy(pinCode = newPin))
                 showChangePin = false
                 Toast.makeText(context, strings.pinUpdated, Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    unlockTargetCat?.let { cat ->
+        PinDialog(
+            title = "${strings.unlockCategory}: $cat",
+            expectedPin = settings.pinCode,
+            strings = strings,
+            onDismiss = { unlockTargetCat = null },
+            onConfirm = {
+                onUnlockCategory(cat)
+                unlockTargetCat = null
+            }
+        )
+    }
+
+    if (showResetPinConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetPinConfirm = false },
+            containerColor = c.surface,
+            title = { Text(strings.resetPinConfirmTitle, color = c.textPrimary, fontWeight = FontWeight.Bold) },
+            text = { Text(strings.resetPinConfirmBody, color = c.textSecondary, fontSize = 13.sp) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onResetPinAndLocks()
+                        showResetPinConfirm = false
+                        Toast.makeText(context, strings.pinResetDone, Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent)
+                ) {
+                    Text(strings.resetPinBtn, color = c.onAccent, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetPinConfirm = false }) {
+                    Text(strings.cancel, color = c.textSecondary)
+                }
             }
         )
     }
@@ -500,13 +577,7 @@ private fun FooterLinkText(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SettingsDivider() {
-    val c = LocalYlowColors.current
-    HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(horizontal = 16.dp))
-}
-
-@Composable
-private fun SettingsAccordionRow(
+private fun FotMobSettingsRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
@@ -520,15 +591,15 @@ private fun SettingsAccordionRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 15.dp),
+                .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            Icon(icon, contentDescription = title, tint = c.textPrimary, modifier = Modifier.size(22.dp))
+            Icon(icon, contentDescription = title, tint = c.textPrimary, modifier = Modifier.size(23.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 if (!expanded && subtitle.isNotBlank()) {
-                    Text(subtitle, color = c.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(subtitle, color = c.textSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Icon(
@@ -542,7 +613,7 @@ private fun SettingsAccordionRow(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                    .padding(start = 20.dp, end = 20.dp, bottom = 16.dp)
             ) {
                 content()
             }
@@ -560,8 +631,9 @@ private fun <T> SegmentedChoiceRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(c.surfaceElevated)
+            .clip(RoundedCornerShape(12.dp))
+            .background(c.surface)
+            .border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -570,7 +642,7 @@ private fun <T> SegmentedChoiceRow(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(11.dp))
+                    .clip(RoundedCornerShape(9.dp))
                     .background(if (active) c.accent else Color.Transparent)
                     .clickable { onSelect(value) }
                     .padding(vertical = 9.dp, horizontal = 6.dp),
@@ -578,7 +650,7 @@ private fun <T> SegmentedChoiceRow(
             ) {
                 Text(
                     text = label,
-                    color = if (active) Color.White else c.textPrimary,
+                    color = if (active) c.onAccent else c.textPrimary,
                     fontSize = 12.sp,
                     fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1

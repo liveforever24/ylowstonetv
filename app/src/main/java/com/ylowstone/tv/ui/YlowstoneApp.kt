@@ -10,10 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -29,8 +25,8 @@ import com.ylowstone.tv.data.AppPrefs
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.stringsFor
 import com.ylowstone.tv.model.*
+import com.ylowstone.tv.ui.components.FotMobBottomNavbar
 import com.ylowstone.tv.ui.components.MainTab
-import com.ylowstone.tv.ui.components.MorphingLiquidGlassNavbar
 import com.ylowstone.tv.ui.components.ProfileQuickDropdown
 import com.ylowstone.tv.ui.screens.*
 import com.ylowstone.tv.ui.theme.LocalYlowColors
@@ -39,6 +35,8 @@ import kotlinx.coroutines.launch
 
 private enum class AppStage {
     SPLASH,
+    WELCOME_QUOTE,
+    ONBOARDING_GUIDE,
     MODE_SELECT,
     PLAYLISTS,
     SETTINGS,
@@ -56,7 +54,8 @@ fun YlowstoneApp(
     onRequestLandscape: (Boolean) -> Unit,
     onRequestImmersive: (Boolean) -> Unit,
     onPipStateChanged: (eligible: Boolean, playing: Boolean) -> Unit,
-    onEnterSystemPip: () -> Unit
+    onEnterSystemPip: () -> Unit,
+    onExitApp: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -77,21 +76,9 @@ fun YlowstoneApp(
     var isLoading by remember { mutableStateOf(false) }
     var loadingMessage by remember { mutableStateOf("") }
 
-    // Top-right Quick Profile Dropdown & Quick Update Check Dialog
     var showProfileDropdown by remember { mutableStateOf(false) }
     var quickUpdateDialogInfo by remember { mutableStateOf<UpdateInfo?>(null) }
-
-    // Scroll-driven Morphing Navbar state (BitChord style!)
-    var isNavbarCompact by remember { mutableStateOf(false) }
-    val nestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < -14f) isNavbarCompact = true
-                else if (available.y > 14f) isNavbarCompact = false
-                return Offset.Zero
-            }
-        }
-    }
+    var lastBackPressTime by remember { mutableLongStateOf(0L) }
 
     // Shared Persistent Media3 Player
     var activeChannel by remember { mutableStateOf<ChannelItem?>(null) }
@@ -104,7 +91,7 @@ fun YlowstoneApp(
     var tracksVersion by remember { mutableIntStateOf(0) }
 
     val sharedPlayer = remember {
-        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.0")
+        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.1")
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dsFactory))
             .build()
@@ -178,7 +165,6 @@ fun YlowstoneApp(
         isLandscapeFullscreen = isTvMode || enterLandscape
     }
 
-    // Handle System PiP RemoteAction commands (Prev / Play-Pause / Next)
     LaunchedEffect(pipCommandNonce) {
         if (pipCommandNonce == 0) return@LaunchedEffect
         when (pipCommandAction) {
@@ -200,7 +186,6 @@ fun YlowstoneApp(
         onRequestImmersive(playerMode == PlayerMode.FULLSCREEN && isLandscapeFullscreen && !isInPipMode)
     }
 
-    // Sync System PiP eligibility + playing state for RemoteActions
     LaunchedEffect(activeChannel, isPlaying) {
         onPipStateChanged(activeChannel != null, isPlaying)
     }
@@ -210,9 +195,18 @@ fun YlowstoneApp(
         activeCounts = repo.db.getCountsByMediaType(profile.id)
         lockedCategories = prefs.getLockedCategories(profile.id)
         activeTab = MainTab.HOME
-        isNavbarCompact = false
         stage = AppStage.WORKSPACE
         homeDataVersion++
+    }
+
+    fun proceedAfterWelcome() {
+        if (!settings.hasSelectedMode) {
+            stage = AppStage.MODE_SELECT
+        } else if (playlists.isNotEmpty()) {
+            openWorkspace(playlists.first())
+        } else {
+            stage = AppStage.PLAYLISTS
+        }
     }
 
     fun runQuickUpdateCheck() {
@@ -264,11 +258,30 @@ fun YlowstoneApp(
         repo.db.getRecentHistoryAcrossPlaylists(allLockedMap, limit = 30)
     }
 
-    BackHandler(enabled = playerMode == PlayerMode.FULLSCREEN || (stage != AppStage.SPLASH && stage != AppStage.PLAYLISTS && stage != AppStage.MODE_SELECT)) {
+    fun handleDoubleBackExit() {
+        val now = System.currentTimeMillis()
+        if (now - lastBackPressTime <= 2000L) {
+            stopPlaybackCompletely()
+            onExitApp()
+        } else {
+            lastBackPressTime = now
+            Toast.makeText(context, strings.pressBackAgainExit, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Unified Back Handler + Double-Tap Back to Exit at root!
+    BackHandler(enabled = stage != AppStage.SPLASH) {
         when {
             playerMode == PlayerMode.FULLSCREEN -> {
                 playerMode = PlayerMode.FLOATING
                 isLandscapeFullscreen = false
+            }
+            stage == AppStage.WELCOME_QUOTE -> stage = AppStage.ONBOARDING_GUIDE
+            stage == AppStage.ONBOARDING_GUIDE -> {
+                val updated = settings.copy(hasSeenWelcome = true)
+                settings = updated
+                prefs.saveSettings(updated)
+                proceedAfterWelcome()
             }
             stage == AppStage.SETTINGS -> stage = returnStageAfterSettings
             stage == AppStage.WORKSPACE -> {
@@ -277,18 +290,22 @@ fun YlowstoneApp(
                         playerMode = PlayerMode.FLOATING
                     }
                     activeTab = MainTab.HOME
-                    isNavbarCompact = false
                 } else {
-                    if (activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
-                        playerMode = PlayerMode.FLOATING
-                    }
-                    stage = AppStage.PLAYLISTS
+                    handleDoubleBackExit()
                 }
             }
+            stage == AppStage.PLAYLISTS -> {
+                if (activePlaylist != null) {
+                    stage = AppStage.WORKSPACE
+                } else {
+                    handleDoubleBackExit()
+                }
+            }
+            else -> handleDoubleBackExit()
         }
     }
 
-    YlowstoneTheme(themeMode = settings.themeMode, stylePreset = settings.stylePreset) {
+    YlowstoneTheme(themeMode = settings.themeMode) {
         if (isInPipMode && activeChannel != null) {
             PipVideoSurface(exoPlayer = sharedPlayer, isPlaying = isPlaying)
             return@YlowstoneTheme
@@ -298,15 +315,32 @@ fun YlowstoneApp(
             when (stage) {
                 AppStage.SPLASH -> {
                     SplashOverlayScreen {
-                        stage = if (!settings.hasSelectedMode) {
-                            AppStage.MODE_SELECT
-                        } else if (playlists.isNotEmpty()) {
-                            openWorkspace(playlists.first())
-                            AppStage.WORKSPACE
+                        if (!settings.hasSeenWelcome) {
+                            stage = AppStage.WELCOME_QUOTE
                         } else {
-                            AppStage.PLAYLISTS
+                            proceedAfterWelcome()
                         }
                     }
+                }
+
+                AppStage.WELCOME_QUOTE -> {
+                    WelcomeQuotePopupScreen(
+                        appIcon = settings.appIcon,
+                        strings = strings,
+                        onDismissToGuide = { stage = AppStage.ONBOARDING_GUIDE }
+                    )
+                }
+
+                AppStage.ONBOARDING_GUIDE -> {
+                    OnboardingTutorialScreen(
+                        strings = strings,
+                        onFinish = {
+                            val updated = settings.copy(hasSeenWelcome = true)
+                            settings = updated
+                            prefs.saveSettings(updated)
+                            proceedAfterWelcome()
+                        }
+                    )
                 }
 
                 AppStage.MODE_SELECT -> {
@@ -318,7 +352,8 @@ fun YlowstoneApp(
                             val updated = settings.copy(deviceMode = chosen, hasSelectedMode = true)
                             settings = updated
                             prefs.saveSettings(updated)
-                            stage = AppStage.PLAYLISTS
+                            if (playlists.isNotEmpty()) openWorkspace(playlists.first())
+                            else stage = AppStage.PLAYLISTS
                         }
                     )
                 }
@@ -359,12 +394,31 @@ fun YlowstoneApp(
                 AppStage.SETTINGS -> {
                     SettingsScreen(
                         settings = settings,
+                        lockedCategories = lockedCategories,
                         strings = strings,
                         repo = repo,
                         onBack = { stage = returnStageAfterSettings },
                         onUpdateSettings = { updated ->
                             settings = updated
                             prefs.saveSettings(updated)
+                        },
+                        onUnlockCategory = { cat ->
+                            val plId = activePlaylist?.id ?: return@SettingsScreen
+                            val next = lockedCategories - cat
+                            lockedCategories = next
+                            prefs.setLockedCategories(plId, next)
+                            homeDataVersion++
+                        },
+                        onResetPinAndLocks = {
+                            val updated = settings.copy(pinCode = "1234")
+                            settings = updated
+                            prefs.saveSettings(updated)
+                            prefs.clearAllLockedCategories(playlists.map { it.id })
+                            lockedCategories = emptySet()
+                            homeDataVersion++
+                        },
+                        onReplayGuide = {
+                            stage = AppStage.WELCOME_QUOTE
                         }
                     )
                 }
@@ -374,170 +428,162 @@ fun YlowstoneApp(
                     if (pl == null) {
                         stage = AppStage.PLAYLISTS
                     } else {
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            when (activeTab) {
-                                MainTab.HOME -> HomeScreen(
-                                    activePlaylist = pl,
-                                    allPlaylists = playlists,
-                                    counts = activeCounts,
-                                    favourites = homeFavourites,
-                                    history = homeHistory,
-                                    strings = strings,
-                                    isTvMode = isTvMode,
-                                    nestedScrollConnection = nestedScrollConnection,
-                                    onSwitchPlaylist = { picked ->
-                                        val counts = repo.db.getCountsByMediaType(picked.id)
-                                        if (counts.values.sum() == 0) syncAndEnter(picked, null, enterAfter = true)
-                                        else openWorkspace(picked)
-                                    },
-                                    onOpenPlaylistManager = {
-                                        if (activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
-                                            playerMode = PlayerMode.FLOATING
+                        // Clean FotMob Full-Width Column Layout (Zero overlap with bottom navbar!)
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                                when (activeTab) {
+                                    MainTab.HOME -> HomeScreen(
+                                        activePlaylist = pl,
+                                        allPlaylists = playlists,
+                                        counts = activeCounts,
+                                        favourites = homeFavourites,
+                                        history = homeHistory,
+                                        strings = strings,
+                                        isTvMode = isTvMode,
+                                        onSwitchPlaylist = { picked ->
+                                            val counts = repo.db.getCountsByMediaType(picked.id)
+                                            if (counts.values.sum() == 0) syncAndEnter(picked, null, enterAfter = true)
+                                            else openWorkspace(picked)
+                                        },
+                                        onOpenPlaylistManager = {
+                                            if (activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
+                                                playerMode = PlayerMode.FLOATING
+                                            }
+                                            stage = AppStage.PLAYLISTS
+                                        },
+                                        onOpenSection = { type ->
+                                            activeTab = when (type) {
+                                                MediaType.LIVE -> MainTab.LIVE
+                                                MediaType.MOVIE -> MainTab.MOVIES
+                                                MediaType.SERIES -> MainTab.SERIES
+                                            }
+                                        },
+                                        onRefreshActive = { syncAndEnter(pl, null, enterAfter = false) },
+                                        onPlayTaggedChannel = { tagged, list ->
+                                            launchPlayer(tagged.channel, list.map { it.channel }, isTvMode)
+                                        },
+                                        onOpenProfileMenu = {
+                                            returnStageAfterSettings = AppStage.WORKSPACE
+                                            showProfileDropdown = true
                                         }
-                                        stage = AppStage.PLAYLISTS
-                                    },
-                                    onOpenSection = { type ->
-                                        isNavbarCompact = false
-                                        activeTab = when (type) {
-                                            MediaType.LIVE -> MainTab.LIVE
-                                            MediaType.MOVIE -> MainTab.MOVIES
-                                            MediaType.SERIES -> MainTab.SERIES
+                                    )
+
+                                    MainTab.LIVE -> BrowseScreen(
+                                        playlist = pl,
+                                        mediaType = MediaType.LIVE,
+                                        repo = repo,
+                                        sharedPlayer = sharedPlayer,
+                                        activeChannel = activeChannel,
+                                        playerMode = playerMode,
+                                        lockedCategories = lockedCategories,
+                                        pinCode = settings.pinCode,
+                                        strings = strings,
+                                        isTvMode = isTvMode,
+                                        onToggleLockCategory = { cat ->
+                                            val next = if (lockedCategories.contains(cat)) lockedCategories - cat else lockedCategories + cat
+                                            lockedCategories = next
+                                            prefs.setLockedCategories(pl.id, next)
+                                            homeDataVersion++
+                                        },
+                                        onToggleFavorite = { ch ->
+                                            repo.db.toggleFavorite(ch.id, !ch.isFavorite)
+                                            homeDataVersion++
+                                        },
+                                        onSelectChannelInline = { ch, list ->
+                                            playerMode = PlayerMode.NONE
+                                            playStream(ch, list)
+                                        },
+                                        onLaunchPlayer = { ch, list, landscape -> launchPlayer(ch, list, landscape) },
+                                        onFloatCurrent = { playerMode = PlayerMode.FLOATING },
+                                        onOpenProfileMenu = {
+                                            returnStageAfterSettings = AppStage.WORKSPACE
+                                            showProfileDropdown = true
                                         }
-                                    },
-                                    onRefreshActive = { syncAndEnter(pl, null, enterAfter = false) },
-                                    onPlayTaggedChannel = { tagged, list ->
-                                        launchPlayer(tagged.channel, list.map { it.channel }, isTvMode)
-                                    },
-                                    onOpenProfileMenu = {
-                                        returnStageAfterSettings = AppStage.WORKSPACE
-                                        showProfileDropdown = true
-                                    }
-                                )
+                                    )
 
-                                MainTab.LIVE -> BrowseScreen(
-                                    playlist = pl,
-                                    mediaType = MediaType.LIVE,
-                                    repo = repo,
-                                    sharedPlayer = sharedPlayer,
-                                    activeChannel = activeChannel,
-                                    playerMode = playerMode,
-                                    lockedCategories = lockedCategories,
-                                    pinCode = settings.pinCode,
-                                    strings = strings,
-                                    isTvMode = isTvMode,
-                                    nestedScrollConnection = nestedScrollConnection,
-                                    onToggleLockCategory = { cat ->
-                                        val next = if (lockedCategories.contains(cat)) lockedCategories - cat else lockedCategories + cat
-                                        lockedCategories = next
-                                        prefs.setLockedCategories(pl.id, next)
-                                        homeDataVersion++
-                                    },
-                                    onToggleFavorite = { ch ->
-                                        repo.db.toggleFavorite(ch.id, !ch.isFavorite)
-                                        homeDataVersion++
-                                    },
-                                    onSelectChannelInline = { ch, list ->
-                                        playerMode = PlayerMode.NONE
-                                        playStream(ch, list)
-                                    },
-                                    onLaunchPlayer = { ch, list, landscape -> launchPlayer(ch, list, landscape) },
-                                    onFloatCurrent = { playerMode = PlayerMode.FLOATING },
-                                    onOpenProfileMenu = {
-                                        returnStageAfterSettings = AppStage.WORKSPACE
-                                        showProfileDropdown = true
-                                    }
-                                )
+                                    MainTab.MOVIES -> BrowseScreen(
+                                        playlist = pl,
+                                        mediaType = MediaType.MOVIE,
+                                        repo = repo,
+                                        sharedPlayer = sharedPlayer,
+                                        activeChannel = activeChannel,
+                                        playerMode = playerMode,
+                                        lockedCategories = lockedCategories,
+                                        pinCode = settings.pinCode,
+                                        strings = strings,
+                                        isTvMode = isTvMode,
+                                        onToggleLockCategory = { cat ->
+                                            val next = if (lockedCategories.contains(cat)) lockedCategories - cat else lockedCategories + cat
+                                            lockedCategories = next
+                                            prefs.setLockedCategories(pl.id, next)
+                                            homeDataVersion++
+                                        },
+                                        onToggleFavorite = { ch ->
+                                            repo.db.toggleFavorite(ch.id, !ch.isFavorite)
+                                            homeDataVersion++
+                                        },
+                                        onSelectChannelInline = { ch, list -> launchPlayer(ch, list, isTvMode) },
+                                        onLaunchPlayer = { ch, list, landscape -> launchPlayer(ch, list, landscape) },
+                                        onFloatCurrent = { playerMode = PlayerMode.FLOATING },
+                                        onOpenProfileMenu = {
+                                            returnStageAfterSettings = AppStage.WORKSPACE
+                                            showProfileDropdown = true
+                                        }
+                                    )
 
-                                MainTab.MOVIES -> BrowseScreen(
-                                    playlist = pl,
-                                    mediaType = MediaType.MOVIE,
-                                    repo = repo,
-                                    sharedPlayer = sharedPlayer,
-                                    activeChannel = activeChannel,
-                                    playerMode = playerMode,
-                                    lockedCategories = lockedCategories,
-                                    pinCode = settings.pinCode,
-                                    strings = strings,
-                                    isTvMode = isTvMode,
-                                    nestedScrollConnection = nestedScrollConnection,
-                                    onToggleLockCategory = { cat ->
-                                        val next = if (lockedCategories.contains(cat)) lockedCategories - cat else lockedCategories + cat
-                                        lockedCategories = next
-                                        prefs.setLockedCategories(pl.id, next)
-                                        homeDataVersion++
-                                    },
-                                    onToggleFavorite = { ch ->
-                                        repo.db.toggleFavorite(ch.id, !ch.isFavorite)
-                                        homeDataVersion++
-                                    },
-                                    onSelectChannelInline = { ch, list -> launchPlayer(ch, list, isTvMode) },
-                                    onLaunchPlayer = { ch, list, landscape -> launchPlayer(ch, list, landscape) },
-                                    onFloatCurrent = { playerMode = PlayerMode.FLOATING },
-                                    onOpenProfileMenu = {
-                                        returnStageAfterSettings = AppStage.WORKSPACE
-                                        showProfileDropdown = true
-                                    }
-                                )
+                                    MainTab.SERIES -> BrowseScreen(
+                                        playlist = pl,
+                                        mediaType = MediaType.SERIES,
+                                        repo = repo,
+                                        sharedPlayer = sharedPlayer,
+                                        activeChannel = activeChannel,
+                                        playerMode = playerMode,
+                                        lockedCategories = lockedCategories,
+                                        pinCode = settings.pinCode,
+                                        strings = strings,
+                                        isTvMode = isTvMode,
+                                        onToggleLockCategory = { cat ->
+                                            val next = if (lockedCategories.contains(cat)) lockedCategories - cat else lockedCategories + cat
+                                            lockedCategories = next
+                                            prefs.setLockedCategories(pl.id, next)
+                                            homeDataVersion++
+                                        },
+                                        onToggleFavorite = { ch ->
+                                            repo.db.toggleFavorite(ch.id, !ch.isFavorite)
+                                            homeDataVersion++
+                                        },
+                                        onSelectChannelInline = { ch, list -> launchPlayer(ch, list, isTvMode) },
+                                        onLaunchPlayer = { ch, list, landscape -> launchPlayer(ch, list, landscape) },
+                                        onFloatCurrent = { playerMode = PlayerMode.FLOATING },
+                                        onOpenProfileMenu = {
+                                            returnStageAfterSettings = AppStage.WORKSPACE
+                                            showProfileDropdown = true
+                                        }
+                                    )
 
-                                MainTab.SERIES -> BrowseScreen(
-                                    playlist = pl,
-                                    mediaType = MediaType.SERIES,
-                                    repo = repo,
-                                    sharedPlayer = sharedPlayer,
-                                    activeChannel = activeChannel,
-                                    playerMode = playerMode,
-                                    lockedCategories = lockedCategories,
-                                    pinCode = settings.pinCode,
-                                    strings = strings,
-                                    isTvMode = isTvMode,
-                                    nestedScrollConnection = nestedScrollConnection,
-                                    onToggleLockCategory = { cat ->
-                                        val next = if (lockedCategories.contains(cat)) lockedCategories - cat else lockedCategories + cat
-                                        lockedCategories = next
-                                        prefs.setLockedCategories(pl.id, next)
-                                        homeDataVersion++
-                                    },
-                                    onToggleFavorite = { ch ->
-                                        repo.db.toggleFavorite(ch.id, !ch.isFavorite)
-                                        homeDataVersion++
-                                    },
-                                    onSelectChannelInline = { ch, list -> launchPlayer(ch, list, isTvMode) },
-                                    onLaunchPlayer = { ch, list, landscape -> launchPlayer(ch, list, landscape) },
-                                    onFloatCurrent = { playerMode = PlayerMode.FLOATING },
-                                    onOpenProfileMenu = {
-                                        returnStageAfterSettings = AppStage.WORKSPACE
-                                        showProfileDropdown = true
-                                    }
-                                )
-
-                                MainTab.SEARCH -> SearchScreen(
-                                    activePlaylist = pl,
-                                    lockedByPlaylist = allLockedMap,
-                                    repo = repo,
-                                    strings = strings,
-                                    isTvMode = isTvMode,
-                                    nestedScrollConnection = nestedScrollConnection,
-                                    onPlayTagged = { tagged, list ->
-                                        launchPlayer(tagged.channel, list.map { it.channel }, isTvMode)
-                                    },
-                                    onToggleFavorite = { ch ->
-                                        repo.db.toggleFavorite(ch.id, !ch.isFavorite)
-                                        homeDataVersion++
-                                    },
-                                    onOpenProfileMenu = {
-                                        returnStageAfterSettings = AppStage.WORKSPACE
-                                        showProfileDropdown = true
-                                    }
-                                )
+                                    MainTab.SEARCH -> SearchScreen(
+                                        activePlaylist = pl,
+                                        lockedByPlaylist = allLockedMap,
+                                        repo = repo,
+                                        strings = strings,
+                                        isTvMode = isTvMode,
+                                        onPlayTagged = { tagged, list ->
+                                            launchPlayer(tagged.channel, list.map { it.channel }, isTvMode)
+                                        },
+                                        onToggleFavorite = { ch ->
+                                            repo.db.toggleFavorite(ch.id, !ch.isFavorite)
+                                            homeDataVersion++
+                                        },
+                                        onOpenProfileMenu = {
+                                            returnStageAfterSettings = AppStage.WORKSPACE
+                                            showProfileDropdown = true
+                                        }
+                                    )
+                                }
                             }
 
-                            // Morphing Liquid Glass Bottom Navigation Bar!
-                            MorphingLiquidGlassNavbar(
+                            FotMobBottomNavbar(
                                 selectedTab = activeTab,
-                                isCompact = isNavbarCompact,
-                                activeChannel = activeChannel,
-                                activePlaylistName = pl.name,
-                                isPlaying = isPlaying,
                                 strings = strings,
                                 isTvMode = isTvMode,
                                 onSelectTab = { nextTab ->
@@ -545,33 +591,19 @@ fun YlowstoneApp(
                                         playerMode = PlayerMode.FLOATING
                                     }
                                     activeTab = nextTab
-                                    isNavbarCompact = false
-                                },
-                                onTogglePlayPause = {
-                                    if (sharedPlayer.isPlaying) sharedPlayer.pause() else sharedPlayer.play()
-                                },
-                                onOpenNowPlaying = {
-                                    if (activeChannel != null) {
-                                        playerMode = PlayerMode.FULLSCREEN
-                                        isLandscapeFullscreen = isTvMode
-                                    }
-                                },
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .navigationBarsPadding()
-                                    .padding(bottom = 12.dp)
+                                }
                             )
                         }
                     }
                 }
             }
 
-            // Top-Right Anchored Quick Profile Dropdown (BitChord position!)
+            // Top-Right Anchored Quick Profile Dropdown
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .systemBarsPadding()
-                    .padding(top = 54.dp, end = 16.dp)
+                    .padding(top = 52.dp, end = 16.dp)
             ) {
                 ProfileQuickDropdown(
                     expanded = showProfileDropdown,
@@ -598,7 +630,7 @@ fun YlowstoneApp(
                 )
             }
 
-            // In-App Draggable Rounded Floating Player (Pure YouTube PiP!)
+            // Pure YouTube PiP Floating Mini-Player
             if (playerMode == PlayerMode.FLOATING && activeChannel != null && stage != AppStage.SPLASH) {
                 DraggableFloatingPlayer(
                     exoPlayer = sharedPlayer,
@@ -615,11 +647,11 @@ fun YlowstoneApp(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
-                        .padding(end = 14.dp, bottom = 84.dp)
+                        .padding(end = 14.dp, bottom = 74.dp)
                 )
             }
 
-            // Fullscreen Player Overlay (Manual orientation + In-Landscape Search!)
+            // Fullscreen Player Overlay
             if (playerMode == PlayerMode.FULLSCREEN && activeChannel != null) {
                 FullscreenPlayerScreen(
                     exoPlayer = sharedPlayer,
@@ -640,13 +672,12 @@ fun YlowstoneApp(
                         playerMode = PlayerMode.FLOATING
                         isLandscapeFullscreen = false
                     },
-                    onEnterSystemPip = onEnterSystemPip,
                     onTracksModified = { tracksVersion++ }
                 )
             }
         }
 
-        // Quick Update Available Dialog (triggered from top-right Profile Dropdown)
+        // Quick Update Dialog
         quickUpdateDialogInfo?.let { info ->
             val c = LocalYlowColors.current
             AlertDialog(
@@ -666,9 +697,9 @@ fun YlowstoneApp(
                             quickUpdateDialogInfo = null
                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = c.accent)
+                        colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent)
                     ) {
-                        Text(strings.downloadUpdateBrowser, color = Color.White)
+                        Text(strings.downloadUpdateBrowser, color = c.onAccent, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {

@@ -30,8 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -73,7 +71,6 @@ fun BrowseScreen(
     pinCode: String,
     strings: AppStrings,
     isTvMode: Boolean,
-    nestedScrollConnection: NestedScrollConnection,
     onToggleLockCategory: (String) -> Unit,
     onToggleFavorite: (ChannelItem) -> Unit,
     onSelectChannelInline: (ChannelItem, List<ChannelItem>) -> Unit,
@@ -85,7 +82,6 @@ fun BrowseScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // In Portrait: null = Vertical Categories list; non-null = Channels inside that category (swipe down to return!)
     var openedCategory by remember(playlist.id, mediaType) { mutableStateOf<String?>(null) }
     var landscapeCategory by remember(playlist.id, mediaType) { mutableStateOf("ALL") }
     var catFilterQuery by remember(playlist.id, mediaType) { mutableStateOf("") }
@@ -132,7 +128,7 @@ fun BrowseScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
-            .systemBarsPadding()
+            .statusBarsPadding()
     ) {
         val isPortrait = maxWidth < 600.dp
         val activeCatForQuery = if (isPortrait) (openedCategory ?: "ALL") else landscapeCategory
@@ -162,20 +158,22 @@ fun BrowseScreen(
         }
 
         if (isPortrait) {
-            // ---- PORTRAIT: VERTICAL CATEGORIES -> SWIPE-DOWN CHANNEL SHEET ----
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp)
             ) {
                 Spacer(Modifier.height(10.dp))
-                // Top Header with Section Title + Yellow-Y Profile Menu
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
                         if (openedCategory != null) {
                             IconButton(
                                 onClick = { openedCategory = null; channelSearchQuery = "" },
@@ -228,7 +226,6 @@ fun BrowseScreen(
                     modifier = Modifier.weight(1f).fillMaxWidth()
                 ) { currentCat ->
                     if (currentCat == null) {
-                        // VERTICAL CATEGORY LIST (turun ke bawah!)
                         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = catFilterQuery,
@@ -243,13 +240,13 @@ fun BrowseScreen(
                                     }
                                 },
                                 singleLine = true,
-                                shape = RoundedCornerShape(18.dp),
+                                shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier.fillMaxWidth()
                             )
 
                             LazyColumn(
-                                modifier = Modifier.weight(1f).nestedScroll(nestedScrollConnection),
-                                contentPadding = PaddingValues(bottom = 104.dp),
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(bottom = 20.dp),
                                 verticalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 item {
@@ -314,17 +311,15 @@ fun BrowseScreen(
                             }
                         }
                     } else {
-                        // CHANNEL LIST INSIDE SELECTED CATEGORY (with Swipe-Down Handle!)
                         Column(
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // Swipe-down grab bar to dismiss back to categories
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(c.surface.copy(alpha = 0.7f))
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(c.surface)
                                     .pointerInput(currentCat) {
                                         var totalDrag = 0f
                                         detectVerticalDragGestures(
@@ -352,7 +347,6 @@ fun BrowseScreen(
                                 )
                             }
 
-                            // In-Category Channel Search
                             OutlinedTextField(
                                 value = channelSearchQuery,
                                 onValueChange = { channelSearchQuery = it },
@@ -366,18 +360,17 @@ fun BrowseScreen(
                                     }
                                 },
                                 singleLine = true,
-                                shape = RoundedCornerShape(18.dp),
+                                shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            // Inline Live Preview Box (when watching inline and NOT floating)
                             if (mediaType == MediaType.LIVE && activeChannel != null && playerMode == PlayerMode.NONE) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(20.dp))
+                                        .clip(RoundedCornerShape(18.dp))
                                         .background(c.surface)
-                                        .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
+                                        .border(1.dp, c.glassBorder, RoundedCornerShape(18.dp))
                                         .padding(8.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
@@ -385,7 +378,7 @@ fun BrowseScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .aspectRatio(16f / 9f)
-                                            .clip(RoundedCornerShape(14.dp))
+                                            .clip(RoundedCornerShape(12.dp))
                                             .background(Color.Black)
                                     ) {
                                         AndroidView(
@@ -421,13 +414,13 @@ fun BrowseScreen(
                                             }
                                             Button(
                                                 onClick = { onLaunchPlayer(activeChannel, channels, true) },
-                                                colors = ButtonDefaults.buttonColors(containerColor = c.accent),
+                                                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                                                 shape = RoundedCornerShape(12.dp),
                                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                                             ) {
-                                                Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
                                                 Spacer(Modifier.width(4.dp))
-                                                Text(strings.fullscreen, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Text(strings.fullscreen, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
                                     }
@@ -436,8 +429,8 @@ fun BrowseScreen(
 
                             if (mediaType == MediaType.LIVE) {
                                 LazyColumn(
-                                    modifier = Modifier.weight(1f).nestedScroll(nestedScrollConnection),
-                                    contentPadding = PaddingValues(bottom = 104.dp),
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(bottom = 20.dp),
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     items(channels, key = { it.id }) { ch ->
@@ -464,7 +457,6 @@ fun BrowseScreen(
                                 PosterGrid(
                                     channels = channels,
                                     isTvMode = isTvMode,
-                                    nestedScrollConnection = nestedScrollConnection,
                                     onOpenItem = { item ->
                                         if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM) {
                                             activeSeries = item
@@ -490,20 +482,20 @@ fun BrowseScreen(
                 }
             }
         } else {
-            // ---- LANDSCAPE / ANDROID TV SPLIT-SCREEN LAYOUT ----
+            // Landscape / Android TV split-screen
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 84.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Column(
                     modifier = Modifier
                         .width(240.dp)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(c.surface)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
+                        .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
                         .padding(10.dp)
                 ) {
                     OutlinedTextField(
@@ -513,7 +505,7 @@ fun BrowseScreen(
                         leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
                         singleLine = true,
                         textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(6.dp))
@@ -554,9 +546,9 @@ fun BrowseScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .clip(RoundedCornerShape(20.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(c.surface)
-                            .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
+                            .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
                             .padding(8.dp),
                         verticalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
@@ -582,9 +574,9 @@ fun BrowseScreen(
                         modifier = Modifier
                             .weight(0.95f)
                             .fillMaxHeight()
-                            .clip(RoundedCornerShape(20.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(c.surface)
-                            .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
+                            .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -592,7 +584,7 @@ fun BrowseScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(Color.Black)
                                 .clickable(enabled = activeChannel != null) {
                                     activeChannel?.let { onLaunchPlayer(it, channels, true) }
@@ -631,12 +623,12 @@ fun BrowseScreen(
                                 }
                                 Button(
                                     onClick = { onLaunchPlayer(ch, channels, true) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = c.accent),
+                                    colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text(strings.fullscreen, color = Color.White, fontSize = 12.sp)
+                                    Text(strings.fullscreen, color = c.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -645,7 +637,6 @@ fun BrowseScreen(
                     PosterGrid(
                         channels = channels,
                         isTvMode = isTvMode,
-                        nestedScrollConnection = nestedScrollConnection,
                         onOpenItem = { item ->
                             if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM) {
                                 activeSeries = item
@@ -670,7 +661,6 @@ fun BrowseScreen(
         }
     }
 
-    // PIN Dialog
     pinActionCategory?.let { catName ->
         val currentlyLocked = lockedCategories.contains(catName)
         val dialogTitle = when (pinActionMode) {
@@ -700,7 +690,6 @@ fun BrowseScreen(
         )
     }
 
-    // Series Episodes Dialog
     activeSeries?.let { series ->
         AlertDialog(
             onDismissRequest = { activeSeries = null },
@@ -778,9 +767,9 @@ private fun VerticalCategoryCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (highlight) c.accent.copy(alpha = 0.16f) else c.surface)
-            .border(1.dp, if (highlight) c.accent.copy(alpha = 0.45f) else c.glassBorder, RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (highlight) c.accentContainer else c.surface)
+            .border(1.dp, if (highlight) c.accent.copy(alpha = 0.5f) else c.glassBorder, RoundedCornerShape(14.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -795,10 +784,10 @@ private fun VerticalCategoryCard(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (highlight || locked) c.accent.copy(alpha = 0.22f) else c.surfaceElevated),
+                    .background(if (highlight || locked) c.accent else c.surfaceElevated),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = if (highlight || locked) c.accent else c.textPrimary, modifier = Modifier.size(18.dp))
+                Icon(icon, contentDescription = null, tint = if (highlight || locked) c.onAccent else c.textPrimary, modifier = Modifier.size(18.dp))
             }
             Text(
                 text = name,
@@ -828,10 +817,10 @@ private fun ChannelListRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(15.dp))
-            .background(if (active) c.accent.copy(alpha = 0.20f) else c.surface)
-            .border(1.dp, if (active) c.accent.copy(alpha = 0.55f) else c.glassBorder, RoundedCornerShape(15.dp))
-            .tvFocusBorder(isTvMode, RoundedCornerShape(15.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (active) c.accentContainer else c.surface)
+            .border(1.dp, if (active) c.accent else c.glassBorder, RoundedCornerShape(14.dp))
+            .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -864,7 +853,6 @@ private fun ChannelListRow(
 private fun PosterGrid(
     channels: List<ChannelItem>,
     isTvMode: Boolean,
-    nestedScrollConnection: NestedScrollConnection,
     onOpenItem: (ChannelItem) -> Unit,
     onToggleFav: (ChannelItem) -> Unit,
     modifier: Modifier = Modifier
@@ -873,18 +861,18 @@ private fun PosterGrid(
     val context = LocalContext.current
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 112.dp),
-        contentPadding = PaddingValues(bottom = 104.dp),
+        contentPadding = PaddingValues(bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = modifier.nestedScroll(nestedScrollConnection)
+        modifier = modifier
     ) {
         items(channels, key = { it.id }) { item ->
             Column(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(c.surface)
-                    .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
-                    .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
+                    .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                    .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
                     .clickable { onOpenItem(item) }
             ) {
                 Box(
@@ -964,11 +952,11 @@ private fun CategoryRowItem(
             modifier = Modifier.weight(1f)
         ) {
             if (locked) {
-                Icon(Icons.Rounded.Lock, contentDescription = "Locked", tint = if (selected) Color.White else c.accent, modifier = Modifier.size(14.dp))
+                Icon(Icons.Rounded.Lock, contentDescription = "Locked", tint = if (selected) c.onAccent else c.accent, modifier = Modifier.size(14.dp))
             }
             Text(
                 text = name,
-                color = if (selected) Color.White else c.textPrimary,
+                color = if (selected) c.onAccent else c.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
@@ -977,7 +965,7 @@ private fun CategoryRowItem(
         }
         Text(
             text = count.toString(),
-            color = if (selected) Color.White.copy(alpha = 0.85f) else c.textSecondary,
+            color = if (selected) c.onAccent.copy(alpha = 0.8f) else c.textSecondary,
             fontSize = 11.sp
         )
     }

@@ -138,7 +138,7 @@ fun PlaylistManagerScreen(
                         Spacer(Modifier.height(6.dp))
                         Button(
                             onClick = { editingProfile = null; showEditor = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = c.accent),
+                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.height(48.dp)
                         ) {
@@ -358,7 +358,7 @@ fun PlaylistManagerScreen(
                                 clipboard.setText(AnnotatedString(target.buildShareableLink(streamFormat)))
                                 Toast.makeText(context, strings.copied, Toast.LENGTH_SHORT).show()
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = c.accent),
+                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Rounded.ContentCopy, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -589,9 +589,9 @@ private fun PlaylistEditorDialog(
                         pickedFileUri
                     )
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = c.accent)
+                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent)
             ) {
-                Text(strings.saveAndLoad, color = Color.White)
+                Text(strings.saveAndLoad, color = c.onAccent, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

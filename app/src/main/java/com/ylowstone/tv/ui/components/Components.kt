@@ -1,15 +1,6 @@
 package com.ylowstone.tv.ui.components
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,9 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -48,7 +37,6 @@ import com.ylowstone.tv.BuildConfig
 import com.ylowstone.tv.R
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.AppIconOption
-import com.ylowstone.tv.model.ChannelItem
 import com.ylowstone.tv.model.DeviceMode
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 
@@ -57,6 +45,7 @@ fun YlowstoneLogoBadge(
     iconOption: AppIconOption = AppIconOption.OBSIDIAN,
     size: Dp = 42.dp
 ) {
+    val c = LocalYlowColors.current
     Image(
         painter = painterResource(id = iconOption.previewRes),
         contentDescription = "YlowstoneTV",
@@ -64,7 +53,7 @@ fun YlowstoneLogoBadge(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .border(1.dp, Color.White.copy(alpha = 0.20f), CircleShape)
+            .border(1.dp, c.glassBorder, CircleShape)
     )
 }
 
@@ -74,12 +63,12 @@ fun ProfileYBadgeButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val c = LocalYlowColors.current
     Box(
         modifier = modifier
-            .size(40.dp)
-            .shadow(10.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.45f))
+            .size(38.dp)
             .clip(CircleShape)
-            .border(1.5.dp, Color.White.copy(alpha = 0.30f), CircleShape)
+            .border(1.5.dp, c.glassBorder, CircleShape)
             .tvFocusBorder(isTvMode, CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -109,13 +98,12 @@ fun ProfileQuickDropdown(
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(22.dp),
-        containerColor = if (c.isDark) Color(0xF0181820) else Color(0xF7FFFFFF),
+        shape = RoundedCornerShape(18.dp),
+        containerColor = c.surface,
         modifier = Modifier
             .width(250.dp)
-            .border(1.dp, c.glassHighlight, RoundedCornerShape(22.dp))
+            .border(1.dp, c.glassBorder, RoundedCornerShape(18.dp))
     ) {
-        // Header info
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -148,21 +136,18 @@ fun ProfileQuickDropdown(
 
         HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(horizontal = 12.dp))
 
-        // Settings
         DropdownMenuItem(
             text = { Text(strings.settings, color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium) },
             leadingIcon = { Icon(Icons.Rounded.Settings, contentDescription = null, tint = c.textPrimary, modifier = Modifier.size(20.dp)) },
             onClick = { onDismiss(); onOpenSettings() }
         )
 
-        // Manage / Switch Playlist
         DropdownMenuItem(
             text = { Text(strings.managePlaylists, color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium) },
             leadingIcon = { Icon(Icons.Rounded.SwitchAccount, contentDescription = null, tint = c.textPrimary, modifier = Modifier.size(20.dp)) },
             onClick = { onDismiss(); onManagePlaylists() }
         )
 
-        // Inline Switch Mode: Smartphone / TV
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
             Text(strings.switchModeLabel, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(6.dp))
@@ -189,11 +174,11 @@ fun ProfileQuickDropdown(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Icon(pair.first, contentDescription = null, tint = if (active) Color.White else c.textSecondary, modifier = Modifier.size(14.dp))
+                        Icon(pair.first, contentDescription = null, tint = if (active) c.onAccent else c.textSecondary, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(
                             text = pair.second,
-                            color = if (active) Color.White else c.textPrimary,
+                            color = if (active) c.onAccent else c.textPrimary,
                             fontSize = 11.sp,
                             fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                             maxLines = 1
@@ -205,7 +190,6 @@ fun ProfileQuickDropdown(
 
         HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(horizontal = 12.dp))
 
-        // Bottom: Check for Updates
         DropdownMenuItem(
             text = { Text(strings.checkUpdates, color = c.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) },
             leadingIcon = { Icon(Icons.Rounded.SystemUpdate, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp)) },
@@ -217,7 +201,7 @@ fun ProfileQuickDropdown(
 @Composable
 fun Modifier.tvFocusBorder(
     isTvMode: Boolean,
-    shape: Shape = RoundedCornerShape(16.dp)
+    shape: Shape = RoundedCornerShape(14.dp)
 ): Modifier {
     val accent = LocalYlowColors.current.accent
     var focused by remember { mutableStateOf(false) }
@@ -235,225 +219,76 @@ fun Modifier.tvFocusBorder(
 
 enum class MainTab { HOME, LIVE, MOVIES, SERIES, SEARCH }
 
+/**
+ * Clean FotMob-inspired full-width bottom navigation bar:
+ * Exact FotMob position, flat height, 5 evenly distributed icon + label columns,
+ * highlighted with Google Pixel Fog accent.
+ */
 @Composable
-fun MorphingLiquidGlassNavbar(
+fun FotMobBottomNavbar(
     selectedTab: MainTab,
-    isCompact: Boolean,
-    activeChannel: ChannelItem?,
-    activePlaylistName: String,
-    isPlaying: Boolean,
     strings: AppStrings,
     isTvMode: Boolean,
     onSelectTab: (MainTab) -> Unit,
-    onTogglePlayPause: () -> Unit,
-    onOpenNowPlaying: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val c = LocalYlowColors.current
+    val items = listOf(
+        Triple(MainTab.HOME, Icons.Rounded.Home, strings.home),
+        Triple(MainTab.LIVE, Icons.Rounded.LiveTv, strings.liveTv),
+        Triple(MainTab.MOVIES, Icons.Rounded.Movie, strings.movies),
+        Triple(MainTab.SERIES, Icons.Rounded.Tv, strings.series),
+        Triple(MainTab.SEARCH, Icons.Rounded.Search, strings.search)
+    )
 
-    AnimatedContent(
-        targetState = isCompact && !isTvMode,
-        transitionSpec = {
-            (fadeIn(tween(220)) + scaleIn(initialScale = 0.94f, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)))
-                .togetherWith(fadeOut(tween(180)) + scaleOut(targetScale = 0.95f))
-        },
-        label = "morphNavbar",
+    Column(
         modifier = modifier
-    ) { compact ->
-        if (compact) {
-            // ---- BITChORD-STYLE COLLAPSED 3-PART LIQUID GLASS BAR ----
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Left Circle: Home
-                LiquidGlassCircleButton(
-                    icon = Icons.Rounded.Home,
-                    active = selectedTab == MainTab.HOME,
-                    onClick = { onSelectTab(MainTab.HOME) }
+            .fillMaxWidth()
+            .background(c.navBarBg)
+            .navigationBarsPadding()
+    ) {
+        HorizontalDivider(color = c.glassBorder, thickness = 0.6.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items.forEach { (tab, icon, label) ->
+                val active = tab == selectedTab
+                val tint by animateColorAsState(
+                    targetValue = if (active) c.accent else c.textSecondary,
+                    label = "fotmobNavTint"
                 )
 
-                // Center Capsule: Now Playing Mini Pill (or Active Playlist)
-                Row(
+                Column(
                     modifier = Modifier
                         .weight(1f)
-                        .height(50.dp)
-                        .shadow(16.dp, RoundedCornerShape(28.dp), ambientColor = Color.Black.copy(alpha = 0.55f))
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    c.glassBg.copy(alpha = if (c.isDark) 0.90f else 0.94f),
-                                    c.glassBg.copy(alpha = if (c.isDark) 0.78f else 0.86f)
-                                )
-                            )
-                        )
-                        .border(
-                            1.dp,
-                            Brush.verticalGradient(listOf(c.glassHighlight, c.glassBorder)),
-                            RoundedCornerShape(28.dp)
-                        )
-                        .clickable {
-                            if (activeChannel != null) onOpenNowPlaying()
-                            else onSelectTab(MainTab.LIVE)
-                        }
-                        .padding(horizontal = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        .fillMaxHeight()
+                        .tvFocusBorder(isTvMode, RoundedCornerShape(10.dp))
+                        .clickable { onSelectTab(tab) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    if (activeChannel != null) {
-                        ChannelLogoBox(activeChannel.logoUrl, 32.dp, corner = 9.dp)
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = activeChannel.name,
-                                color = c.textPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = activeChannel.category,
-                                color = c.textSecondary,
-                                fontSize = 10.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        IconButton(onClick = onTogglePlayPause, modifier = Modifier.size(34.dp)) {
-                            Icon(
-                                if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = "PlayPause",
-                                tint = c.textPrimary,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .background(c.accent.copy(alpha = 0.22f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = c.accent, modifier = Modifier.size(16.dp))
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(activePlaylistName, color = c.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(strings.nothingPlaying, color = c.textSecondary, fontSize = 10.sp, maxLines = 1)
-                        }
-                    }
-                }
-
-                // Right Circle: Search
-                LiquidGlassCircleButton(
-                    icon = Icons.Rounded.Search,
-                    active = selectedTab == MainTab.SEARCH,
-                    onClick = { onSelectTab(MainTab.SEARCH) }
-                )
-            }
-        } else {
-            // ---- FULL 5-TAB LIQUID GLASS CAPSULE (Home · Live · Movies · Series · Search) ----
-            val items = listOf(
-                Triple(MainTab.HOME, Icons.Rounded.Home, strings.home),
-                Triple(MainTab.LIVE, Icons.Rounded.LiveTv, strings.liveTv),
-                Triple(MainTab.MOVIES, Icons.Rounded.Movie, strings.movies),
-                Triple(MainTab.SERIES, Icons.Rounded.Tv, strings.series),
-                Triple(MainTab.SEARCH, Icons.Rounded.Search, strings.search)
-            )
-
-            Row(
-                modifier = Modifier
-                    .shadow(20.dp, RoundedCornerShape(34.dp), ambientColor = Color.Black.copy(alpha = 0.55f))
-                    .clip(RoundedCornerShape(34.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                c.glassBg.copy(alpha = if (c.isDark) 0.90f else 0.94f),
-                                c.glassBg.copy(alpha = if (c.isDark) 0.76f else 0.86f)
-                            )
-                        )
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = tint,
+                        modifier = Modifier.size(23.dp)
                     )
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(listOf(c.glassHighlight, c.glassBorder)),
-                        shape = RoundedCornerShape(34.dp)
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = label,
+                        color = tint,
+                        fontSize = 11.sp,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    .padding(horizontal = 7.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                items.forEach { (tab, icon, label) ->
-                    val active = tab == selectedTab
-                    val pillBg by animateColorAsState(
-                        targetValue = if (active) c.accent.copy(alpha = 0.22f) else Color.Transparent,
-                        label = "tabBg"
-                    )
-                    val tint by animateColorAsState(
-                        targetValue = if (active) c.accent else c.textSecondary,
-                        label = "tabTint"
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(26.dp))
-                            .background(pillBg)
-                            .tvFocusBorder(isTvMode, RoundedCornerShape(26.dp))
-                            .clickable { onSelectTab(tab) }
-                            .padding(horizontal = if (active) 13.dp else 11.dp, vertical = 9.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(20.dp))
-                        if (active) {
-                            Text(
-                                text = label,
-                                color = tint,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1
-                            )
-                        }
-                    }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun LiquidGlassCircleButton(
-    icon: ImageVector,
-    active: Boolean,
-    onClick: () -> Unit
-) {
-    val c = LocalYlowColors.current
-    Box(
-        modifier = Modifier
-            .size(50.dp)
-            .shadow(16.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.55f))
-            .clip(CircleShape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        c.glassBg.copy(alpha = if (c.isDark) 0.90f else 0.94f),
-                        c.glassBg.copy(alpha = if (c.isDark) 0.78f else 0.86f)
-                    )
-                )
-            )
-            .border(1.dp, Brush.verticalGradient(listOf(c.glassHighlight, c.glassBorder)), CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = if (active) c.accent else c.textPrimary,
-            modifier = Modifier.size(22.dp)
-        )
     }
 }
 
@@ -499,7 +334,7 @@ fun PinDialog(
 ) {
     val c = LocalYlowColors.current
     var input by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -509,16 +344,21 @@ fun PinDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = input,
-                    onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) { input = it; error = false } },
+                    onValueChange = {
+                        if (it.length <= 4 && it.all(Char::isDigit)) {
+                            input = it
+                            errorMsg = ""
+                        }
+                    },
                     label = { Text(if (expectedPin != null) strings.enterPin else strings.newPinPrompt) },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     singleLine = true,
-                    isError = error,
+                    isError = errorMsg.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth()
                 )
-                if (error) {
-                    Text(strings.wrongPin, color = Color(0xFFFF453A), fontSize = 12.sp)
+                if (errorMsg.isNotEmpty()) {
+                    Text(errorMsg, color = Color(0xFFFF6B6B), fontSize = 12.sp)
                 }
             }
         },
@@ -526,16 +366,16 @@ fun PinDialog(
             Button(
                 onClick = {
                     if (expectedPin != null) {
-                        if (input == expectedPin) onConfirm(input) else error = true
-                    } else if (input.length >= 4) {
-                        onConfirm(input)
+                        if (input == expectedPin) onConfirm(input)
+                        else errorMsg = strings.wrongPin
                     } else {
-                        error = true
+                        if (input.length == 4) onConfirm(input)
+                        else errorMsg = strings.pinMustBe4Digits
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = c.accent)
+                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent)
             ) {
-                Text("OK", color = Color.White)
+                Text("OK", color = c.onAccent, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -558,7 +398,7 @@ fun SmallIconPill(
         modifier = Modifier
             .size(38.dp)
             .clip(CircleShape)
-            .background(c.glassBg)
+            .background(c.surface)
             .border(1.dp, c.glassBorder, CircleShape)
             .tvFocusBorder(isTvMode, CircleShape)
             .clickable(onClick = onClick),

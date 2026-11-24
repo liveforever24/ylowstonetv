@@ -10,7 +10,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.ylowstone.tv.model.StylePreset
 import com.ylowstone.tv.model.ThemeMode
 
 data class YlowColors(
@@ -18,35 +17,35 @@ data class YlowColors(
     val bg: Color,
     val surface: Color,
     val surfaceElevated: Color,
-    val glassBg: Color,
-    val glassHighlight: Color,
+    val navBarBg: Color,
     val glassBorder: Color,
     val textPrimary: Color,
     val textSecondary: Color,
     val accent: Color,
-    val accentSecondary: Color
+    val onAccent: Color,
+    val accentContainer: Color
 )
 
+// Default Google Pixel "Fog" palette on Pure Black AMOLED
 val LocalYlowColors = staticCompositionLocalOf {
     YlowColors(
         isDark = true,
-        bg = Color.Black,
-        surface = Color(0xFF121216),
-        surfaceElevated = Color(0xFF1C1C24),
-        glassBg = Color(0xCC14141A),
-        glassHighlight = Color(0x38FFFFFF),
-        glassBorder = Color(0x28FFFFFF),
-        textPrimary = Color.White,
-        textSecondary = Color(0xFF9E9EAC),
-        accent = Color(0xFFFA2D48),
-        accentSecondary = Color(0xFFFF6B81)
+        bg = Color(0xFF000000),
+        surface = Color(0xFF141618),
+        surfaceElevated = Color(0xFF1D2125),
+        navBarBg = Color(0xFF121416),
+        glassBorder = Color(0xFF23282D),
+        textPrimary = Color(0xFFFFFFFF),
+        textSecondary = Color(0xFF9AA3AB),
+        accent = Color(0xFFB5C8D6),
+        onAccent = Color(0xFF0B1116),
+        accentContainer = Color(0xFF202B33)
     )
 }
 
 @Composable
 fun YlowstoneTheme(
     themeMode: ThemeMode,
-    stylePreset: StylePreset,
     content: @Composable () -> Unit
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -55,45 +54,43 @@ fun YlowstoneTheme(
         ThemeMode.LIGHT -> false
         ThemeMode.SYSTEM -> systemDark
     }
-    val accentColor = Color(stylePreset.accentHex)
-    val accentSec = Color(stylePreset.secondaryHex)
-    val darkSurface = Color(stylePreset.darkSurfaceHex)
-    val darkElevated = Color(stylePreset.darkElevatedHex)
 
     val ylow = if (isDark) {
+        // Pure AMOLED Black + FotMob flat crisp surfaces + Google Pixel "Fog" cool misty accent
         YlowColors(
             isDark = true,
-            bg = if (themeMode == ThemeMode.AMOLED) Color(0xFF000000) else darkSurface,
-            surface = Color(0xFF121215),
-            surfaceElevated = darkElevated,
-            glassBg = Color(0xD615151B),
-            glassHighlight = Color(0x38FFFFFF),
-            glassBorder = Color(0x26FFFFFF),
+            bg = Color(0xFF000000),
+            surface = Color(0xFF141618),
+            surfaceElevated = Color(0xFF1D2125),
+            navBarBg = Color(0xFF121416),
+            glassBorder = Color(0xFF23282D),
             textPrimary = Color(0xFFFFFFFF),
-            textSecondary = Color(0xFF9898A6),
-            accent = accentColor,
-            accentSecondary = accentSec
+            textSecondary = Color(0xFF9AA3AB),
+            accent = Color(0xFFB5C8D6),          // Pixel Fog (Misty Blue-Silver)
+            onAccent = Color(0xFF0B1116),        // Crisp deep ink on Fog buttons
+            accentContainer = Color(0xFF202B33)
         )
     } else {
+        // Clean Light Mode + Refined Deep Pixel Fog Slate accent
         YlowColors(
             isDark = false,
-            bg = Color(0xFFF3F3F7),
+            bg = Color(0xFFF3F5F7),
             surface = Color(0xFFFFFFFF),
-            surfaceElevated = Color(0xFFE9E9F0),
-            glassBg = Color(0xDCFFFFFF),
-            glassHighlight = Color(0xB8FFFFFF),
-            glassBorder = Color(0x20000000),
-            textPrimary = Color(0xFF111116),
-            textSecondary = Color(0xFF5D5D6C),
-            accent = accentColor,
-            accentSecondary = accentSec
+            surfaceElevated = Color(0xFFE7ECF0),
+            navBarBg = Color(0xFFFFFFFF),
+            glassBorder = Color(0xFFD8DFE5),
+            textPrimary = Color(0xFF111417),
+            textSecondary = Color(0xFF5D6770),
+            accent = Color(0xFF526A7A),          // Deep Pixel Fog Slate
+            onAccent = Color(0xFFFFFFFF),        // Pure white on deep Fog buttons
+            accentContainer = Color(0xFFDCE5EC)
         )
     }
 
-    // Native FontFamily.Default inherits device default system font (Motorola Edge 60 Fusion)
+    // Inherits native system typography cleanly
     val typography = Typography(
-        headlineLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 28.sp),
-        headlineMedium = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 22.sp),
+        headlineLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 26.sp),
+        headlineMedium = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 21.sp),
         titleLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.SemiBold, fontSize = 18.sp),
         titleMedium = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.SemiBold, fontSize = 15.sp),
         bodyLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 14.sp),
@@ -103,21 +100,21 @@ fun YlowstoneTheme(
 
     val colorScheme = if (isDark) {
         darkColorScheme(
-            primary = accentColor,
-            secondary = accentSec,
+            primary = ylow.accent,
+            onPrimary = ylow.onAccent,
+            primaryContainer = ylow.accentContainer,
             background = ylow.bg,
             surface = ylow.surface,
-            onPrimary = Color.White,
             onBackground = ylow.textPrimary,
             onSurface = ylow.textPrimary
         )
     } else {
         lightColorScheme(
-            primary = accentColor,
-            secondary = accentSec,
+            primary = ylow.accent,
+            onPrimary = ylow.onAccent,
+            primaryContainer = ylow.accentContainer,
             background = ylow.bg,
             surface = ylow.surface,
-            onPrimary = Color.White,
             onBackground = ylow.textPrimary,
             onSurface = ylow.textPrimary
         )

@@ -16,11 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,15 +30,6 @@ import com.ylowstone.tv.ui.components.SmallIconPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 
-private val playlistPalette = listOf(
-    Color(0xFFFA2D48),
-    Color(0xFF0A84FF),
-    Color(0xFF30D158),
-    Color(0xFFFF9F0A),
-    Color(0xFFBF5AF2),
-    Color(0xFF5AC8FA)
-)
-
 @Composable
 fun HomeScreen(
     activePlaylist: PlaylistProfile,
@@ -51,7 +39,6 @@ fun HomeScreen(
     history: List<TaggedChannel>,
     strings: AppStrings,
     isTvMode: Boolean,
-    nestedScrollConnection: NestedScrollConnection,
     onSwitchPlaylist: (PlaylistProfile) -> Unit,
     onOpenPlaylistManager: () -> Unit,
     onOpenSection: (MediaType) -> Unit,
@@ -65,12 +52,11 @@ fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
-            .nestedScroll(nestedScrollConnection)
-            .systemBarsPadding(),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 104.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+            .statusBarsPadding(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        // ---- Top Header (BitChord-style: Brand left + Refresh + Yellow-Y Profile Menu right) ----
+        // ---- Top Header (FotMob crisp bar: Brand + Active Playlist left, Refresh + Yellow-Y right) ----
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -81,9 +67,9 @@ fun HomeScreen(
                     Text(
                         text = "YlowstoneTV",
                         color = c.textPrimary,
-                        fontSize = 24.sp,
+                        fontSize = 23.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.5).sp
+                        letterSpacing = (-0.4).sp
                     )
                     Spacer(Modifier.height(2.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -114,7 +100,7 @@ fun HomeScreen(
             }
         }
 
-        // ---- Section 1: Saved Playlists Carousel (Instant 1-Tap Switch!) ----
+        // ---- Section 1: Saved Playlists Carousel ----
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeaderRow(
@@ -126,34 +112,33 @@ fun HomeScreen(
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(allPlaylists, key = { it.id }) { pl ->
                         val active = pl.id == activePlaylist.id
-                        val tint = playlistPalette[pl.colorIndex % playlistPalette.size]
                         Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(if (active) c.accent.copy(alpha = 0.20f) else c.surface)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (active) c.accentContainer else c.surface)
                                 .border(
                                     width = if (active) 1.5.dp else 1.dp,
                                     color = if (active) c.accent else c.glassBorder,
-                                    shape = RoundedCornerShape(18.dp)
+                                    shape = RoundedCornerShape(16.dp)
                                 )
-                                .tvFocusBorder(isTvMode, RoundedCornerShape(18.dp))
+                                .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
                                 .clickable { onSwitchPlaylist(pl) }
-                                .padding(horizontal = 14.dp, vertical = 11.dp),
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(32.dp)
                                     .clip(CircleShape)
-                                    .background(Brush.linearGradient(listOf(tint, tint.copy(alpha = 0.55f)))),
+                                    .background(if (active) c.accent else c.surfaceElevated),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = pl.name.take(2).uppercase(),
-                                    color = Color.White,
+                                    color = if (active) c.onAccent else c.textPrimary,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
+                                    fontSize = 11.sp
                                 )
                             }
                             Column {
@@ -164,25 +149,20 @@ fun HomeScreen(
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1
                                 )
-                                Text(
-                                    text = pl.type.name,
-                                    color = c.textSecondary,
-                                    fontSize = 10.sp
-                                )
+                                Text(pl.type.name, color = c.textSecondary, fontSize = 10.sp)
                             }
                         }
                     }
 
-                    // + Add Playlist Pill
                     item {
                         Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(18.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(c.surface)
-                                .border(1.dp, c.glassBorder, RoundedCornerShape(18.dp))
-                                .tvFocusBorder(isTvMode, RoundedCornerShape(18.dp))
+                                .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
+                                .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
                                 .clickable(onClick = onOpenPlaylistManager)
-                                .padding(horizontal = 14.dp, vertical = 14.dp),
+                                .padding(horizontal = 14.dp, vertical = 13.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
@@ -194,37 +174,37 @@ fun HomeScreen(
             }
         }
 
-        // ---- Section 2: Explore Quick Cards (Live TV · Movies · Series) ----
+        // ---- Section 2: Explore Quick Cards (Clean FotMob Flat Rounded Cards) ----
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(strings.explore, color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(strings.explore, color = c.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    ExplorePillCard(
+                    ExploreTileCard(
                         title = strings.liveTv,
                         count = counts[MediaType.LIVE] ?: 0,
                         icon = Icons.Rounded.LiveTv,
-                        gradient = listOf(c.accent, c.accentSecondary),
+                        featured = true,
                         isTvMode = isTvMode,
                         onClick = { onOpenSection(MediaType.LIVE) },
                         modifier = Modifier.weight(1f)
                     )
-                    ExplorePillCard(
+                    ExploreTileCard(
                         title = strings.movies,
                         count = counts[MediaType.MOVIE] ?: 0,
                         icon = Icons.Rounded.Movie,
-                        gradient = listOf(Color(0xFF0A84FF), Color(0xFF0055A4)),
+                        featured = false,
                         isTvMode = isTvMode,
                         onClick = { onOpenSection(MediaType.MOVIE) },
                         modifier = Modifier.weight(1f)
                     )
-                    ExplorePillCard(
+                    ExploreTileCard(
                         title = strings.series,
                         count = counts[MediaType.SERIES] ?: 0,
                         icon = Icons.Rounded.Tv,
-                        gradient = listOf(Color(0xFF9D4EDD), Color(0xFF5A189A)),
+                        featured = false,
                         isTvMode = isTvMode,
                         onClick = { onOpenSection(MediaType.SERIES) },
                         modifier = Modifier.weight(1f)
@@ -233,7 +213,7 @@ fun HomeScreen(
             }
         }
 
-        // ---- Section 3: Cross-Playlist Favourites (Appears right on Home!) ----
+        // ---- Section 3: Cross-Playlist Favourites ----
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
@@ -241,7 +221,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
-                    Text(strings.favouriteChannels, color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text(strings.favouriteChannels, color = c.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     if (favourites.isNotEmpty()) {
                         Text("(${favourites.size})", color = c.textSecondary, fontSize = 13.sp)
                     }
@@ -250,15 +230,15 @@ fun HomeScreen(
                 if (favourites.isEmpty()) {
                     EmptyHintCard(Icons.Rounded.FavoriteBorder, strings.noFavouritesYet)
                 } else {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(favourites, key = { "fav_${it.channel.id}" }) { tagged ->
                             Column(
                                 modifier = Modifier
-                                    .width(138.dp)
-                                    .clip(RoundedCornerShape(18.dp))
+                                    .width(136.dp)
+                                    .clip(RoundedCornerShape(16.dp))
                                     .background(c.surface)
-                                    .border(1.dp, c.glassBorder, RoundedCornerShape(18.dp))
-                                    .tvFocusBorder(isTvMode, RoundedCornerShape(18.dp))
+                                    .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
+                                    .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
                                     .clickable { onPlayTaggedChannel(tagged, favourites) }
                                     .padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -268,8 +248,8 @@ fun HomeScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.Top
                                 ) {
-                                    ChannelLogoBox(tagged.channel.logoUrl, 44.dp, corner = 12.dp)
-                                    Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.accent, modifier = Modifier.size(16.dp))
+                                    ChannelLogoBox(tagged.channel.logoUrl, 42.dp, corner = 10.dp)
+                                    Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
                                 }
                                 Text(
                                     text = tagged.channel.name,
@@ -283,7 +263,7 @@ fun HomeScreen(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(c.accent.copy(alpha = 0.14f))
+                                        .background(c.accentContainer)
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
@@ -302,14 +282,14 @@ fun HomeScreen(
             }
         }
 
-        // ---- Section 4: Watch History (BitChord Recents Style!) ----
+        // ---- Section 4: Watch History (FotMob Grouped Card Style) ----
         item {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Icon(Icons.Rounded.History, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(18.dp))
-                Text(strings.watchHistory, color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(strings.watchHistory, color = c.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -320,16 +300,16 @@ fun HomeScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(c.surface)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
-                        .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
+                        .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                        .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
                         .clickable { onPlayTaggedChannel(tagged, history) }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    ChannelLogoBox(tagged.channel.logoUrl, 44.dp, corner = 12.dp)
+                    ChannelLogoBox(tagged.channel.logoUrl, 42.dp, corner = 10.dp)
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = tagged.channel.name,
@@ -363,7 +343,7 @@ private fun SectionHeaderRow(title: String, actionLabel: String, onAction: () ->
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(title, color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text(title, color = c.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Text(
             text = actionLabel,
             color = c.accent,
@@ -375,24 +355,29 @@ private fun SectionHeaderRow(title: String, actionLabel: String, onAction: () ->
 }
 
 @Composable
-private fun ExplorePillCard(
+private fun ExploreTileCard(
     title: String,
     count: Int,
     icon: ImageVector,
-    gradient: List<Color>,
+    featured: Boolean,
     isTvMode: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val c = LocalYlowColors.current
+    val bg = if (featured) c.accent else c.surface
+    val fg = if (featured) c.onAccent else c.textPrimary
+    val subFg = if (featured) c.onAccent.copy(alpha = 0.78f) else c.textSecondary
+
     Column(
         modifier = modifier
-            .height(98.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(Brush.linearGradient(gradient))
-            .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(20.dp))
-            .tvFocusBorder(isTvMode, RoundedCornerShape(20.dp))
+            .height(92.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(bg)
+            .border(1.dp, if (featured) c.accent else c.glassBorder, RoundedCornerShape(16.dp))
+            .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(14.dp),
+            .padding(13.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
@@ -400,15 +385,15 @@ private fun ExplorePillCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = title, tint = Color.White, modifier = Modifier.size(22.dp))
+            Icon(icon, contentDescription = title, tint = if (featured) fg else c.accent, modifier = Modifier.size(22.dp))
             Text(
                 text = formatCompactCount(count),
-                color = Color.White.copy(alpha = 0.90f),
+                color = subFg,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold
             )
         }
-        Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(title, color = fg, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
@@ -423,9 +408,9 @@ private fun EmptyHintCard(icon: ImageVector, message: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(c.surface)
-            .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
+            .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)

@@ -53,10 +53,10 @@ jobs:
           name: YlowstoneTV v${{ env.APP_VERSION }}
           body: |
             ## YlowstoneTV v${{ env.APP_VERSION }} (by ylowstone)
-            - Complete Liquid Glass UI overhaul with scroll-morphing 5-tab navigation bar
-            - Pure YouTube-style Floating PiP & System PiP controls (clean video idle, single tap for controls)
-            - Home Hub with Cross-Playlist Favourites, Watch History, and Quick Playlist Switcher
-            - Vertical Categories with swipe-down channel sheet & in-Landscape channel search drawer
-            - 12 Switchable 3D App Icons + New Pure-Black Animated Splash Screen
-            - 5 Elegant Color Themes + Top-right Quick Menu Dropdown + BitChord-inspired Settings
+            - Clean FotMob-inspired flat navigation bar & Google Pixel Fog color system (System / Light / Dark AMOLED)
+            - Drag-only anti-accidental-tap seekbar + double-tap ±10s skip for Movies & Series
+            - Streamlined Smarters-style player controls + subtle 2-line 24h digital clock on tap
+            - Category 4-digit PIN management & Reset PIN inside Settings
+            - Fullscreen portrait animated Splash Screen + Double-tap Back to Exit
+            - First-launch Welcome Quote pop-up & 4-step Quick Guide with automatic system language detection
           files: dist/*.apk

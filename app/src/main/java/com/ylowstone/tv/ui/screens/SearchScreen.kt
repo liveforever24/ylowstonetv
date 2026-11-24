@@ -15,8 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,7 +37,6 @@ fun SearchScreen(
     repo: IptvRepository,
     strings: AppStrings,
     isTvMode: Boolean,
-    nestedScrollConnection: NestedScrollConnection,
     onPlayTagged: (TaggedChannel, List<TaggedChannel>) -> Unit,
     onToggleFavorite: (ChannelItem) -> Unit,
     onOpenProfileMenu: () -> Unit
@@ -51,7 +48,6 @@ fun SearchScreen(
     var results by remember { mutableStateOf<List<TaggedChannel>>(emptyList()) }
     var favVersion by remember { mutableIntStateOf(0) }
 
-    // Battery & CPU friendly 150ms debounced indexed SQLite search
     LaunchedEffect(query, filterType, searchAllPlaylists, activePlaylist.id, lockedByPlaylist, favVersion) {
         if (query.trim().length < 2) {
             results = emptyList()
@@ -73,12 +69,11 @@ fun SearchScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
-            .systemBarsPadding()
+            .statusBarsPadding()
             .padding(horizontal = 16.dp)
     ) {
         Spacer(Modifier.height(12.dp))
 
-        // Top Bar with Search Input & Yellow-Y Profile Icon
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -97,7 +92,7 @@ fun SearchScreen(
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.weight(1f)
             )
             ProfileYBadgeButton(isTvMode = isTvMode, onClick = onOpenProfileMenu)
@@ -105,13 +100,13 @@ fun SearchScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        // BitChord-Style Segmented Filter Capsule (All | Live | Movies | Series)
+        // Segmented Filter Capsule (All | Live | Movies | Series)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .background(c.surface)
-                .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
+                .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -125,7 +120,7 @@ fun SearchScreen(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .background(if (active) c.accent else Color.Transparent)
                         .clickable { filterType = type }
                         .padding(vertical = 8.dp),
@@ -133,7 +128,7 @@ fun SearchScreen(
                 ) {
                     Text(
                         text = label,
-                        color = if (active) Color.White else c.textSecondary,
+                        color = if (active) c.onAccent else c.textSecondary,
                         fontSize = 12.sp,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                         maxLines = 1
@@ -144,7 +139,6 @@ fun SearchScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // Scope Toggle: Active Playlist vs All Playlists
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -157,8 +151,9 @@ fun SearchScreen(
             )
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(10.dp))
                     .background(c.surface)
+                    .border(1.dp, c.glassBorder, RoundedCornerShape(10.dp))
                     .clickable { searchAllPlaylists = !searchAllPlaylists }
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -181,13 +176,9 @@ fun SearchScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // Results List
         LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .nestedScroll(nestedScrollConnection),
-            contentPadding = PaddingValues(bottom = 104.dp),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items(results, key = { "srch_${it.channel.id}" }) { tagged ->
@@ -195,10 +186,10 @@ fun SearchScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(15.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(c.surface)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(15.dp))
-                        .tvFocusBorder(isTvMode, RoundedCornerShape(15.dp))
+                        .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                        .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
                         .clickable { onPlayTagged(tagged, results) }
                         .padding(horizontal = 12.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,

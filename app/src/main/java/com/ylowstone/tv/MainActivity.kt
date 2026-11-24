@@ -99,6 +99,9 @@ class MainActivity : ComponentActivity() {
                 },
                 onEnterSystemPip = {
                     enterPipNow()
+                },
+                onExitApp = {
+                    finish()
                 }
             )
         }

@@ -4,34 +4,8 @@ import androidx.annotation.DrawableRes
 import com.ylowstone.tv.R
 
 enum class DeviceMode { SMARTPHONE, TV }
-enum class ThemeMode { AMOLED, LIGHT, SYSTEM }
+enum class ThemeMode { SYSTEM, LIGHT, AMOLED }
 enum class AppLanguage { ID, EN }
-
-// 5 Elegant brand-free style palettes preserving 100% identical signature colors
-enum class StylePreset(
-    val accentHex: Long,
-    val secondaryHex: Long,
-    val darkSurfaceHex: Long,
-    val darkElevatedHex: Long,
-    val label: String
-) {
-    ROSE_GLASS(0xFFFA2D48, 0xFFFF6B81, 0xFF121216, 0xFF1C1C24, "Rose Glass"),
-    CRIMSON_DARK(0xFFFF0033, 0xFFCC0022, 0xFF0F0F0F, 0xFF212121, "Crimson Dark"),
-    OCEAN_BLUE(0xFF00A8E1, 0xFF006EA8, 0xFF0F171E, 0xFF1A2634, "Ocean Blue"),
-    RUBY_CINEMA(0xFFE50914, 0xFF99070E, 0xFF141414, 0xFF231F20, "Ruby Cinema"),
-    ROYAL_VIOLET(0xFF9D4EDD, 0xFF5A189A, 0xFF100B1C, 0xFF1E1633, "Royal Violet");
-
-    companion object {
-        fun fromStored(raw: String?): StylePreset = when (raw) {
-            "APPLE_MUSIC", "ROSE_GLASS" -> ROSE_GLASS
-            "YOUTUBE", "CRIMSON_DARK" -> CRIMSON_DARK
-            "PRIME_VIDEO", "OCEAN_BLUE" -> OCEAN_BLUE
-            "NETFLIX", "RUBY_CINEMA" -> RUBY_CINEMA
-            "HBO", "ROYAL_VIOLET" -> ROYAL_VIOLET
-            else -> ROSE_GLASS
-        }
-    }
-}
 
 enum class AppIconOption(
     val key: String,
@@ -137,10 +111,10 @@ data class EpisodeItem(
 )
 
 data class AppSettings(
+    val hasSeenWelcome: Boolean = false,
     val hasSelectedMode: Boolean = false,
     val deviceMode: DeviceMode = DeviceMode.SMARTPHONE,
     val themeMode: ThemeMode = ThemeMode.AMOLED,
-    val stylePreset: StylePreset = StylePreset.ROSE_GLASS,
     val appIcon: AppIconOption = AppIconOption.OBSIDIAN,
     val language: AppLanguage = AppLanguage.ID,
     val showPlayerGestures: Boolean = true,

@@ -2,18 +2,31 @@ package com.ylowstone.tv.data
 
 import android.content.Context
 import com.ylowstone.tv.model.*
+import java.util.Locale
 
 class AppPrefs(context: Context) {
     private val prefs = context.getSharedPreferences("ylowstone_tv_prefs", Context.MODE_PRIVATE)
 
+    private fun detectSystemLanguage(): AppLanguage {
+        val code = Locale.getDefault().language.lowercase(Locale.US)
+        return if (code == "id" || code == "in") AppLanguage.ID else AppLanguage.EN
+    }
+
     fun loadSettings(): AppSettings {
+        val storedLang = prefs.getString("language", null)
+        val resolvedLang = if (storedLang != null) {
+            runCatching { AppLanguage.valueOf(storedLang) }.getOrDefault(detectSystemLanguage())
+        } else {
+            detectSystemLanguage()
+        }
+
         return AppSettings(
+            hasSeenWelcome = prefs.getBoolean("has_seen_welcome", false),
             hasSelectedMode = prefs.getBoolean("has_selected_mode", false),
             deviceMode = runCatching { DeviceMode.valueOf(prefs.getString("device_mode", "SMARTPHONE")!!) }.getOrDefault(DeviceMode.SMARTPHONE),
-            themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "AMOLED")!!) }.getOrDefault(ThemeMode.AMOLED),
-            stylePreset = StylePreset.fromStored(prefs.getString("style_preset", "ROSE_GLASS")),
+            themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "SYSTEM")!!) }.getOrDefault(ThemeMode.SYSTEM),
             appIcon = AppIconOption.fromKey(prefs.getString("app_icon", "obsidian")),
-            language = runCatching { AppLanguage.valueOf(prefs.getString("language", "ID")!!) }.getOrDefault(AppLanguage.ID),
+            language = resolvedLang,
             showPlayerGestures = prefs.getBoolean("show_gestures", true),
             streamFormat = runCatching { StreamFormat.valueOf(prefs.getString("stream_format", "HLS")!!) }.getOrDefault(StreamFormat.HLS),
             pinCode = prefs.getString("pin_code", "1234") ?: "1234",
@@ -24,10 +37,10 @@ class AppPrefs(context: Context) {
 
     fun saveSettings(s: AppSettings) {
         prefs.edit()
+            .putBoolean("has_seen_welcome", s.hasSeenWelcome)
             .putBoolean("has_selected_mode", s.hasSelectedMode)
             .putString("device_mode", s.deviceMode.name)
             .putString("theme_mode", s.themeMode.name)
-            .putString("style_preset", s.stylePreset.name)
             .putString("app_icon", s.appIcon.key)
             .putString("language", s.language.name)
             .putBoolean("show_gestures", s.showPlayerGestures)
@@ -44,6 +57,14 @@ class AppPrefs(context: Context) {
 
     fun setLockedCategories(playlistId: Long, categories: Set<String>) {
         prefs.edit().putStringSet("locked_cats_$playlistId", categories).apply()
+    }
+
+    fun clearAllLockedCategories(playlistIds: List<Long>) {
+        val editor = prefs.edit()
+        for (id in playlistIds) {
+            editor.remove("locked_cats_$id")
+        }
+        editor.apply()
     }
 
     fun getAllLockedMap(playlistIds: List<Long>): Map<Long, Set<String>> {
