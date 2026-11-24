@@ -76,7 +76,7 @@ fun AdminLoginScreen(
                     .clip(CircleShape)
                     .background(c.surface)
                     .border(1.dp, c.glassBorder, CircleShape)
-                    .glossyPressPill(CircleShape)
+                    .glossyPressPill(20f)
                     .clickable(enabled = !isVerifying, onClick = onBack),
                 contentAlignment = Alignment.Center
             ) {

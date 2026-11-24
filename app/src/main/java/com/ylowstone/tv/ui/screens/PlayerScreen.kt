@@ -164,7 +164,6 @@ fun DraggableFloatingPlayer(
                 indication = null
             ) {
                 controlsVisible = !controlsVisible
-                                    clockTriggerNonce++
             }
     ) {
         AndroidView(
