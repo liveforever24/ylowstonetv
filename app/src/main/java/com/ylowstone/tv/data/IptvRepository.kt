@@ -160,7 +160,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
     }
 
     private fun extractAttr(line: String, attr: String): String {
-        val key = "$attr=""
+        val key = "$attr=\""
         val start = line.indexOf(key, ignoreCase = true)
         if (start == -1) return ""
         val valStart = start + key.length
@@ -383,6 +383,17 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
             }
         }
         onBatchFull()
+    }
+
+    private fun fetchJsonString(url: String, ua: String): String {
+        val req = Request.Builder()
+            .url(url)
+            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.2.8" })
+            .build()
+        httpClient.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
+            return resp.body?.string() ?: ""
+        }
     }
 
     suspend fun fetchSeriesEpisodes(profile: PlaylistProfile, seriesId: String): List<EpisodeItem> =
