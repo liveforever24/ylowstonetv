@@ -145,10 +145,7 @@ data class AppStrings(
 fun stringsFor(lang: AppLanguage): AppStrings = when (lang) {
     AppLanguage.ID -> AppStrings(
         welcomeTitle = "Selamat datang di YlowstoneTV",
-        welcomeQuote = "Hidup itu sekali
-Dan mati itu pasti
-Bisa jadi nanti
-Atau setelah ini",
+        welcomeQuote = "Hidup itu sekali\nDan mati itu pasti\nBisa jadi nanti\nAtau setelah ini",
         guideSkip = "Lewati",
         guideNext = "Lanjut",
         guideStart = "Mulai Menonton",
@@ -288,10 +285,7 @@ Atau setelah ini",
 
     AppLanguage.EN -> AppStrings(
         welcomeTitle = "Welcome to YlowstoneTV",
-        welcomeQuote = "Life happens once
-And death is certain
-It could be later
-Or right after this",
+        welcomeQuote = "Life happens once\nAnd death is certain\nIt could be later\nOr right after this",
         guideSkip = "Skip",
         guideNext = "Next",
         guideStart = "Start Watching",
