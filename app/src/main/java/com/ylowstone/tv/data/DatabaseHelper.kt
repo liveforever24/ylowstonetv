@@ -6,7 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.ylowstone.tv.model.*
 
-class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv.db", null, 2) {
+class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv.db", null, 3) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -20,6 +20,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                 password TEXT NOT NULL,
                 user_agent TEXT NOT NULL,
                 live_categories TEXT NOT NULL DEFAULT '',
+                movie_categories TEXT NOT NULL DEFAULT '',
+                series_categories TEXT NOT NULL DEFAULT '',
                 color_index INTEGER NOT NULL DEFAULT 0,
                 last_updated INTEGER NOT NULL DEFAULT 0
             )
@@ -56,6 +58,14 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                 db.execSQL("ALTER TABLE playlists ADD COLUMN live_categories TEXT NOT NULL DEFAULT ''")
             }
         }
+        if (oldVersion < 3) {
+            runCatching {
+                db.execSQL("ALTER TABLE playlists ADD COLUMN movie_categories TEXT NOT NULL DEFAULT ''")
+            }
+            runCatching {
+                db.execSQL("ALTER TABLE playlists ADD COLUMN series_categories TEXT NOT NULL DEFAULT ''")
+            }
+        }
     }
 
     fun getAllPlaylists(): List<PlaylistProfile> {
@@ -89,6 +99,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             put("password", p.password)
             put("user_agent", p.userAgent)
             put("live_categories", serializeCategoryList(p.liveCategories))
+            put("movie_categories", serializeCategoryList(p.movieCategories))
+            put("series_categories", serializeCategoryList(p.seriesCategories))
             put("color_index", p.colorIndex)
             put("last_updated", p.lastUpdated)
         }

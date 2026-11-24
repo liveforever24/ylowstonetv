@@ -114,8 +114,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                     else -> MediaType.LIVE
                 }
                 val resolvedCat = currentCategory.ifBlank { "General" }
-                val allowedForType = mediaType != MediaType.LIVE || profile.matchesLiveCategoryFilter(resolvedCat)
-                if (allowedForType) {
+                if (profile.matchesCategoryFilter(resolvedCat, mediaType)) {
                     result.add(
                         ChannelItem(
                             playlistId = profile.id,
@@ -225,20 +224,22 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                 if (sid.isEmpty()) continue
                 val ext = o.optString("container_extension", "mp4").ifBlank { "mp4" }
                 val catName = vodCats[o.optString("category_id")] ?: "Movies"
-                val streamUrl = "$base/movie/$u/$p/$sid.$ext"
-                all.add(
-                    ChannelItem(
-                        playlistId = profile.id,
-                        streamId = sid,
-                        name = o.optString("name", "Movie $sid"),
-                        category = catName,
-                        logoUrl = o.optString("stream_icon", ""),
-                        streamUrl = streamUrl,
-                        mediaType = MediaType.MOVIE,
-                        containerExtension = ext,
-                        rating = o.optString("rating", "")
+                if (profile.matchesCategoryFilter(catName, MediaType.MOVIE)) {
+                    val streamUrl = "$base/movie/$u/$p/$sid.$ext"
+                    all.add(
+                        ChannelItem(
+                            playlistId = profile.id,
+                            streamId = sid,
+                            name = o.optString("name", "Movie $sid"),
+                            category = catName,
+                            logoUrl = o.optString("stream_icon", ""),
+                            streamUrl = streamUrl,
+                            mediaType = MediaType.MOVIE,
+                            containerExtension = ext,
+                            rating = o.optString("rating", "")
+                        )
                     )
-                )
+                }
             }
         }
 
@@ -252,18 +253,20 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                 val sid = o.optString("series_id")
                 if (sid.isEmpty()) continue
                 val catName = seriesCats[o.optString("category_id")] ?: "Series"
-                all.add(
-                    ChannelItem(
-                        playlistId = profile.id,
-                        streamId = sid,
-                        name = o.optString("name", "Series $sid"),
-                        category = catName,
-                        logoUrl = o.optString("cover", ""),
-                        streamUrl = "$apiBase&action=get_series_info&series_id=$sid",
-                        mediaType = MediaType.SERIES,
-                        rating = o.optString("rating", "")
+                if (profile.matchesCategoryFilter(catName, MediaType.SERIES)) {
+                    all.add(
+                        ChannelItem(
+                            playlistId = profile.id,
+                            streamId = sid,
+                            name = o.optString("name", "Series $sid"),
+                            category = catName,
+                            logoUrl = o.optString("cover", ""),
+                            streamUrl = "$apiBase&action=get_series_info&series_id=$sid",
+                            mediaType = MediaType.SERIES,
+                            rating = o.optString("rating", "")
+                        )
                     )
-                )
+                }
             }
         }
 
@@ -445,14 +448,23 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                     val pType = runCatching {
                         PlaylistType.valueOf(item.optString("type", "XTREAM").trim().uppercase())
                     }.getOrDefault(PlaylistType.XTREAM)
-                    val catArr = item.optJSONArray("liveCategories") ?: item.optJSONArray("categories")
-                    val parsedCats = mutableListOf<String>()
-                    if (catArr != null) {
-                        for (cIdx in 0 until catArr.length()) {
-                            val cVal = catArr.optString(cIdx, "").trim()
-                            if (cVal.isNotEmpty()) parsedCats.add(cVal)
+                    fun readStringArray(vararg keys: String): List<String> {
+                        for (k in keys) {
+                            val arr = item.optJSONArray(k)
+                            if (arr != null) {
+                                val out = mutableListOf<String>()
+                                for (cIdx in 0 until arr.length()) {
+                                    val cVal = arr.optString(cIdx, "").trim()
+                                    if (cVal.isNotEmpty()) out.add(cVal)
+                                }
+                                return out.distinct()
+                            }
                         }
+                        return emptyList()
                     }
+                    val parsedLiveCats = readStringArray("liveCategories", "categories")
+                    val parsedMovieCats = readStringArray("movieCategories", "vodCategories")
+                    val parsedSeriesCats = readStringArray("seriesCategories")
                     parsedPlaylists.add(
                         PlaylistProfile(
                             id = 0L,
@@ -462,7 +474,9 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                             username = item.optString("username", "").trim(),
                             password = item.optString("password", "").trim(),
                             userAgent = item.optString("userAgent", "").trim(),
-                            liveCategories = parsedCats.distinct(),
+                            liveCategories = parsedLiveCats,
+                            movieCategories = parsedMovieCats,
+                            seriesCategories = parsedSeriesCats,
                             colorIndex = i % 6,
                             lastUpdated = System.currentTimeMillis()
                         )

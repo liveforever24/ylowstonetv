@@ -49,14 +49,21 @@ data class PlaylistProfile(
     val password: String = "",
     val userAgent: String = "",
     val liveCategories: List<String> = emptyList(),
+    val movieCategories: List<String> = emptyList(),
+    val seriesCategories: List<String> = emptyList(),
     val colorIndex: Int = 0,
     val lastUpdated: Long = 0L
 ) {
-    fun matchesLiveCategoryFilter(categoryName: String): Boolean {
-        if (liveCategories.isEmpty()) return true
+    fun matchesCategoryFilter(categoryName: String, mediaType: MediaType): Boolean {
+        val rules = when (mediaType) {
+            MediaType.LIVE -> liveCategories
+            MediaType.MOVIE -> movieCategories
+            MediaType.SERIES -> seriesCategories
+        }
+        if (rules.isEmpty()) return true
         val cat = categoryName.trim().lowercase()
         if (cat.isEmpty()) return false
-        for (rule in liveCategories) {
+        for (rule in rules) {
             val r = rule.trim().lowercase()
             if (r.isEmpty()) continue
             if (cat == r) return true
@@ -76,6 +83,9 @@ data class PlaylistProfile(
         }
         return false
     }
+
+    fun matchesLiveCategoryFilter(categoryName: String): Boolean =
+        matchesCategoryFilter(categoryName, MediaType.LIVE)
 
     fun buildShareableLink(format: StreamFormat = StreamFormat.HLS): String {
         return when (type) {
