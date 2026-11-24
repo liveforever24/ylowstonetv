@@ -29,21 +29,19 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build Release APK
+      - name: Build Compressed Release APK (R8 + Shrink)
         run: gradle assembleRelease --stacktrace
 
       - name: Prepare Final APK
         run: |
           mkdir -p dist
           VERSION=$(grep 'versionName = ' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
+          APK_PATH="dist/YlowstoneTV-v${VERSION}-by-ylowstone.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK_PATH"
+          APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
           echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
-          cp app/build/outputs/apk/release/app-release.apk "dist/YlowstoneTV-v${VERSION}-by-ylowstone.apk"
-
-      - name: Upload APK to GitHub Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: YlowstoneTV-v${{ env.APP_VERSION }}-APK
-          path: dist/*.apk
+          echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
+          echo "Built $APK_PATH ($APK_SIZE)"
 
       - name: Publish GitHub Release
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -53,13 +51,8 @@ jobs:
           name: YlowstoneTV v${{ env.APP_VERSION }}
           body: |
             ## YlowstoneTV v${{ env.APP_VERSION }} (by ylowstone)
-            - Admin Login gate via Vercel Auth API (fixed YlowstoneTV username + 4-digit PIN)
-            - Auto-load & live remote sync for Admin playlists with protected link privacy
-            - Guest mode option (BYO Playlist) & 1-tap Admin Logout / Re-sync
-            - Clean FotMob-inspired flat navigation bar & Google Pixel Fog color system (System / Light / Dark AMOLED)
-            - Drag-only anti-accidental-tap seekbar + double-tap ±10s skip for Movies & Series
-            - Streamlined Smarters-style player controls + subtle 2-line 24h digital clock on tap
-            - Category 4-digit PIN management & Reset PIN inside Settings
-            - Fullscreen portrait animated Splash Screen + Double-tap Back to Exit
-            - First-launch Welcome Quote pop-up & 4-step Quick Guide with automatic system language detection
+            - **APK Size:** ${{ env.APK_SIZE }} (R8 code minification, resource shrinking & locale optimization — 100% full features & aesthetics intact)
+            - Removed Welcome & Quick Guide replay option from Settings (now shown strictly on fresh install or after Clear Data)
+            - Vercel Admin Login (fixed `YlowstoneTV` username + 4-digit PIN), remote playlist sync & protected credentials
+            - FotMob-inspired flat navigation bar, Google Pixel Fog theme (System / Light / Dark AMOLED), drag-only seekbar & 12 3D App Icons
           files: dist/*.apk

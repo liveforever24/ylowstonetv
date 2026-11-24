@@ -49,8 +49,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onUpdateSettings: (AppSettings) -> Unit,
     onUnlockCategory: (String) -> Unit,
-    onResetPinAndLocks: () -> Unit,
-    onReplayGuide: () -> Unit
+    onResetPinAndLocks: () -> Unit
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -393,26 +392,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 7. Replay Welcome & Quick Guide
-            if (matches(strings.replayGuideTitle, "guide", "panduan", "welcome", "sambutan", "tutorial")) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onReplayGuide)
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(18.dp)
-                ) {
-                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = c.textPrimary, modifier = Modifier.size(23.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(strings.replayGuideTitle, color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Text(strings.replayGuideDesc, color = c.textSecondary, fontSize = 12.sp)
-                    }
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
-                }
-            }
-
-            // 8. Check Updates
+            // 7. Check Updates
             if (matches(strings.checkUpdates, "update", "versi", "version")) {
                 FotMobSettingsRow(
                     icon = Icons.Rounded.SystemUpdate,

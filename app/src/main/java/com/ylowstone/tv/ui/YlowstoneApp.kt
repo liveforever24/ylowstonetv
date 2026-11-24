@@ -591,9 +591,6 @@ fun YlowstoneApp(
                             prefs.clearAllLockedCategories(playlists.map { it.id })
                             lockedCategories = emptySet()
                             homeDataVersion++
-                        },
-                        onReplayGuide = {
-                            stage = AppStage.WELCOME_QUOTE
                         }
                     )
                 }

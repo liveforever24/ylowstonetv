@@ -12,8 +12,9 @@ android {
         applicationId = "com.ylowstone.tv"
         minSdk = 29
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.2.0"
+        versionCode = 7
+        versionName = "2.2.1"
+        resourceConfigurations += listOf("en", "in", "id")
     }
 
     signingConfigs {
@@ -28,8 +29,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -57,7 +58,14 @@ android {
 
     packaging {
         resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += setOf(
+                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/DEPENDENCIES",
+                "/META-INF/LICENSE*",
+                "/META-INF/NOTICE*",
+                "DebugProbesKt.bin",
+                "kotlin-tooling-metadata.json"
+            )
         }
     }
 }
