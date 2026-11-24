@@ -59,7 +59,6 @@ data class PlaylistProfile(
         return liveCategories.any { rule ->
             val r = rule.trim().lowercase()
             if (r.isEmpty()) return@any false
-            // Match exact, prefix with separator (e.g. "us ♦ ...", "uk - ..."), or word boundary
             cat == r ||
                 cat.startsWith("$r ") ||
                 cat.startsWith("$r♦") ||

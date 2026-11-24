@@ -23,3 +23,6 @@
 -dontwarn org.codehaus.mojo.animal_sniffer.**
 -dontwarn coil.**
 -dontwarn kotlinx.coroutines.**
+
+-keep class kotlin.text.Regex { *; }
+-keep class kotlin.text.MatchResult { *; }
