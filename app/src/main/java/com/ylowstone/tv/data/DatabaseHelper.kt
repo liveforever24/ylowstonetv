@@ -6,7 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.ylowstone.tv.model.*
 
-class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv.db", null, 1) {
+class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -19,6 +19,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                 username TEXT NOT NULL,
                 password TEXT NOT NULL,
                 user_agent TEXT NOT NULL,
+                live_categories TEXT NOT NULL DEFAULT '',
                 color_index INTEGER NOT NULL DEFAULT 0,
                 last_updated INTEGER NOT NULL DEFAULT 0
             )
@@ -50,9 +51,11 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS channels")
-        db.execSQL("DROP TABLE IF EXISTS playlists")
-        onCreate(db)
+        if (oldVersion < 2) {
+            runCatching {
+                db.execSQL("ALTER TABLE playlists ADD COLUMN live_categories TEXT NOT NULL DEFAULT ''")
+            }
+        }
     }
 
     fun getAllPlaylists(): List<PlaylistProfile> {
@@ -85,6 +88,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             put("username", p.username)
             put("password", p.password)
             put("user_agent", p.userAgent)
+            put("live_categories", serializeCategoryList(p.liveCategories))
             put("color_index", p.colorIndex)
             put("last_updated", p.lastUpdated)
         }
@@ -368,4 +372,14 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         val cv = ContentValues().apply { put("last_watched", System.currentTimeMillis()) }
         writableDatabase.update("channels", cv, "id = ?", arrayOf(channelId.toString()))
     }
+
+    private fun serializeCategoryList(cats: List<String>): String {
+        return cats.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("\n")
+    }
+
+    private fun parseCategoryList(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return raw.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    }
+
 }

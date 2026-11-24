@@ -53,11 +53,11 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                     onProgress("Downloading M3U...")
                     if (localUri != null) {
                         context.contentResolver.openInputStream(localUri)?.use { stream ->
-                            parseM3uStream(profile.id, stream)
+                            parseM3uStream(profile, stream)
                         } ?: emptyList()
                     } else if (profile.url.startsWith("content://")) {
                         context.contentResolver.openInputStream(Uri.parse(profile.url))?.use { stream ->
-                            parseM3uStream(profile.id, stream)
+                            parseM3uStream(profile, stream)
                         } ?: emptyList()
                     } else {
                         val req = Request.Builder()
@@ -84,7 +84,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
         }
     }
 
-    private fun parseM3uStream(playlistId: Long, inputStream: InputStream): List<ChannelItem> {
+    private fun parseM3uStream(profile: PlaylistProfile, inputStream: InputStream): List<ChannelItem> {
         val result = ArrayList<ChannelItem>(2048)
         val reader = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8), 32768)
         var currentName = ""
@@ -113,17 +113,21 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                     lowerUrl.contains("/movie/") || lowerUrl.endsWith(".mkv") || lowerUrl.endsWith(".mp4") -> MediaType.MOVIE
                     else -> MediaType.LIVE
                 }
-                result.add(
-                    ChannelItem(
-                        playlistId = playlistId,
-                        streamId = currentId.ifBlank { result.size.toString() },
-                        name = currentName.ifBlank { "Channel ${result.size + 1}" },
-                        category = currentCategory.ifBlank { "General" },
-                        logoUrl = currentLogo,
-                        streamUrl = trimmed,
-                        mediaType = mediaType
+                val resolvedCat = currentCategory.ifBlank { "General" }
+                val allowedForType = mediaType != MediaType.LIVE || profile.matchesLiveCategoryFilter(resolvedCat)
+                if (allowedForType) {
+                    result.add(
+                        ChannelItem(
+                            playlistId = profile.id,
+                            streamId = currentId.ifBlank { result.size.toString() },
+                            name = currentName.ifBlank { "Channel ${result.size + 1}" },
+                            category = resolvedCat,
+                            logoUrl = currentLogo,
+                            streamUrl = trimmed,
+                            mediaType = mediaType
+                        )
                     )
-                )
+                }
                 currentName = ""
                 currentLogo = ""
                 currentCategory = "General"
@@ -192,19 +196,21 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                 val sid = o.optString("stream_id")
                 if (sid.isEmpty()) continue
                 val catName = liveCats[o.optString("category_id")] ?: "Live TV"
-                val streamUrl = "$base/live/$u/$p/$sid.$ext"
-                all.add(
-                    ChannelItem(
-                        playlistId = profile.id,
-                        streamId = sid,
-                        name = o.optString("name", "Live $sid"),
-                        category = catName,
-                        logoUrl = o.optString("stream_icon", ""),
-                        streamUrl = streamUrl,
-                        mediaType = MediaType.LIVE,
-                        containerExtension = ext
+                if (profile.matchesLiveCategoryFilter(catName)) {
+                    val streamUrl = "$base/live/$u/$p/$sid.$ext"
+                    all.add(
+                        ChannelItem(
+                            playlistId = profile.id,
+                            streamId = sid,
+                            name = o.optString("name", "Live $sid"),
+                            category = catName,
+                            logoUrl = o.optString("stream_icon", ""),
+                            streamUrl = streamUrl,
+                            mediaType = MediaType.LIVE,
+                            containerExtension = ext
+                        )
                     )
-                )
+                }
             }
         }
 
@@ -439,6 +445,14 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                     val pType = runCatching {
                         PlaylistType.valueOf(item.optString("type", "XTREAM").trim().uppercase())
                     }.getOrDefault(PlaylistType.XTREAM)
+                    val catArr = item.optJSONArray("liveCategories") ?: item.optJSONArray("categories")
+                    val parsedCats = mutableListOf<String>()
+                    if (catArr != null) {
+                        for (cIdx in 0 until catArr.length()) {
+                            val cVal = catArr.optString(cIdx, "").trim()
+                            if (cVal.isNotEmpty()) parsedCats.add(cVal)
+                        }
+                    }
                     parsedPlaylists.add(
                         PlaylistProfile(
                             id = 0L,
@@ -448,6 +462,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                             username = item.optString("username", "").trim(),
                             password = item.optString("password", "").trim(),
                             userAgent = item.optString("userAgent", "").trim(),
+                            liveCategories = parsedCats.distinct(),
                             colorIndex = i % 6,
                             lastUpdated = System.currentTimeMillis()
                         )

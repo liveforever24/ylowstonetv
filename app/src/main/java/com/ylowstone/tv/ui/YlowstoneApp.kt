@@ -247,9 +247,11 @@ fun YlowstoneApp(
                 val fresh = playlists.firstOrNull { it.id == profile.id } ?: profile
                 if (enterAfter) {
                     openWorkspace(fresh)
-                } else if (activePlaylist?.id == fresh.id) {
-                    activePlaylist = fresh
-                    activeCounts = repo.db.getCountsByMediaType(fresh.id)
+                } else {
+                    if (activePlaylist?.id == fresh.id) {
+                        activePlaylist = fresh
+                        activeCounts = repo.db.getCountsByMediaType(fresh.id)
+                    }
                     homeDataVersion++
                 }
             }.onFailure { err ->

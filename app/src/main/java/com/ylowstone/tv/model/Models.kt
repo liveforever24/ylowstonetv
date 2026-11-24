@@ -48,9 +48,28 @@ data class PlaylistProfile(
     val username: String = "",
     val password: String = "",
     val userAgent: String = "",
+    val liveCategories: List<String> = emptyList(),
     val colorIndex: Int = 0,
     val lastUpdated: Long = 0L
 ) {
+    fun matchesLiveCategoryFilter(categoryName: String): Boolean {
+        if (liveCategories.isEmpty()) return true
+        val cat = categoryName.trim().lowercase()
+        if (cat.isEmpty()) return false
+        return liveCategories.any { rule ->
+            val r = rule.trim().lowercase()
+            if (r.isEmpty()) return@any false
+            // Match exact, prefix with separator (e.g. "us ♦ ...", "uk - ..."), or word boundary
+            cat == r ||
+                cat.startsWith("$r ") ||
+                cat.startsWith("$r♦") ||
+                cat.startsWith("$r|") ||
+                cat.startsWith("$r-") ||
+                cat.startsWith("$r:") ||
+                Regex("(^|[^a-z0-9])${Regex.escape(r)}([^a-z0-9]|$)").containsMatchIn(cat)
+        }
+    }
+} {
     fun buildShareableLink(format: StreamFormat = StreamFormat.HLS): String {
         return when (type) {
             PlaylistType.XTREAM -> {
