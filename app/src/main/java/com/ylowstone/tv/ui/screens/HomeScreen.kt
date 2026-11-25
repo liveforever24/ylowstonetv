@@ -1,11 +1,14 @@
 package com.ylowstone.tv.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,12 +38,14 @@ import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     activePlaylist: PlaylistProfile,
     counts: Map<MediaType, Int>,
     favourites: List<TaggedChannel>,
     history: List<TaggedChannel>,
+    watchGroups: Map<String, List<TaggedChannel>>,
     favoriteViewMode: FavoriteViewMode,
     strings: AppStrings,
     isTvMode: Boolean,
@@ -48,14 +53,28 @@ fun HomeScreen(
     onOpenSearch: () -> Unit,
     onChangeFavoriteViewMode: (FavoriteViewMode) -> Unit,
     onPlayTaggedChannel: (TaggedChannel, List<TaggedChannel>) -> Unit,
+    onLongPressTaggedChannel: (TaggedChannel) -> Unit,
+    onRemoveFromWatchGroup: (groupName: String, streamUrl: String) -> Unit,
     onOpenProfileMenu: () -> Unit
 ) {
     val c = LocalYlowColors.current
+    var watchGroupsExpanded by rememberSaveable { mutableStateOf(false) }
+    var selectedWatchGroup by rememberSaveable { mutableStateOf("ALL") }
     var historyExpanded by rememberSaveable { mutableStateOf(false) }
     var favouritesExpanded by rememberSaveable { mutableStateOf(false) }
 
     val favColumns = if (isTvMode) 3 else 2
     val favGridRows = remember(favourites, favColumns) { favourites.chunked(favColumns) }
+
+    val totalGroupedCount = remember(watchGroups) { watchGroups.values.sumOf { it.size } }
+    val groupNames = remember(watchGroups) { watchGroups.keys.toList() }
+    val activeWatchGroupItems: List<Pair<String, TaggedChannel>> = remember(watchGroups, selectedWatchGroup) {
+        if (selectedWatchGroup == "ALL" || !watchGroups.containsKey(selectedWatchGroup)) {
+            watchGroups.entries.flatMap { (gName, items) -> items.map { gName to it } }
+        } else {
+            watchGroups[selectedWatchGroup].orEmpty().map { selectedWatchGroup to it }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -139,7 +158,7 @@ fun HomeScreen(
             }
         }
 
-        // ---- Section 1: 3 Kotak Besar Utama (TV, FILM, SERI) — Elemen Paling Mencolok di Beranda ----
+        // ---- Section 1: 3 Kotak Besar Utama (TV, FILM, SERI) ----
         item {
             Spacer(Modifier.height(2.dp))
             Row(
@@ -176,7 +195,125 @@ fun HomeScreen(
             }
         }
 
-        // ---- Section 2: Riwayat Tontonan (Bisa Show & Hide) ----
+        // ---- Section 2: Kategori Tontonan (Sports, Event Pertandingan, Daftar Tontonan) - Show & Hide ----
+        item {
+            CollapsibleSectionBar(
+                icon = Icons.Rounded.Bookmarks,
+                title = strings.watchGroupsTitle,
+                count = totalGroupedCount,
+                expanded = watchGroupsExpanded,
+                expandLabel = strings.openWatchGroups,
+                collapseLabel = strings.closeWatchGroups,
+                accentWhenCollapsed = totalGroupedCount > 0,
+                isTvMode = isTvMode,
+                onToggle = { watchGroupsExpanded = !watchGroupsExpanded }
+            )
+        }
+
+        if (watchGroupsExpanded) {
+            if (watchGroups.isEmpty()) {
+                item { EmptyHintCard(Icons.Rounded.Bookmarks, strings.noWatchGroupsYet) }
+            } else {
+                item {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        item {
+                            val allSelected = selectedWatchGroup == "ALL" || !watchGroups.containsKey(selectedWatchGroup)
+                            WatchGroupFilterChip(
+                                label = "${strings.allFilter} ($totalGroupedCount)",
+                                selected = allSelected,
+                                onClick = { selectedWatchGroup = "ALL" }
+                            )
+                        }
+                        items(groupNames, key = { "grp_chip_$it" }) { grp ->
+                            val count = watchGroups[grp]?.size ?: 0
+                            WatchGroupFilterChip(
+                                label = "$grp ($count)",
+                                selected = selectedWatchGroup == grp,
+                                onClick = { selectedWatchGroup = grp }
+                            )
+                        }
+                    }
+                }
+
+                val queueForPlayback = activeWatchGroupItems.map { it.second }
+                items(
+                    items = activeWatchGroupItems,
+                    key = { (gName, tagged) -> "wg_${gName}_${tagged.channel.streamUrl}" }
+                ) { (gName, tagged) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(c.surface)
+                            .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                            .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
+                            .glossyPressPill(14f)
+                            .combinedClickable(
+                                onClick = { onPlayTaggedChannel(tagged, queueForPlayback) },
+                                onLongClick = { onLongPressTaggedChannel(tagged) }
+                            )
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ChannelLogoBox(tagged.channel.logoUrl, 38.dp, corner = 10.dp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = tagged.channel.name,
+                                color = c.textPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(c.accentContainer)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = gName,
+                                        color = c.accent,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
+                                    )
+                                }
+                                Text(
+                                    text = tagged.playlistName,
+                                    color = c.textSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = { onRemoveFromWatchGroup(gName, tagged.channel.streamUrl) },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.Close,
+                                contentDescription = strings.delete,
+                                tint = c.textSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- Section 3: Riwayat Tontonan (Bisa Show & Hide) ----
         item {
             CollapsibleSectionBar(
                 icon = Icons.Rounded.History,
@@ -210,7 +347,10 @@ fun HomeScreen(
                             .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
                             .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
                             .glossyPressPill(14f)
-                            .clickable { onPlayTaggedChannel(tagged, history) }
+                            .combinedClickable(
+                                onClick = { onPlayTaggedChannel(tagged, history) },
+                                onLongClick = { onLongPressTaggedChannel(tagged) }
+                            )
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
@@ -270,7 +410,7 @@ fun HomeScreen(
             }
         }
 
-        // ---- Section 3: Saluran Favorit (Bisa Show & Hide + Kotak / Daftar) ----
+        // ---- Section 4: Saluran Favorit (Bisa Show & Hide + Kotak / Daftar) ----
         item {
             CollapsibleSectionBar(
                 icon = Icons.Rounded.Favorite,
@@ -289,7 +429,6 @@ fun HomeScreen(
             if (favourites.isEmpty()) {
                 item { EmptyHintCard(Icons.Rounded.FavoriteBorder, strings.noFavouritesYet) }
             } else {
-                // Switch cepat Kotak / Daftar (tersinkron otomatis dengan Pengaturan)
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -334,7 +473,10 @@ fun HomeScreen(
                                         .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
                                         .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
                                         .glossyPressPill(16f)
-                                        .clickable { onPlayTaggedChannel(tagged, favourites) }
+                                        .combinedClickable(
+                                            onClick = { onPlayTaggedChannel(tagged, favourites) },
+                                            onLongClick = { onLongPressTaggedChannel(tagged) }
+                                        )
                                         .padding(12.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
@@ -387,7 +529,10 @@ fun HomeScreen(
                                 .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
                                 .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
                                 .glossyPressPill(14f)
-                                .clickable { onPlayTaggedChannel(tagged, favourites) }
+                                .combinedClickable(
+                                    onClick = { onPlayTaggedChannel(tagged, favourites) },
+                                    onLongClick = { onLongPressTaggedChannel(tagged) }
+                                )
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -417,6 +562,35 @@ fun HomeScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WatchGroupFilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val c = LocalYlowColors.current
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) c.accent else c.surface)
+            .border(
+                width = 1.dp,
+                color = if (selected) c.accent else c.glassBorder,
+                shape = RoundedCornerShape(10.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp)
+    ) {
+        Text(
+            text = label,
+            color = if (selected) c.onAccent else c.textPrimary,
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1
+        )
     }
 }
 
@@ -576,7 +750,6 @@ private fun MainCategoryHeroCard(
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Icon badge besar di atas-tengah
         Box(
             modifier = Modifier
                 .size(if (isTvMode) 64.dp else 56.dp)
@@ -592,7 +765,6 @@ private fun MainCategoryHeroCard(
             )
         }
 
-        // Judul besar & jumlah item di bagian bawah
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)

@@ -39,7 +39,22 @@ enum class StreamFormat(val ext: String, val label: String) {
     TS("ts", "MPEG-TS (.ts)")
 }
 
-enum class PlayerMode { NONE, FULLSCREEN, FLOATING }
+enum class PlayerMode { NONE, SPLIT, FULLSCREEN, FLOATING }
+
+enum class StreamHealthState { ACTIVE, DELAY, DEAD }
+
+data class StreamHealthResult(
+    val state: StreamHealthState,
+    val latencyMs: Long,
+    val httpCode: Int = 0,
+    val detail: String = ""
+)
+
+val DEFAULT_WATCH_GROUPS: List<String> = listOf(
+    "Sports",
+    "Event Pertandingan",
+    "Daftar Tontonan"
+)
 
 private val ADULT_CONTENT_REGEX = Regex(
     pattern = """(?i)(\b(adults?|porn\w*|xxx|xxl|nsfw|erotic\w*|sex|sexy|jav|bokep|hentai|playboy|dorcel|redlight|brazzers|xvideos|xhamster|penthouse|softcore|hardcore|onlyfans|camgirls?|naughty|milf|fetish|dewasa|stripclub|vivid|bangbros|hustler|private\s+tv|blue\s+hustler|vod\s+porn|for\s+adults)\b|(?:^|[\s\[\(\-_\|/])(?:18\+|\+18)(?:$|[\s\]\)\-_\|/]))"""

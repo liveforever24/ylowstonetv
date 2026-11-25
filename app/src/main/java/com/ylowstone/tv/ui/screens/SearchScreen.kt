@@ -1,8 +1,10 @@
 package com.ylowstone.tv.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SearchScreen(
     activePlaylist: PlaylistProfile,
@@ -38,6 +41,7 @@ fun SearchScreen(
     strings: AppStrings,
     isTvMode: Boolean,
     onPlayTagged: (TaggedChannel, List<TaggedChannel>) -> Unit,
+    onLongPressTagged: (TaggedChannel) -> Unit,
     onToggleFavorite: (ChannelItem) -> Unit,
     onOpenProfileMenu: () -> Unit
 ) {
@@ -190,7 +194,10 @@ fun SearchScreen(
                         .background(c.surface)
                         .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
                         .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
-                        .clickable { onPlayTagged(tagged, results) }
+                        .combinedClickable(
+                            onClick = { onPlayTagged(tagged, results) },
+                            onLongClick = { onLongPressTagged(tagged) }
+                        )
                         .padding(horizontal = 12.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(11.dp)

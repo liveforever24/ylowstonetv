@@ -6,7 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.ylowstone.tv.model.*
 
-class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv.db", null, 4) {
+class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv.db", null, 5) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -48,6 +48,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         )
 
         createWatchHistoryTable(db)
+        createWatchGroupsTable(db)
 
         db.execSQL("CREATE INDEX idx_channels_main ON channels(playlist_id, media_type, category)")
         db.execSQL("CREATE INDEX idx_channels_name ON channels(playlist_id, name)")
@@ -76,6 +77,29 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_watch_history_time ON watch_history(last_watched DESC)")
     }
 
+    private fun createWatchGroupsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS watch_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_name TEXT NOT NULL,
+                stream_url TEXT NOT NULL,
+                playlist_id INTEGER NOT NULL,
+                playlist_name TEXT NOT NULL,
+                channel_id INTEGER NOT NULL DEFAULT 0,
+                stream_id TEXT NOT NULL DEFAULT '',
+                name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                logo_url TEXT NOT NULL DEFAULT '',
+                media_type TEXT NOT NULL,
+                added_at INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(group_name, stream_url)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_watch_groups_name ON watch_groups(group_name, added_at DESC)")
+    }
+
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
             runCatching {
@@ -92,6 +116,9 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         }
         if (oldVersion < 4) {
             runCatching { createWatchHistoryTable(db) }
+        }
+        if (oldVersion < 5) {
+            runCatching { createWatchGroupsTable(db) }
         }
     }
 
@@ -167,6 +194,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         try {
             writableDatabase.delete("channels", "playlist_id = ?", arrayOf(playlistId.toString()))
             writableDatabase.delete("watch_history", "playlist_id = ?", arrayOf(playlistId.toString()))
+            writableDatabase.delete("watch_groups", "playlist_id = ?", arrayOf(playlistId.toString()))
             writableDatabase.delete("playlists", "id = ?", arrayOf(playlistId.toString()))
             writableDatabase.setTransactionSuccessful()
         } finally {
@@ -409,7 +437,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         positionMs: Long = -1L,
         durationMs: Long = -1L
     ) {
-        // Jangan pernah menyimpan riwayat / lanjutkan menonton untuk konten dewasa
         if (ch.streamUrl.isBlank() || ch.isAdultContent()) return
         val db = writableDatabase
         val now = System.currentTimeMillis()
@@ -494,7 +521,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                 val plName = c.getString(2) ?: ""
                 val chName = c.getString(5) ?: ""
                 val category = c.getString(6) ?: ""
-                // Pagar privasi: sembunyikan seluruh kategori / judul dewasa dari Beranda
                 if (isAdultCategoryOrTitle(category, chName)) continue
                 val locked = lockedByPlaylist[plId]
                 if (locked != null && locked.contains(category)) continue
@@ -520,6 +546,105 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             }
         }
         return list
+    }
+
+    // ---- Custom Watch Groups (Fase 2: Sports, Event Pertandingan, Daftar Tontonan, dll.) ----
+    fun addToWatchGroup(groupName: String, ch: ChannelItem, playlistName: String) {
+        val cleanGroup = groupName.trim()
+        if (cleanGroup.isEmpty() || ch.streamUrl.isBlank()) return
+        val cv = ContentValues().apply {
+            put("group_name", cleanGroup)
+            put("stream_url", ch.streamUrl)
+            put("playlist_id", ch.playlistId)
+            put("playlist_name", playlistName.ifBlank { "YlowstoneTV" })
+            put("channel_id", ch.id)
+            put("stream_id", ch.streamId)
+            put("name", ch.name)
+            put("category", ch.category)
+            put("logo_url", ch.logoUrl)
+            put("media_type", ch.mediaType.name)
+            put("added_at", System.currentTimeMillis())
+        }
+        writableDatabase.insertWithOnConflict("watch_groups", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun removeFromWatchGroup(groupName: String, streamUrl: String) {
+        writableDatabase.delete(
+            "watch_groups",
+            "group_name = ? AND stream_url = ?",
+            arrayOf(groupName.trim(), streamUrl)
+        )
+    }
+
+    fun deleteWatchGroup(groupName: String) {
+        writableDatabase.delete("watch_groups", "group_name = ?", arrayOf(groupName.trim()))
+    }
+
+    fun getGroupsForStream(streamUrl: String): Set<String> {
+        if (streamUrl.isBlank()) return emptySet()
+        val set = LinkedHashSet<String>()
+        readableDatabase.rawQuery(
+            "SELECT group_name FROM watch_groups WHERE stream_url = ?",
+            arrayOf(streamUrl)
+        ).use { c ->
+            while (c.moveToNext()) {
+                val g = c.getString(0)?.trim()
+                if (!g.isNullOrEmpty()) set.add(g)
+            }
+        }
+        return set
+    }
+
+    fun getAllWatchGroupNames(): List<String> {
+        val ordered = LinkedHashSet<String>()
+        ordered.addAll(DEFAULT_WATCH_GROUPS)
+        readableDatabase.rawQuery(
+            "SELECT DISTINCT group_name FROM watch_groups ORDER BY group_name ASC",
+            null
+        ).use { c ->
+            while (c.moveToNext()) {
+                val g = c.getString(0)?.trim()
+                if (!g.isNullOrEmpty()) ordered.add(g)
+            }
+        }
+        return ordered.toList()
+    }
+
+    fun getWatchGroupsAcrossPlaylists(
+        lockedByPlaylist: Map<Long, Set<String>>
+    ): Map<String, List<TaggedChannel>> {
+        val grouped = LinkedHashMap<String, MutableList<TaggedChannel>>()
+        val sql = """
+            SELECT g.group_name, g.stream_url, g.playlist_id, COALESCE(p.name, g.playlist_name) AS pl_name,
+                   g.channel_id, g.stream_id, g.name, g.category, g.logo_url, g.media_type, g.added_at
+            FROM watch_groups g
+            LEFT JOIN playlists p ON p.id = g.playlist_id
+            ORDER BY g.added_at DESC
+        """.trimIndent()
+        readableDatabase.rawQuery(sql, null).use { c ->
+            while (c.moveToNext()) {
+                val groupName = c.getString(0)?.trim() ?: continue
+                val streamUrl = c.getString(1) ?: continue
+                val plId = c.getLong(2)
+                val plName = c.getString(3) ?: "YlowstoneTV"
+                val chName = c.getString(6) ?: ""
+                val category = c.getString(7) ?: ""
+                val locked = lockedByPlaylist[plId]
+                if (locked != null && locked.contains(category)) continue
+                val ch = ChannelItem(
+                    id = c.getLong(4),
+                    playlistId = plId,
+                    streamId = c.getString(5) ?: "",
+                    name = chName,
+                    category = category,
+                    logoUrl = c.getString(8) ?: "",
+                    streamUrl = streamUrl,
+                    mediaType = runCatching { MediaType.valueOf(c.getString(9)) }.getOrDefault(MediaType.LIVE)
+                )
+                grouped.getOrPut(groupName) { mutableListOf() }.add(TaggedChannel(ch, plName))
+            }
+        }
+        return grouped
     }
 
     fun searchAcrossPlaylists(

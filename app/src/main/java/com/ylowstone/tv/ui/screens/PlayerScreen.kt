@@ -118,9 +118,9 @@ fun PipVideoSurface(exoPlayer: ExoPlayer, isPlaying: Boolean) {
 }
 
 /**
- * Pure YouTube PiP-style Floating Mini-Player:
+ * Fase 3: Minimalist Floating Mini-Player:
  * - Idle: 100% clean video inside rounded corners (ZERO buttons visible)
- * - Single tap: reveals Prev, Play/Pause, Next, Fullscreen, System PiP, and Close (X)
+ * - Single tap: reveals ONLY 3 minimalist controls: Layar Penuh (Fullscreen), Play/Pause, and Tutup (X)
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -128,10 +128,7 @@ fun DraggableFloatingPlayer(
     exoPlayer: ExoPlayer,
     channel: ChannelItem,
     isPlaying: Boolean,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
     onExpandFullscreen: () -> Unit,
-    onEnterSystemPip: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -142,7 +139,7 @@ fun DraggableFloatingPlayer(
 
     LaunchedEffect(controlsVisible) {
         if (controlsVisible) {
-            delay(3200)
+            delay(3000)
             controlsVisible = false
         }
     }
@@ -195,9 +192,10 @@ fun DraggableFloatingPlayer(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.50f))
-                    .padding(8.dp)
+                    .background(Color.Black.copy(alpha = 0.52f))
+                    .padding(10.dp)
             ) {
+                // Top Row: Layar Penuh (kiri) & Tutup X (kanan)
                 Row(
                     modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
                     verticalAlignment = Alignment.CenterVertically,
@@ -205,81 +203,53 @@ fun DraggableFloatingPlayer(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(30.dp)
                             .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.62f))
+                            .background(Color.Black.copy(alpha = 0.65f))
                             .clickable { controlsVisible = false; onExpandFullscreen() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Rounded.Fullscreen, contentDescription = "Fullscreen", tint = Color.White, modifier = Modifier.size(17.dp))
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.62f))
-                                .clickable { controlsVisible = false; onEnterSystemPip() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Rounded.PictureInPictureAlt, contentDescription = "PiP", tint = Color.White, modifier = Modifier.size(15.dp))
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.62f))
-                                .clickable(onClick = onClose),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .clickable(onClick = onPrev),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Rounded.SkipPrevious, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(21.dp))
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(c.accent)
-                            .clickable { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() },
-                        contentAlignment = Alignment.Center
-                    ) {
                         Icon(
-                            if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = "PlayPause",
-                            tint = c.onAccent,
-                            modifier = Modifier.size(24.dp)
+                            Icons.Rounded.Fullscreen,
+                            contentDescription = "Fullscreen",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
                     Box(
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(30.dp)
                             .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .clickable(onClick = onNext),
+                            .background(Color.Black.copy(alpha = 0.65f))
+                            .clickable(onClick = onClose),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Rounded.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(21.dp))
+                        Icon(
+                            Icons.Rounded.Close,
+                            contentDescription = "Close",
+                            tint = Color.White,
+                            modifier = Modifier.size(17.dp)
+                        )
                     }
+                }
+
+                // Center: Play / Pause ONLY
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(c.accent)
+                        .clickable { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                        contentDescription = "PlayPause",
+                        tint = c.onAccent,
+                        modifier = Modifier.size(26.dp)
+                    )
                 }
 
                 Text(
@@ -289,7 +259,7 @@ fun DraggableFloatingPlayer(
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 4.dp)
+                    modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 2.dp)
                 )
             }
         }

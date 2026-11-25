@@ -38,6 +38,7 @@ import com.ylowstone.tv.data.ActiveSubtitleSession
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.stringsFor
 import com.ylowstone.tv.model.*
+import com.ylowstone.tv.ui.components.ChannelLongPressDialog
 import com.ylowstone.tv.ui.components.MainTab
 import com.ylowstone.tv.ui.components.ProfileQuickDropdown
 import com.ylowstone.tv.ui.screens.*
@@ -100,6 +101,7 @@ fun YlowstoneApp(
     var showProfileDropdown by remember { mutableStateOf(false) }
     var showBackToHomeDialog by remember { mutableStateOf(false) }
     var quickUpdateDialogInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var longPressTarget by remember { mutableStateOf<Pair<ChannelItem, String>?>(null) }
     var lastBackPressTime by remember { mutableLongStateOf(0L) }
 
     // Shared Persistent Media3 Player
@@ -147,6 +149,10 @@ fun YlowstoneApp(
             sharedPlayer.removeListener(listener)
             sharedPlayer.release()
         }
+    }
+
+    fun resolvePlaylistName(ch: ChannelItem): String {
+        return playlists.firstOrNull { it.id == ch.playlistId }?.name ?: activePlaylist?.name ?: "YlowstoneTV"
     }
 
     fun saveCurrentVodProgress(refreshHome: Boolean = false) {
@@ -198,7 +204,7 @@ fun YlowstoneApp(
         activeChannel = ch
         activeQueue = queue.ifEmpty { listOf(ch) }
         if (!ch.isAdultContent()) {
-            val plName = playlists.firstOrNull { it.id == ch.playlistId }?.name ?: activePlaylist?.name ?: "YlowstoneTV"
+            val plName = resolvePlaylistName(ch)
             repo.db.recordWatchHistory(ch, plName)
             homeDataVersion++
         }
@@ -252,8 +258,14 @@ fun YlowstoneApp(
             if (launched) return
         }
         playStream(ch, queue)
-        playerMode = PlayerMode.FULLSCREEN
-        isLandscapeFullscreen = isTvMode || enterLandscape
+        if (enterLandscape) {
+            playerMode = PlayerMode.FULLSCREEN
+            isLandscapeFullscreen = true
+        } else {
+            // Fase 3: buka dalam mode Split-Screen (Ponsel: video atas + daftar putar bawah; TV: video kiri + daftar putar kanan)
+            playerMode = PlayerMode.SPLIT
+            isLandscapeFullscreen = false
+        }
     }
 
     LaunchedEffect(pipCommandNonce) {
@@ -485,6 +497,9 @@ fun YlowstoneApp(
     val homeHistory = remember(allLockedMap, homeDataVersion) {
         repo.db.getRecentHistoryAcrossPlaylists(allLockedMap, limit = 30)
     }
+    val homeWatchGroups = remember(allLockedMap, homeDataVersion) {
+        repo.db.getWatchGroupsAcrossPlaylists(allLockedMap)
+    }
 
     fun handleDoubleBackExit() {
         val now = System.currentTimeMillis()
@@ -499,10 +514,18 @@ fun YlowstoneApp(
 
     BackHandler(enabled = stage != AppStage.SPLASH) {
         when {
+            longPressTarget != null -> {
+                longPressTarget = null
+            }
             showBackToHomeDialog -> {
                 showBackToHomeDialog = false
             }
             playerMode == PlayerMode.FULLSCREEN -> {
+                saveCurrentVodProgress(refreshHome = true)
+                playerMode = PlayerMode.SPLIT
+                isLandscapeFullscreen = false
+            }
+            playerMode == PlayerMode.SPLIT -> {
                 saveCurrentVodProgress(refreshHome = true)
                 playerMode = PlayerMode.FLOATING
                 isLandscapeFullscreen = false
@@ -527,7 +550,6 @@ fun YlowstoneApp(
             stage == AppStage.WORKSPACE -> {
                 when (activeTab) {
                     MainTab.LIVE, MainTab.MOVIES, MainTab.SERIES -> {
-                        // Tetap stay di daftar channel/kategori saat ini, tampilkan konfirmasi Kembali Beranda
                         showBackToHomeDialog = true
                     }
                     MainTab.SEARCH -> {
@@ -737,6 +759,7 @@ fun YlowstoneApp(
                                         counts = activeCounts,
                                         favourites = homeFavourites,
                                         history = homeHistory,
+                                        watchGroups = homeWatchGroups,
                                         favoriteViewMode = settings.favoriteViewMode,
                                         strings = strings,
                                         isTvMode = isTvMode,
@@ -756,7 +779,15 @@ fun YlowstoneApp(
                                             prefs.saveSettings(updated)
                                         },
                                         onPlayTaggedChannel = { tagged, list ->
-                                            launchPlayer(tagged.channel, list.map { it.channel }, isTvMode)
+                                            launchPlayer(tagged.channel, list.map { it.channel }, false)
+                                        },
+                                        onLongPressTaggedChannel = { tagged ->
+                                            longPressTarget = tagged.channel to tagged.playlistName
+                                        },
+                                        onRemoveFromWatchGroup = { groupName, streamUrl ->
+                                            repo.db.removeFromWatchGroup(groupName, streamUrl)
+                                            homeDataVersion++
+                                            Toast.makeText(context, "${strings.removedFromGroup} $groupName", Toast.LENGTH_SHORT).show()
                                         },
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
@@ -790,6 +821,9 @@ fun YlowstoneApp(
                                             playStream(ch, list)
                                         },
                                         onLaunchPlayer = { ch, list, landscape -> launchPlayer(ch, list, landscape) },
+                                        onLongPressChannel = { ch ->
+                                            longPressTarget = ch to pl.name
+                                        },
                                         onFloatCurrent = { playerMode = PlayerMode.FLOATING },
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
@@ -818,8 +852,11 @@ fun YlowstoneApp(
                                             repo.db.toggleFavorite(ch.id, !ch.isFavorite)
                                             homeDataVersion++
                                         },
-                                        onSelectChannelInline = { ch, list -> launchPlayer(ch, list, isTvMode) },
+                                        onSelectChannelInline = { ch, list -> launchPlayer(ch, list, false) },
                                         onLaunchPlayer = { ch, list, landscape -> launchPlayer(ch, list, landscape) },
+                                        onLongPressChannel = { ch ->
+                                            longPressTarget = ch to pl.name
+                                        },
                                         onFloatCurrent = { playerMode = PlayerMode.FLOATING },
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
@@ -848,8 +885,11 @@ fun YlowstoneApp(
                                             repo.db.toggleFavorite(ch.id, !ch.isFavorite)
                                             homeDataVersion++
                                         },
-                                        onSelectChannelInline = { ch, list -> launchPlayer(ch, list, isTvMode) },
+                                        onSelectChannelInline = { ch, list -> launchPlayer(ch, list, false) },
                                         onLaunchPlayer = { ch, list, landscape -> launchPlayer(ch, list, landscape) },
+                                        onLongPressChannel = { ch ->
+                                            longPressTarget = ch to pl.name
+                                        },
                                         onFloatCurrent = { playerMode = PlayerMode.FLOATING },
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
@@ -864,7 +904,10 @@ fun YlowstoneApp(
                                         strings = strings,
                                         isTvMode = isTvMode,
                                         onPlayTagged = { tagged, list ->
-                                            launchPlayer(tagged.channel, list.map { it.channel }, isTvMode)
+                                            launchPlayer(tagged.channel, list.map { it.channel }, false)
+                                        },
+                                        onLongPressTagged = { tagged ->
+                                            longPressTarget = tagged.channel to tagged.playlistName
                                         },
                                         onToggleFavorite = { ch ->
                                             repo.db.toggleFavorite(ch.id, !ch.isFavorite)
@@ -957,19 +1000,53 @@ fun YlowstoneApp(
                 )
             }
 
-            // Floating Mini-Player
+            // Fase 3: Split-Screen Player Overlay (Ponsel: video atas + daftar putar bawah; TV: video kiri + daftar putar kanan)
+            if (playerMode == PlayerMode.SPLIT && activeChannel != null && stage != AppStage.SPLASH) {
+                SplitPlayerScreen(
+                    exoPlayer = sharedPlayer,
+                    currentChannel = activeChannel!!,
+                    channelList = activeQueue.ifEmpty { listOf(activeChannel!!) },
+                    isPlaying = isPlaying,
+                    isBuffering = isBuffering,
+                    isTvMode = isTvMode,
+                    subtitleSession = subtitleSession,
+                    strings = strings,
+                    onSelectChannel = { nextCh -> playStream(nextCh, activeQueue) },
+                    onLongPressChannel = { ch -> longPressTarget = ch to resolvePlaylistName(ch) },
+                    onToggleFavorite = { ch ->
+                        repo.db.toggleFavorite(ch.id, !ch.isFavorite)
+                        activeQueue = activeQueue.map {
+                            if (it.id == ch.id) it.copy(isFavorite = !ch.isFavorite) else it
+                        }
+                        if (activeChannel?.id == ch.id) {
+                            activeChannel = activeChannel?.copy(isFavorite = !ch.isFavorite)
+                        }
+                        homeDataVersion++
+                    },
+                    onEnterFullscreen = {
+                        playerMode = PlayerMode.FULLSCREEN
+                        isLandscapeFullscreen = true
+                    },
+                    onMinimizeToFloat = {
+                        saveCurrentVodProgress(refreshHome = true)
+                        playerMode = PlayerMode.FLOATING
+                        isLandscapeFullscreen = false
+                    },
+                    onEnterSystemPip = onEnterSystemPip,
+                    onClosePlayer = { stopPlaybackCompletely() }
+                )
+            }
+
+            // Fase 3: Minimalist Floating Mini-Player (Hanya Layar Penuh, Play/Pause, dan Tutup X)
             if (playerMode == PlayerMode.FLOATING && activeChannel != null && stage != AppStage.SPLASH) {
                 DraggableFloatingPlayer(
                     exoPlayer = sharedPlayer,
                     channel = activeChannel!!,
                     isPlaying = isPlaying,
-                    onPrev = { playRelativeChannel(-1) },
-                    onNext = { playRelativeChannel(1) },
                     onExpandFullscreen = {
                         playerMode = PlayerMode.FULLSCREEN
                         isLandscapeFullscreen = true
                     },
-                    onEnterSystemPip = onEnterSystemPip,
                     onClose = { stopPlaybackCompletely() },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -994,7 +1071,14 @@ fun YlowstoneApp(
                     showGestures = settings.showPlayerGestures,
                     strings = strings,
                     onSelectChannel = { nextCh -> playStream(nextCh, activeQueue) },
-                    onToggleFullscreenOrientation = { isLandscapeFullscreen = !isLandscapeFullscreen },
+                    onToggleFullscreenOrientation = {
+                        if (isLandscapeFullscreen) {
+                            playerMode = PlayerMode.SPLIT
+                            isLandscapeFullscreen = false
+                        } else {
+                            isLandscapeFullscreen = true
+                        }
+                    },
                     subtitleSession = subtitleSession,
                     onUpdateSubtitleSession = { nextSub -> subtitleSession = nextSub },
                     onMinimizeToFloat = {
@@ -1005,6 +1089,18 @@ fun YlowstoneApp(
                     onTracksModified = { tracksVersion++ }
                 )
             }
+        }
+
+        // Fase 2: Menu Tekan Lama (Long-Press) 3-in-1
+        longPressTarget?.let { (ch, plName) ->
+            ChannelLongPressDialog(
+                channel = ch,
+                playlistName = plName,
+                repo = repo,
+                strings = strings,
+                onDismiss = { longPressTarget = null },
+                onWatchGroupsChanged = { homeDataVersion++ }
+            )
         }
 
         // Konfirmasi Kembali Beranda saat menekan gestur kembali di TV / FILM / SERI
