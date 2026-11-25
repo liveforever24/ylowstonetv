@@ -2,6 +2,7 @@ package com.ylowstone.tv.ui.components
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.widget.Toast
@@ -26,7 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ylowstone.tv.data.DatabaseHelper
 import com.ylowstone.tv.data.IptvRepository
-import com.ylowstone.tv.model.*
+import com.ylowstone.tv.i18n.AppStrings
+import com.ylowstone.tv.model.ChannelItem
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -42,38 +44,55 @@ data class LinkCheckOutcome(
     val detail: String = ""
 )
 
-object CustomWatchGroupStore {
-    val DEFAULT_GROUPS = listOf("Sports", "Event Pertandingan", "Daftar Tontonan")
+object WatchGroupBridge {
+    val PRESET_GROUPS = listOf("Sports", "Event Pertandingan", "Daftar Tontonan")
 
-    private fun ensureTable(db: SQLiteDatabase) {
+    private fun resolveTableAndCols(db: SQLiteDatabase): Pair<String, Set<String>> {
+        val cols = HashSet<String>()
+        db.rawQuery("PRAGMA table_info(watch_groups)", null).use { c ->
+            while (c.moveToNext()) {
+                c.getString(1)?.let { cols.add(it) }
+            }
+        }
+        if (cols.isNotEmpty()) return "watch_groups" to cols
+
         db.execSQL(
             """
-            CREATE TABLE IF NOT EXISTS custom_watch_groups (
+            CREATE TABLE IF NOT EXISTS watch_groups (
                 group_name TEXT NOT NULL,
                 stream_url TEXT NOT NULL,
-                playlist_id INTEGER NOT NULL,
-                playlist_name TEXT NOT NULL,
+                playlist_id INTEGER NOT NULL DEFAULT 0,
+                playlist_name TEXT NOT NULL DEFAULT '',
                 channel_id INTEGER NOT NULL DEFAULT 0,
                 stream_id TEXT NOT NULL DEFAULT '',
-                name TEXT NOT NULL,
-                category TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                category TEXT NOT NULL DEFAULT '',
                 logo_url TEXT NOT NULL DEFAULT '',
-                media_type TEXT NOT NULL,
+                media_type TEXT NOT NULL DEFAULT 'LIVE',
                 added_at INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (group_name, stream_url)
             )
             """.trimIndent()
         )
+        db.rawQuery("PRAGMA table_info(watch_groups)", null).use { c ->
+            while (c.moveToNext()) {
+                c.getString(1)?.let { cols.add(it) }
+            }
+        }
+        return "watch_groups" to cols
     }
 
     fun getAllGroupNames(dbHelper: DatabaseHelper): List<String> {
         val db = dbHelper.writableDatabase
-        ensureTable(db)
-        val result = LinkedHashSet<String>(DEFAULT_GROUPS)
-        db.rawQuery("SELECT DISTINCT group_name FROM custom_watch_groups ORDER BY added_at DESC", null).use { c ->
-            while (c.moveToNext()) {
-                val g = c.getString(0)?.trim().orEmpty()
-                if (g.isNotEmpty()) result.add(g)
+        val (table, cols) = resolveTableAndCols(db)
+        val groupCol = if (cols.contains("group_name")) "group_name" else "name"
+        val result = LinkedHashSet<String>(PRESET_GROUPS)
+        runCatching {
+            db.rawQuery("SELECT DISTINCT $groupCol FROM $table", null).use { c ->
+                while (c.moveToNext()) {
+                    val g = c.getString(0)?.trim().orEmpty()
+                    if (g.isNotEmpty()) result.add(g)
+                }
             }
         }
         return result.toList()
@@ -82,14 +101,17 @@ object CustomWatchGroupStore {
     fun getGroupsForStream(dbHelper: DatabaseHelper, streamUrl: String): Set<String> {
         if (streamUrl.isBlank()) return emptySet()
         val db = dbHelper.writableDatabase
-        ensureTable(db)
+        val (table, cols) = resolveTableAndCols(db)
+        val groupCol = if (cols.contains("group_name")) "group_name" else return emptySet()
         val set = HashSet<String>()
-        db.rawQuery(
-            "SELECT group_name FROM custom_watch_groups WHERE stream_url = ?",
-            arrayOf(streamUrl)
-        ).use { c ->
-            while (c.moveToNext()) {
-                c.getString(0)?.trim()?.takeIf { it.isNotEmpty() }?.let { set.add(it) }
+        runCatching {
+            db.rawQuery(
+                "SELECT $groupCol FROM $table WHERE stream_url = ?",
+                arrayOf(streamUrl)
+            ).use { c ->
+                while (c.moveToNext()) {
+                    c.getString(0)?.trim()?.takeIf { it.isNotEmpty() }?.let { set.add(it) }
+                }
             }
         }
         return set
@@ -104,73 +126,28 @@ object CustomWatchGroupStore {
         val cleanGroup = groupName.trim()
         if (cleanGroup.isEmpty() || ch.streamUrl.isBlank()) return false
         val db = dbHelper.writableDatabase
-        ensureTable(db)
+        val (table, cols) = resolveTableAndCols(db)
         val existing = getGroupsForStream(dbHelper, ch.streamUrl)
         return if (existing.contains(cleanGroup)) {
-            db.delete(
-                "custom_watch_groups",
-                "group_name = ? AND stream_url = ?",
-                arrayOf(cleanGroup, ch.streamUrl)
-            )
+            db.delete(table, "group_name = ? AND stream_url = ?", arrayOf(cleanGroup, ch.streamUrl))
             false
         } else {
-            val sql = """
-                INSERT OR REPLACE INTO custom_watch_groups
-                (group_name, stream_url, playlist_id, playlist_name, channel_id, stream_id, name, category, logo_url, media_type, added_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """.trimIndent()
-            db.execSQL(
-                sql,
-                arrayOf(
-                    cleanGroup,
-                    ch.streamUrl,
-                    ch.playlistId,
-                    playlistName,
-                    ch.id,
-                    ch.streamId,
-                    ch.name,
-                    ch.category,
-                    ch.logoUrl,
-                    ch.mediaType.name,
-                    System.currentTimeMillis()
-                )
-            )
+            val cv = ContentValues()
+            if (cols.contains("group_name")) cv.put("group_name", cleanGroup)
+            if (cols.contains("stream_url")) cv.put("stream_url", ch.streamUrl)
+            if (cols.contains("playlist_id")) cv.put("playlist_id", ch.playlistId)
+            if (cols.contains("playlist_name")) cv.put("playlist_name", playlistName)
+            if (cols.contains("channel_id")) cv.put("channel_id", ch.id)
+            if (cols.contains("stream_id")) cv.put("stream_id", ch.streamId)
+            if (cols.contains("name")) cv.put("name", ch.name)
+            if (cols.contains("category")) cv.put("category", ch.category)
+            if (cols.contains("logo_url")) cv.put("logo_url", ch.logoUrl)
+            if (cols.contains("media_type")) cv.put("media_type", ch.mediaType.name)
+            if (cols.contains("added_at")) cv.put("added_at", System.currentTimeMillis())
+            if (cols.contains("created_at")) cv.put("created_at", System.currentTimeMillis())
+            db.insertWithOnConflict(table, null, cv, SQLiteDatabase.CONFLICT_REPLACE)
             true
         }
-    }
-
-    fun getGroupedChannels(dbHelper: DatabaseHelper): Map<String, List<TaggedChannel>> {
-        val db = dbHelper.writableDatabase
-        ensureTable(db)
-        val map = LinkedHashMap<String, MutableList<TaggedChannel>>()
-        db.rawQuery(
-            """
-            SELECT group_name, stream_url, playlist_id, playlist_name, channel_id, stream_id, name, category, logo_url, media_type
-            FROM custom_watch_groups
-            ORDER BY added_at DESC
-            """.trimIndent(),
-            null
-        ).use { c ->
-            while (c.moveToNext()) {
-                val grp = c.getString(0) ?: continue
-                val url = c.getString(1) ?: continue
-                val chName = c.getString(6) ?: ""
-                val cat = c.getString(7) ?: ""
-                if (isAdultCategoryOrTitle(cat, chName)) continue
-                val item = ChannelItem(
-                    id = c.getLong(4),
-                    playlistId = c.getLong(2),
-                    streamId = c.getString(5) ?: "",
-                    name = chName,
-                    category = cat,
-                    logoUrl = c.getString(8) ?: "",
-                    streamUrl = url,
-                    mediaType = runCatching { MediaType.valueOf(c.getString(9)) }.getOrDefault(MediaType.LIVE)
-                )
-                map.getOrPut(grp) { mutableListOf() }.add(TaggedChannel(item, c.getString(3) ?: "YlowstoneTV"))
-            }
-        }
-        return map
     }
 }
 
@@ -212,12 +189,13 @@ suspend fun checkStreamLinkHealth(repo: IptvRepository, streamUrl: String): Link
     }
 
 @Composable
-fun ChannelLongPressActionDialog(
+fun ChannelLongPressDialog(
     channel: ChannelItem,
     playlistName: String,
     repo: IptvRepository,
+    strings: AppStrings,
     onDismiss: () -> Unit,
-    onGroupsUpdated: () -> Unit = {}
+    onWatchGroupsChanged: () -> Unit = {}
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -227,9 +205,9 @@ fun ChannelLongPressActionDialog(
         mutableStateOf(LinkCheckOutcome(LinkHealthState.IDLE))
     }
     var showGroupPicker by remember { mutableStateOf(false) }
-    var availableGroups by remember { mutableStateOf(CustomWatchGroupStore.getAllGroupNames(repo.db)) }
+    var availableGroups by remember { mutableStateOf(WatchGroupBridge.getAllGroupNames(repo.db)) }
     var assignedGroups by remember(channel.streamUrl) {
-        mutableStateOf(CustomWatchGroupStore.getGroupsForStream(repo.db, channel.streamUrl))
+        mutableStateOf(WatchGroupBridge.getGroupsForStream(repo.db, channel.streamUrl))
     }
     var newGroupName by remember { mutableStateOf("") }
 
@@ -263,7 +241,6 @@ fun ChannelLongPressActionDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Pilihan 1: Salin Link Tunggal ke Clipboard
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -293,7 +270,6 @@ fun ChannelLongPressActionDialog(
                     }
                 }
 
-                // Pilihan 2: Cek Status Link (Aktif / Delay / Mati)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -338,20 +314,13 @@ fun ChannelLongPressActionDialog(
                                 modifier = Modifier.size(18.dp)
                             )
                         }
-                        LinkHealthState.ACTIVE -> {
-                            StatusBadgePill("AKTIF", Color(0xFF22C55E))
-                        }
-                        LinkHealthState.DELAY -> {
-                            StatusBadgePill("DELAY", Color(0xFFF59E0B))
-                        }
-                        LinkHealthState.DEAD -> {
-                            StatusBadgePill("MATI", Color(0xFFEF4444))
-                        }
+                        LinkHealthState.ACTIVE -> StatusBadgePill("AKTIF", Color(0xFF22C55E))
+                        LinkHealthState.DELAY -> StatusBadgePill("DELAY", Color(0xFFF59E0B))
+                        LinkHealthState.DEAD -> StatusBadgePill("MATI", Color(0xFFEF4444))
                         LinkHealthState.IDLE -> {}
                     }
                 }
 
-                // Pilihan 3: Kelompokkan Kategori Tontonan (Sports, Event Pertandingan, Daftar Tontonan, dll)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -377,7 +346,7 @@ fun ChannelLongPressActionDialog(
                                 Text("3. Kategori Tontonan", color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                 Text(
                                     text = if (assignedGroups.isEmpty()) "Sports, Event Pertandingan, Daftar Tontonan..."
-                                    else "Masuk grup: ${assignedGroups.joinToString(", ")}",
+                                    else "Grup: ${assignedGroups.joinToString(", ")}",
                                     color = if (assignedGroups.isEmpty()) c.textSecondary else c.accent,
                                     fontSize = 11.sp,
                                     maxLines = 1,
@@ -402,9 +371,9 @@ fun ChannelLongPressActionDialog(
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(if (checked) c.accentContainer else Color.Transparent)
                                     .clickable {
-                                        val added = CustomWatchGroupStore.toggleChannelInGroup(repo.db, grp, channel, playlistName)
-                                        assignedGroups = CustomWatchGroupStore.getGroupsForStream(repo.db, channel.streamUrl)
-                                        onGroupsUpdated()
+                                        val added = WatchGroupBridge.toggleChannelInGroup(repo.db, grp, channel, playlistName)
+                                        assignedGroups = WatchGroupBridge.getGroupsForStream(repo.db, channel.streamUrl)
+                                        onWatchGroupsChanged()
                                         Toast.makeText(
                                             context,
                                             if (added) "Ditambahkan ke $grp" else "Dihapus dari $grp",
@@ -447,11 +416,11 @@ fun ChannelLongPressActionDialog(
                                 onClick = {
                                     val clean = newGroupName.trim()
                                     if (clean.isNotEmpty()) {
-                                        CustomWatchGroupStore.toggleChannelInGroup(repo.db, clean, channel, playlistName)
-                                        availableGroups = CustomWatchGroupStore.getAllGroupNames(repo.db)
-                                        assignedGroups = CustomWatchGroupStore.getGroupsForStream(repo.db, channel.streamUrl)
+                                        WatchGroupBridge.toggleChannelInGroup(repo.db, clean, channel, playlistName)
+                                        availableGroups = WatchGroupBridge.getAllGroupNames(repo.db)
+                                        assignedGroups = WatchGroupBridge.getGroupsForStream(repo.db, channel.streamUrl)
                                         newGroupName = ""
-                                        onGroupsUpdated()
+                                        onWatchGroupsChanged()
                                         Toast.makeText(context, "Ditambahkan ke $clean", Toast.LENGTH_SHORT).show()
                                     }
                                 },
@@ -469,7 +438,7 @@ fun ChannelLongPressActionDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Tutup", color = c.accent, fontWeight = FontWeight.Bold)
+                Text(strings.closeBtn, color = c.accent, fontWeight = FontWeight.Bold)
             }
         }
     )

@@ -25,7 +25,6 @@ import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.*
 import com.ylowstone.tv.ui.components.ChannelLogoBox
-import com.ylowstone.tv.ui.components.ChannelLongPressActionDialog
 import com.ylowstone.tv.ui.components.ProfileYBadgeButton
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
@@ -42,6 +41,7 @@ fun SearchScreen(
     strings: AppStrings,
     isTvMode: Boolean,
     onPlayTagged: (TaggedChannel, List<TaggedChannel>) -> Unit,
+    onLongPressTagged: (TaggedChannel) -> Unit = {},
     onToggleFavorite: (ChannelItem) -> Unit,
     onOpenProfileMenu: () -> Unit
 ) {
@@ -51,7 +51,6 @@ fun SearchScreen(
     var searchAllPlaylists by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<TaggedChannel>>(emptyList()) }
     var favVersion by remember { mutableIntStateOf(0) }
-    var longPressTarget by remember { mutableStateOf<TaggedChannel?>(null) }
 
     LaunchedEffect(query, filterType, searchAllPlaylists, activePlaylist.id, lockedByPlaylist, favVersion) {
         if (query.trim().length < 2) {
@@ -196,7 +195,7 @@ fun SearchScreen(
                         .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
                         .combinedClickable(
                             onClick = { onPlayTagged(tagged, results) },
-                            onLongClick = { longPressTarget = tagged }
+                            onLongClick = { onLongPressTagged(tagged) }
                         )
                         .padding(horizontal = 12.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -237,14 +236,5 @@ fun SearchScreen(
                 }
             }
         }
-    }
-
-    longPressTarget?.let { target ->
-        ChannelLongPressActionDialog(
-            channel = target.channel,
-            playlistName = target.playlistName,
-            repo = repo,
-            onDismiss = { longPressTarget = null }
-        )
     }
 }

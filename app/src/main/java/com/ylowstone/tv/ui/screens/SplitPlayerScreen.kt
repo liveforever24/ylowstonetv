@@ -1,7 +1,6 @@
 package com.ylowstone.tv.ui.screens
 
 import androidx.annotation.OptIn
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -55,11 +54,6 @@ private fun formatSplitTimeMs(ms: Long): String {
     else String.format(Locale.US, "%02d:%02d", m, s)
 }
 
-/**
- * Fase 3: Player setengah layar (Split-Screen) responsif sesuai mode Ponsel / TV:
- * - Mode Ponsel (Portrait): Video 16:9 di bagian atas + Daftar Putar interaktif di bawahnya
- * - Mode TV / Landscape: Video besar di sisi kiri + Panel Daftar Putar di sisi kanan (dengan sorotan fokus D-Pad)
- */
 @kotlin.OptIn(ExperimentalFoundationApi::class)
 @OptIn(UnstableApi::class)
 @Composable
@@ -140,9 +134,7 @@ fun SplitPlayerScreen(
         val useSideBySide = isTvMode || maxWidth >= 600.dp
 
         if (!useSideBySide) {
-            // ---- MODE PONSEL (Portrait): Video di Atas + Daftar Putar di Bawah ----
             Column(modifier = Modifier.fillMaxSize()) {
-                // 16:9 Video Region
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -196,7 +188,7 @@ fun SplitPlayerScreen(
                         )
                     }
 
-                    AnimatedVisibility(
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = controlsVisible,
                         enter = fadeIn(),
                         exit = fadeOut(),
@@ -216,7 +208,6 @@ fun SplitPlayerScreen(
                                 )
                                 .padding(horizontal = 10.dp, vertical = 8.dp)
                         ) {
-                            // Top Bar: Minimize + PiP + Close
                             Row(
                                 modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -245,7 +236,6 @@ fun SplitPlayerScreen(
                                 }
                             }
 
-                            // Center: Prev · Play/Pause · Next
                             Row(
                                 modifier = Modifier.align(Alignment.Center),
                                 horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -288,7 +278,6 @@ fun SplitPlayerScreen(
                                 }
                             }
 
-                            // Bottom Bar: VOD time + Fullscreen button
                             Row(
                                 modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -330,7 +319,6 @@ fun SplitPlayerScreen(
                     }
                 }
 
-                // Channel Info Strip
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -367,7 +355,6 @@ fun SplitPlayerScreen(
 
                 HorizontalDivider(color = c.glassBorder, thickness = 0.8.dp)
 
-                // Playlist Queue Section (Bottom Half)
                 SplitQueuePanel(
                     currentChannel = currentChannel,
                     filteredQueue = filteredQueue,
@@ -384,7 +371,6 @@ fun SplitPlayerScreen(
                 )
             }
         } else {
-            // ---- MODE TV / LANDSCAPE: Video di Kiri + Daftar Putar di Kanan ----
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -446,7 +432,6 @@ fun SplitPlayerScreen(
                         }
                     }
 
-                    // Action Bar below video
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -527,7 +512,6 @@ fun SplitPlayerScreen(
                     }
                 }
 
-                // Right Side Queue Panel
                 SplitQueuePanel(
                     currentChannel = currentChannel,
                     filteredQueue = filteredQueue,

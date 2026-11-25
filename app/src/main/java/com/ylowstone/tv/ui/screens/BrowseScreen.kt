@@ -39,18 +39,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.*
 import com.ylowstone.tv.ui.components.ChannelLogoBox
-import com.ylowstone.tv.ui.components.ChannelLongPressActionDialog
 import com.ylowstone.tv.ui.components.PinDialog
 import com.ylowstone.tv.ui.components.ProfileYBadgeButton
 import com.ylowstone.tv.ui.components.GlossyGridScrollPositionPill
@@ -81,6 +77,7 @@ fun BrowseScreen(
     onToggleFavorite: (ChannelItem) -> Unit,
     onSelectChannelInline: (ChannelItem, List<ChannelItem>) -> Unit,
     onLaunchPlayer: (ChannelItem, List<ChannelItem>, Boolean) -> Unit,
+    onLongPressChannel: (ChannelItem) -> Unit = {},
     onFloatCurrent: () -> Unit,
     onOpenProfileMenu: () -> Unit
 ) {
@@ -95,7 +92,6 @@ fun BrowseScreen(
     var debouncedChannelSearch by remember(playlist.id, mediaType) { mutableStateOf("") }
     var unlockedTempCategories by remember(playlist.id) { mutableStateOf<Set<String>>(emptySet()) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
-    var longPressTargetChannel by remember { mutableStateOf<ChannelItem?>(null) }
 
     LaunchedEffect(channelSearchQuery) {
         delay(150)
@@ -395,12 +391,8 @@ fun BrowseScreen(
                                             ch = ch,
                                             active = active,
                                             isTvMode = isTvMode,
-                                            onClick = {
-                                                onLaunchPlayer(ch, channels, false)
-                                            },
-                                            onLongClick = {
-                                                longPressTargetChannel = ch
-                                            },
+                                            onClick = { onLaunchPlayer(ch, channels, false) },
+                                            onLongClick = { onLongPressChannel(ch) },
                                             onToggleFav = {
                                                 onToggleFavorite(ch)
                                                 refreshTrigger++
@@ -431,9 +423,7 @@ fun BrowseScreen(
                                             onLaunchPlayer(item, channels, false)
                                         }
                                     },
-                                    onLongClickItem = { item ->
-                                        longPressTargetChannel = item
-                                    },
+                                    onLongClickItem = { item -> onLongPressChannel(item) },
                                     onToggleFav = { item ->
                                         onToggleFavorite(item)
                                         refreshTrigger++
@@ -446,7 +436,6 @@ fun BrowseScreen(
                 }
             }
         } else {
-            // Landscape / Android TV split-screen
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -522,12 +511,8 @@ fun BrowseScreen(
                                 ch = ch,
                                 active = active,
                                 isTvMode = isTvMode,
-                                onClick = {
-                                    onLaunchPlayer(ch, channels, isTvMode)
-                                },
-                                onLongClick = {
-                                    longPressTargetChannel = ch
-                                },
+                                onClick = { onLaunchPlayer(ch, channels, isTvMode) },
+                                onLongClick = { onLongPressChannel(ch) },
                                 onToggleFav = {
                                     onToggleFavorite(ch)
                                     refreshTrigger++
@@ -552,9 +537,7 @@ fun BrowseScreen(
                                 onLaunchPlayer(item, channels, isTvMode)
                             }
                         },
-                        onLongClickItem = { item ->
-                            longPressTargetChannel = item
-                        },
+                        onLongClickItem = { item -> onLongPressChannel(item) },
                         onToggleFav = { item ->
                             onToggleFavorite(item)
                             refreshTrigger++
@@ -564,16 +547,6 @@ fun BrowseScreen(
                 }
             }
         }
-    }
-
-    longPressTargetChannel?.let { targetCh ->
-        ChannelLongPressActionDialog(
-            channel = targetCh,
-            playlistName = playlist.name,
-            repo = repo,
-            onDismiss = { longPressTargetChannel = null },
-            onGroupsUpdated = { refreshTrigger++ }
-        )
     }
 
     pinActionCategory?.let { catName ->
@@ -652,9 +625,7 @@ fun BrowseScreen(
                                                 val picked = epChannels.first { it.streamUrl == ep.streamUrl }
                                                 onLaunchPlayer(picked, epChannels, isTvMode)
                                             },
-                                            onLongClick = {
-                                                longPressTargetChannel = epChannel
-                                            }
+                                            onLongClick = { onLongPressChannel(epChannel) }
                                         )
                                         .padding(10.dp),
                                     verticalAlignment = Alignment.CenterVertically,

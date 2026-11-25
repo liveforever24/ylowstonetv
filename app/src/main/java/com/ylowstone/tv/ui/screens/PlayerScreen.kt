@@ -14,11 +14,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -61,8 +59,6 @@ import com.ylowstone.tv.data.SubtitleFetcher
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.ChannelItem
 import com.ylowstone.tv.model.MediaType
-import com.ylowstone.tv.ui.components.ChannelLogoBox
-import com.ylowstone.tv.ui.components.ChannelLongPressActionDialog
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -119,23 +115,16 @@ fun PipVideoSurface(exoPlayer: ExoPlayer, isPlaying: Boolean) {
     }
 }
 
-/**
- * Minimalist Floating PiP Window:
- * Strictly displays ONLY 3 controls on tap:
- * 1. Back to Fullscreen
- * 2. Play / Pause
- * 3. Close PiP (X)
- */
 @OptIn(UnstableApi::class)
 @Composable
 fun DraggableFloatingPlayer(
     exoPlayer: ExoPlayer,
     channel: ChannelItem,
     isPlaying: Boolean,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
+    onPrev: () -> Unit = {},
+    onNext: () -> Unit = {},
     onExpandFullscreen: () -> Unit,
-    onEnterSystemPip: () -> Unit,
+    onEnterSystemPip: () -> Unit = {},
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -202,7 +191,6 @@ fun DraggableFloatingPlayer(
                     .background(Color.Black.copy(alpha = 0.52f))
                     .padding(10.dp)
             ) {
-                // Top Row: Expand to Fullscreen (left) + Close X (right)
                 Row(
                     modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
                     verticalAlignment = Alignment.CenterVertically,
@@ -231,7 +219,6 @@ fun DraggableFloatingPlayer(
                     }
                 }
 
-                // Center: Play / Pause ONLY
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)
@@ -310,7 +297,7 @@ private fun DragOnlySeekBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(30.dp)
+                .height(32.dp)
                 .onSizeChanged { barWidthPx = it.width.toFloat().coerceAtLeast(1f) }
                 .pointerInput(durationMs) {
                     detectHorizontalDragGestures(
@@ -367,7 +354,6 @@ private fun DragOnlySeekBar(
     }
 }
 
-@kotlin.OptIn(ExperimentalFoundationApi::class)
 @OptIn(UnstableApi::class)
 @Composable
 fun FullscreenPlayerScreen(
@@ -399,11 +385,6 @@ fun FullscreenPlayerScreen(
     val currentIndex = remember(currentChannel, channelList) {
         channelList.indexOfFirst { it.id == currentChannel.id && it.streamUrl == currentChannel.streamUrl }.coerceAtLeast(0)
     }
-
-    // Half-screen split mode by default on launch; expands to full screen when user taps Fullscreen
-    var isExpandedFull by remember(isLandscapeFullscreen) { mutableStateOf(isLandscapeFullscreen) }
-    var queueFilterQuery by remember { mutableStateOf("") }
-    var longPressQueueChannel by remember { mutableStateOf<ChannelItem?>(null) }
 
     val coroutineScope = rememberCoroutineScope()
     var controlsVisible by remember { mutableStateOf(true) }
@@ -587,527 +568,304 @@ fun FullscreenPlayerScreen(
         }
     }
 
-    val filteredQueue = remember(channelList, queueFilterQuery) {
-        val q = queueFilterQuery.trim()
-        if (q.isEmpty()) channelList
-        else channelList.filter { it.name.contains(q, ignoreCase = true) || it.category.contains(q, ignoreCase = true) }
-    }
-
-    // Video Surface + Overlay Controls composable block
-    val videoPlayerBlock: @Composable (Modifier) -> Unit = { boxMod ->
-        Box(
-            modifier = boxMod.background(Color.Black)
-        ) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        player = exoPlayer
-                        useController = false
-                        keepScreenOn = isPlaying
-                        resizeMode = aspectModes[aspectIndex].first
-                    }
-                },
-                update = { view ->
-                    view.player = exoPlayer
-                    view.keepScreenOn = isPlaying
-                    view.resizeMode = aspectModes[aspectIndex].first
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-
-            if (currentSubtitleText.isNotEmpty()) {
-                val subBottomPad = when {
-                    controlsVisible && !isScreenLocked && isVod -> 98.dp
-                    controlsVisible && !isScreenLocked -> 64.dp
-                    else -> 18.dp
-                }
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(start = 20.dp, end = 20.dp, bottom = subBottomPad)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.Black.copy(alpha = 0.74f))
-                        .padding(horizontal = 12.dp, vertical = 5.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = currentSubtitleText,
-                        color = Color.White,
-                        fontSize = if (isExpandedFull) 15.sp else 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        lineHeight = 19.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                }
-            }
-
-            val clockTargetAlpha by animateFloatAsState(
-                targetValue = if (clockStage == 2) 1f else 0.34f,
-                animationSpec = tween(durationMillis = 550),
-                label = "clockDimAlpha"
-            )
-            val clockTopPad by animateDpAsState(
-                targetValue = if (controlsVisible && !isScreenLocked) 58.dp else 12.dp,
-                animationSpec = tween(durationMillis = 280),
-                label = "clockTopPad"
-            )
-            AnimatedVisibility(
-                visible = clockStage > 0 && timeLine.isNotEmpty() && !showChannelDrawer && !showTrackDrawer,
-                enter = fadeIn(tween(320)),
-                exit = fadeOut(tween(520)),
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 14.dp, top = clockTopPad)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .graphicsLayer { alpha = clockTargetAlpha }
-                        .clip(CircleShape)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color(0xAA182028), Color(0x880C1014))
-                            )
-                        )
-                        .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
-                        .padding(horizontal = 11.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(c.accent))
-                    Text(timeLine, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text("•", color = Color.White.copy(alpha = 0.50f), fontSize = 11.sp)
-                    Text(dateLine, color = Color.White.copy(alpha = 0.86f), fontSize = 11.sp)
-                }
-            }
-
-            // Touch & Gesture zones
-            Row(modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(isVod, isScreenLocked, showChannelDrawer, showTrackDrawer) {
-                            detectTapGestures(
-                                onTap = {
-                                    if (showChannelDrawer || showTrackDrawer) {
-                                        showChannelDrawer = false
-                                        showTrackDrawer = false
-                                    } else {
-                                        controlsVisible = !controlsVisible
-                                        clockTriggerNonce++
-                                    }
-                                },
-                                onDoubleTap = {
-                                    if (isVod && !isScreenLocked && !showChannelDrawer && !showTrackDrawer) {
-                                        val target = (exoPlayer.currentPosition - 10_000L).coerceAtLeast(0L)
-                                        exoPlayer.seekTo(target)
-                                        positionMs = target
-                                        skipHudText = "-10s"
-                                        skipHudNonce++
-                                    }
-                                }
-                            )
-                        }
-                        .then(
-                            if (showGestures && !isScreenLocked) {
-                                Modifier.pointerInput(Unit) {
-                                    detectVerticalDragGestures { _, dragAmount ->
-                                        brightnessLevel = (brightnessLevel - dragAmount / 500f).coerceIn(0.05f, 1f)
-                                        activity?.window?.let { w ->
-                                            val lp = w.attributes
-                                            lp.screenBrightness = brightnessLevel
-                                            w.attributes = lp
-                                        }
-                                        activeHud = "BRIGHT"
-                                    }
-                                }
-                            } else Modifier
-                        )
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(isVod, isScreenLocked, showChannelDrawer, showTrackDrawer) {
-                            detectTapGestures(
-                                onTap = {
-                                    if (showChannelDrawer || showTrackDrawer) {
-                                        showChannelDrawer = false
-                                        showTrackDrawer = false
-                                    } else {
-                                        controlsVisible = !controlsVisible
-                                        clockTriggerNonce++
-                                    }
-                                },
-                                onDoubleTap = {
-                                    if (isVod && !isScreenLocked && !showChannelDrawer && !showTrackDrawer) {
-                                        val maxDur = exoPlayer.duration.takeIf { it > 0L } ?: Long.MAX_VALUE
-                                        val target = (exoPlayer.currentPosition + 10_000L).coerceAtMost(maxDur)
-                                        exoPlayer.seekTo(target)
-                                        positionMs = target
-                                        skipHudText = "+10s"
-                                        skipHudNonce++
-                                    }
-                                }
-                            )
-                        }
-                        .then(
-                            if (showGestures && !isScreenLocked) {
-                                Modifier.pointerInput(Unit) {
-                                    detectVerticalDragGestures { _, dragAmount ->
-                                        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-                                        volumeLevel = (volumeLevel - dragAmount / 500f).coerceIn(0f, 1f)
-                                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (volumeLevel * maxVol).toInt(), 0)
-                                        activeHud = "VOL"
-                                    }
-                                }
-                            } else Modifier
-                        )
-                )
-            }
-
-            if (isBuffering) {
-                CircularProgressIndicator(color = c.accent, modifier = Modifier.align(Alignment.Center))
-            }
-
-            AnimatedVisibility(
-                visible = skipHudText.isNotEmpty(),
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(if (skipHudText.startsWith("-")) Alignment.CenterStart else Alignment.CenterEnd)
-                    .padding(horizontal = 32.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(Color.Black.copy(alpha = 0.72f))
-                        .border(1.dp, c.accent.copy(alpha = 0.55f), RoundedCornerShape(24.dp))
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        if (skipHudText.startsWith("-")) Icons.Rounded.FastRewind else Icons.Rounded.FastForward,
-                        contentDescription = null,
-                        tint = c.accent,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(skipHudText, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-            }
-
-            AnimatedVisibility(
-                visible = activeHud.isNotEmpty() && showGestures,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.Center)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(Color.Black.copy(alpha = 0.72f))
-                        .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val isBright = activeHud == "BRIGHT"
-                    Icon(if (isBright) Icons.Rounded.Brightness6 else Icons.Rounded.VolumeUp, contentDescription = null, tint = c.accent)
-                    val pct = ((if (isBright) brightnessLevel else volumeLevel) * 100).toInt()
-                    Text("$pct%", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-            }
-
-            if (isScreenLocked && controlsVisible) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(14.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.Black.copy(alpha = 0.75f))
-                        .border(1.dp, c.accent, RoundedCornerShape(16.dp))
-                        .clickable { isScreenLocked = false }
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Rounded.Lock, contentDescription = null, tint = c.accent, modifier = Modifier.size(16.dp))
-                        Text(strings.tapToUnlock, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-
-            // Player Controls Overlay
-            AnimatedVisibility(
-                visible = controlsVisible && !isScreenLocked && !showChannelDrawer && !showTrackDrawer,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    Color.Black.copy(alpha = 0.74f),
-                                    Color.Transparent,
-                                    Color.Black.copy(alpha = 0.84f)
-                                )
-                            )
-                        )
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f).padding(end = 8.dp)
-                        ) {
-                            IconButton(
-                                onClick = onMinimizeToFloat,
-                                modifier = Modifier.size(38.dp).clip(CircleShape).background(c.accent)
-                            ) {
-                                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = strings.floatPlayer, tint = c.onAccent, modifier = Modifier.size(24.dp))
-                            }
-                            Column {
-                                Text(currentChannel.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(currentChannel.category, color = Color.White.copy(alpha = 0.72f), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (isExpandedFull) {
-                                IconButton(
-                                    onClick = { showChannelDrawer = true },
-                                    modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f))
-                                ) {
-                                    Icon(Icons.Rounded.Search, contentDescription = strings.search, tint = Color.White, modifier = Modifier.size(20.dp))
-                                }
-                            }
-                            IconButton(
-                                onClick = { isScreenLocked = true; controlsVisible = true },
-                                modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f))
-                            ) {
-                                Icon(Icons.Rounded.LockOpen, contentDescription = strings.screenLocked, tint = Color.White, modifier = Modifier.size(19.dp))
-                            }
-                            IconButton(
-                                onClick = { showTrackDrawer = true },
-                                modifier = Modifier.size(38.dp).clip(CircleShape).background(c.accent)
-                            ) {
-                                Icon(Icons.Rounded.Settings, contentDescription = strings.tracks, tint = c.onAccent, modifier = Modifier.size(20.dp))
-                            }
-                        }
-                    }
-
-                    // Center Controls
-                    Row(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalArrangement = Arrangement.spacedBy(22.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = {
-                                if (channelList.size > 1) {
-                                    val prev = if (currentIndex > 0) currentIndex - 1 else channelList.lastIndex
-                                    onSelectChannel(channelList[prev])
-                                }
-                            },
-                            modifier = Modifier.size(48.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.48f))
-                        ) {
-                            Icon(Icons.Rounded.SkipPrevious, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(28.dp))
-                        }
-
-                        IconButton(
-                            onClick = { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() },
-                            modifier = Modifier.size(62.dp).clip(CircleShape).background(c.accent)
-                        ) {
-                            Icon(
-                                if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = "PlayPause",
-                                tint = c.onAccent,
-                                modifier = Modifier.size(34.dp)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = {
-                                if (channelList.size > 1) {
-                                    val next = (currentIndex + 1) % channelList.size
-                                    onSelectChannel(channelList[next])
-                                }
-                            },
-                            modifier = Modifier.size(48.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.48f))
-                        ) {
-                            Icon(Icons.Rounded.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(28.dp))
-                        }
-                    }
-
-                    // Bottom Controls
-                    Column(
-                        modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (isVod && durationMs > 0L) {
-                            DragOnlySeekBar(
-                                positionMs = positionMs,
-                                durationMs = durationMs,
-                                onSeekCommitted = { target ->
-                                    exoPlayer.seekTo(target)
-                                    positionMs = target
-                                },
-                                onDraggingStateChanged = { dragging -> isSeekDragging = dragging },
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (isExpandedFull) {
-                                PlayerBottomPill(Icons.Rounded.FormatListBulleted, strings.channelList) {
-                                    showChannelDrawer = true
-                                }
-                            }
-                            PlayerBottomPill(Icons.Rounded.AspectRatio, aspectModes[aspectIndex].second) {
-                                aspectIndex = (aspectIndex + 1) % aspectModes.size
-                            }
-                            PlayerBottomPill(
-                                icon = if (isExpandedFull) Icons.Rounded.Splitscreen else Icons.Rounded.Fullscreen,
-                                label = if (isExpandedFull) "Setengah Layar" else strings.fullscreen,
-                                highlight = true
-                            ) {
-                                val nextExpand = !isExpandedFull
-                                isExpandedFull = nextExpand
-                                if (!isTvMode && nextExpand != isLandscapeFullscreen) {
-                                    onToggleFullscreenOrientation()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(c.bg)
+            .background(Color.Black)
     ) {
-        if (isExpandedFull) {
-            // Fullscreen Mode
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black).systemBarsPadding()) {
-                videoPlayerBlock(Modifier.fillMaxSize())
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = false
+                    keepScreenOn = isPlaying
+                    resizeMode = aspectModes[aspectIndex].first
+                }
+            },
+            update = { view ->
+                view.player = exoPlayer
+                view.keepScreenOn = isPlaying
+                view.resizeMode = aspectModes[aspectIndex].first
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        if (currentSubtitleText.isNotEmpty()) {
+            val subBottomPad = when {
+                controlsVisible && !isScreenLocked && isVod -> 112.dp
+                controlsVisible && !isScreenLocked -> 76.dp
+                else -> 26.dp
             }
-        } else if (isTvMode || isLandscapeFullscreen) {
-            // TV / Landscape Half-Screen Split: Left Video + Right Active Playlist Queue
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 28.dp, end = 28.dp, bottom = subBottomPad)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color.Black.copy(alpha = 0.74f))
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = currentSubtitleText,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 21.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+
+        val clockTargetAlpha by animateFloatAsState(
+            targetValue = if (clockStage == 2) 1f else 0.34f,
+            animationSpec = tween(durationMillis = 550),
+            label = "clockDimAlpha"
+        )
+        val clockTopPad by animateDpAsState(
+            targetValue = if (controlsVisible && !isScreenLocked) 68.dp else 14.dp,
+            animationSpec = tween(durationMillis = 280),
+            label = "clockTopPad"
+        )
+        AnimatedVisibility(
+            visible = clockStage > 0 && timeLine.isNotEmpty() && !showChannelDrawer && !showTrackDrawer,
+            enter = fadeIn(tween(320)),
+            exit = fadeOut(tween(520)),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .systemBarsPadding()
+                .padding(start = 18.dp, top = clockTopPad)
+        ) {
             Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .systemBarsPadding()
-                    .padding(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .graphicsLayer { alpha = clockTargetAlpha }
+                    .clip(CircleShape)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0xAA182028),
+                                Color(0x880C1014)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.30f),
+                                c.accent.copy(alpha = 0.30f)
+                            )
+                        ),
+                        shape = CircleShape
+                    )
+                    .padding(horizontal = 13.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                videoPlayerBlock(
-                    Modifier
-                        .weight(1.35f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(18.dp))
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(18.dp))
-                )
-
-                Column(
+                Box(
                     modifier = Modifier
-                        .weight(0.85f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(c.surface)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(18.dp))
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "${strings.channelList} (${channelList.size})",
-                        color = c.textPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    OutlinedTextField(
-                        value = queueFilterQuery,
-                        onValueChange = { queueFilterQuery = it },
-                        placeholder = { Text(strings.searchChannelPlaceholder, fontSize = 12.sp) },
-                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    LazyColumn(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(filteredQueue, key = { "hq_${it.id}_${it.streamUrl}" }) { item ->
-                            val selected = item.id == currentChannel.id && item.streamUrl == currentChannel.streamUrl
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (selected) c.accentContainer else c.surfaceElevated)
-                                    .border(1.dp, if (selected) c.accent else c.glassBorder, RoundedCornerShape(12.dp))
-                                    .combinedClickable(
-                                        onClick = { onSelectChannel(item) },
-                                        onLongClick = { longPressQueueChannel = item }
-                                    )
-                                    .padding(horizontal = 10.dp, vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                ChannelLogoBox(item.logoUrl, 34.dp, corner = 8.dp)
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = item.name,
-                                        color = if (selected) c.accent else c.textPrimary,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(item.category, color = c.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(c.accent)
+                )
+                Text(
+                    text = timeLine,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp
+                )
+                Text(
+                    text = "•",
+                    color = Color.White.copy(alpha = 0.50f),
+                    fontSize = 12.sp
+                )
+                Text(
+                    text = dateLine,
+                    color = Color.White.copy(alpha = 0.86f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .pointerInput(isVod, isScreenLocked, showChannelDrawer, showTrackDrawer) {
+                        detectTapGestures(
+                            onTap = {
+                                if (showChannelDrawer || showTrackDrawer) {
+                                    showChannelDrawer = false
+                                    showTrackDrawer = false
+                                } else {
+                                    controlsVisible = !controlsVisible
+                                    clockTriggerNonce++
                                 }
-                                if (selected) {
-                                    Icon(Icons.Rounded.Equalizer, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
+                            },
+                            onDoubleTap = {
+                                if (isVod && !isScreenLocked && !showChannelDrawer && !showTrackDrawer) {
+                                    val target = (exoPlayer.currentPosition - 10_000L).coerceAtLeast(0L)
+                                    exoPlayer.seekTo(target)
+                                    positionMs = target
+                                    skipHudText = "-10s"
+                                    skipHudNonce++
                                 }
                             }
-                        }
+                        )
                     }
+                    .then(
+                        if (showGestures && !isScreenLocked) {
+                            Modifier.pointerInput(Unit) {
+                                detectVerticalDragGestures { _, dragAmount ->
+                                    brightnessLevel = (brightnessLevel - dragAmount / 500f).coerceIn(0.05f, 1f)
+                                    activity?.window?.let { w ->
+                                        val lp = w.attributes
+                                        lp.screenBrightness = brightnessLevel
+                                        w.attributes = lp
+                                    }
+                                    activeHud = "BRIGHT"
+                                }
+                            }
+                        } else Modifier
+                    )
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .pointerInput(isVod, isScreenLocked, showChannelDrawer, showTrackDrawer) {
+                        detectTapGestures(
+                            onTap = {
+                                if (showChannelDrawer || showTrackDrawer) {
+                                    showChannelDrawer = false
+                                    showTrackDrawer = false
+                                } else {
+                                    controlsVisible = !controlsVisible
+                                    clockTriggerNonce++
+                                }
+                            },
+                            onDoubleTap = {
+                                if (isVod && !isScreenLocked && !showChannelDrawer && !showTrackDrawer) {
+                                    val maxDur = exoPlayer.duration.takeIf { it > 0L } ?: Long.MAX_VALUE
+                                    val target = (exoPlayer.currentPosition + 10_000L).coerceAtMost(maxDur)
+                                    exoPlayer.seekTo(target)
+                                    positionMs = target
+                                    skipHudText = "+10s"
+                                    skipHudNonce++
+                                }
+                            }
+                        )
+                    }
+                    .then(
+                        if (showGestures && !isScreenLocked) {
+                            Modifier.pointerInput(Unit) {
+                                detectVerticalDragGestures { _, dragAmount ->
+                                    val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                                    volumeLevel = (volumeLevel - dragAmount / 500f).coerceIn(0f, 1f)
+                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (volumeLevel * maxVol).toInt(), 0)
+                                    activeHud = "VOL"
+                                }
+                            }
+                        } else Modifier
+                    )
+            )
+        }
+
+        if (isBuffering) {
+            CircularProgressIndicator(color = c.accent, modifier = Modifier.align(Alignment.Center))
+        }
+
+        AnimatedVisibility(
+            visible = skipHudText.isNotEmpty(),
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(
+                if (skipHudText.startsWith("-")) Alignment.CenterStart else Alignment.CenterEnd
+            ).padding(horizontal = 44.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.Black.copy(alpha = 0.72f))
+                    .border(1.dp, c.accent.copy(alpha = 0.55f), RoundedCornerShape(24.dp))
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    if (skipHudText.startsWith("-")) Icons.Rounded.FastRewind else Icons.Rounded.FastForward,
+                    contentDescription = null,
+                    tint = c.accent,
+                    modifier = Modifier.size(22.dp)
+                )
+                Text(skipHudText, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+        }
+
+        AnimatedVisibility(
+            visible = activeHud.isNotEmpty() && showGestures,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.Black.copy(alpha = 0.72f))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                val isBright = activeHud == "BRIGHT"
+                Icon(if (isBright) Icons.Rounded.Brightness6 else Icons.Rounded.VolumeUp, contentDescription = null, tint = c.accent)
+                val pct = ((if (isBright) brightnessLevel else volumeLevel) * 100).toInt()
+                Text("$pct%", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+        }
+
+        if (isScreenLocked && controlsVisible) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .systemBarsPadding()
+                    .padding(20.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .border(1.dp, c.accent, RoundedCornerShape(16.dp))
+                    .clickable { isScreenLocked = false }
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Rounded.Lock, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
+                    Text(strings.tapToUnlock, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
-        } else {
-            // Smartphone Portrait Half-Screen Split: Top Proportional Video + Bottom Active Playlist Queue
-            Column(
+        }
+
+        AnimatedVisibility(
+            visible = controlsVisible && !isScreenLocked && !showChannelDrawer && !showTrackDrawer,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Black.copy(alpha = 0.74f),
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.84f)
+                            )
+                        )
+                    )
                     .systemBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
-                videoPlayerBlock(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(0.44f)
-                )
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(0.56f)
-                        .background(c.bg)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1115,89 +873,121 @@ fun FullscreenPlayerScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.weight(1f).padding(end = 12.dp)
                         ) {
-                            Icon(Icons.Rounded.QueuePlayNext, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
-                            Text(
-                                text = "Daftar Putar (${channelList.size})",
-                                color = c.textPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Text(
-                            text = currentChannel.category,
-                            color = c.textSecondary,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    if (channelList.size > 6) {
-                        OutlinedTextField(
-                            value = queueFilterQuery,
-                            onValueChange = { queueFilterQuery = it },
-                            placeholder = { Text(strings.searchChannelPlaceholder, fontSize = 12.sp) },
-                            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                            trailingIcon = {
-                                if (queueFilterQuery.isNotEmpty()) {
-                                    IconButton(onClick = { queueFilterQuery = "" }) {
-                                        Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    LazyColumn(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                        contentPadding = PaddingValues(bottom = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(filteredQueue, key = { "pq_${it.id}_${it.streamUrl}" }) { item ->
-                            val selected = item.id == currentChannel.id && item.streamUrl == currentChannel.streamUrl
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(if (selected) c.accentContainer else c.surface)
-                                    .border(1.dp, if (selected) c.accent else c.glassBorder, RoundedCornerShape(14.dp))
-                                    .combinedClickable(
-                                        onClick = { onSelectChannel(item) },
-                                        onLongClick = { longPressQueueChannel = item }
-                                    )
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            IconButton(
+                                onClick = onMinimizeToFloat,
+                                modifier = Modifier.size(44.dp).clip(CircleShape).background(c.accent)
                             ) {
-                                ChannelLogoBox(item.logoUrl, 38.dp, corner = 10.dp)
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = item.name,
-                                        color = if (selected) c.accent else c.textPrimary,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = item.category,
-                                        color = c.textSecondary,
-                                        fontSize = 11.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Icon(
-                                    imageVector = if (selected) Icons.Rounded.GraphicEq else Icons.Rounded.PlayArrow,
-                                    contentDescription = null,
-                                    tint = if (selected) c.accent else c.textSecondary,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = strings.floatPlayer, tint = c.onAccent, modifier = Modifier.size(28.dp))
+                            }
+                            Column {
+                                Text(currentChannel.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(currentChannel.category, color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { showChannelDrawer = true },
+                                modifier = Modifier.size(42.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f))
+                            ) {
+                                Icon(Icons.Rounded.Search, contentDescription = strings.search, tint = Color.White, modifier = Modifier.size(22.dp))
+                            }
+                            IconButton(
+                                onClick = { isScreenLocked = true; controlsVisible = true },
+                                modifier = Modifier.size(42.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f))
+                            ) {
+                                Icon(Icons.Rounded.LockOpen, contentDescription = strings.screenLocked, tint = Color.White, modifier = Modifier.size(21.dp))
+                            }
+                            IconButton(
+                                onClick = { showTrackDrawer = true },
+                                modifier = Modifier.size(44.dp).clip(CircleShape).background(c.accent)
+                            ) {
+                                Icon(Icons.Rounded.Settings, contentDescription = strings.tracks, tint = c.onAccent, modifier = Modifier.size(23.dp))
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalArrangement = Arrangement.spacedBy(26.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = {
+                            if (channelList.size > 1) {
+                                val prev = if (currentIndex > 0) currentIndex - 1 else channelList.lastIndex
+                                onSelectChannel(channelList[prev])
+                            }
+                        },
+                        modifier = Modifier.size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.48f))
+                    ) {
+                        Icon(Icons.Rounded.SkipPrevious, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(34.dp))
+                    }
+
+                    IconButton(
+                        onClick = { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() },
+                        modifier = Modifier.size(72.dp).clip(CircleShape).background(c.accent)
+                    ) {
+                        Icon(
+                            if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription = "PlayPause",
+                            tint = c.onAccent,
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            if (channelList.size > 1) {
+                                val next = (currentIndex + 1) % channelList.size
+                                onSelectChannel(channelList[next])
+                            }
+                        },
+                        modifier = Modifier.size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.48f))
+                    ) {
+                        Icon(Icons.Rounded.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(34.dp))
+                    }
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (isVod && durationMs > 0L) {
+                        DragOnlySeekBar(
+                            positionMs = positionMs,
+                            durationMs = durationMs,
+                            onSeekCommitted = { target ->
+                                exoPlayer.seekTo(target)
+                                positionMs = target
+                            },
+                            onDraggingStateChanged = { dragging -> isSeekDragging = dragging },
+                            modifier = Modifier.padding(horizontal = 6.dp)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PlayerBottomPill(Icons.Rounded.FormatListBulleted, strings.channelList) {
+                            showChannelDrawer = true
+                        }
+                        PlayerBottomPill(Icons.Rounded.AspectRatio, aspectModes[aspectIndex].second) {
+                            aspectIndex = (aspectIndex + 1) % aspectModes.size
+                        }
+                        if (!isTvMode) {
+                            PlayerBottomPill(
+                                if (isLandscapeFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                if (isLandscapeFullscreen) strings.exitFullscreen else strings.fullscreen,
+                                highlight = true
+                            ) {
+                                onToggleFullscreenOrientation()
                             }
                         }
                     }
@@ -1205,7 +995,6 @@ fun FullscreenPlayerScreen(
             }
         }
 
-        // Left Channel Drawer (Fullscreen mode)
         AnimatedVisibility(
             visible = showChannelDrawer,
             enter = fadeIn(),
@@ -1287,7 +1076,6 @@ fun FullscreenPlayerScreen(
             }
         }
 
-        // Right Settings & Tracks Drawer
         AnimatedVisibility(
             visible = showTrackDrawer,
             enter = fadeIn(),
@@ -1529,15 +1317,6 @@ fun FullscreenPlayerScreen(
             }
         }
     }
-
-    longPressQueueChannel?.let { targetCh ->
-        ChannelLongPressActionDialog(
-            channel = targetCh,
-            playlistName = "YlowstoneTV",
-            repo = repo,
-            onDismiss = { longPressQueueChannel = null }
-        )
-    }
 }
 
 @Composable
@@ -1552,15 +1331,15 @@ private fun PlayerBottomPill(
     val fg = if (highlight) c.onAccent else Color.White
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(22.dp))
             .background(bg)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        Icon(icon, contentDescription = label, tint = fg, modifier = Modifier.size(18.dp))
-        Text(label, color = fg, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Icon(icon, contentDescription = label, tint = fg, modifier = Modifier.size(20.dp))
+        Text(label, color = fg, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
