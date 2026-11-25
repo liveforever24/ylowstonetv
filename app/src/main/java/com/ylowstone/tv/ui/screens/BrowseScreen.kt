@@ -104,18 +104,21 @@ fun BrowseScreen(
         debouncedChannelSearch = channelSearchQuery
     }
 
-    val categories = remember(playlist.id, mediaType, refreshTrigger) {
+    val categories: List<CategoryInfo> = remember(playlist.id, mediaType, refreshTrigger) {
         repo.db.getCategories(playlist.id, mediaType)
     }
-    val filteredCategories = remember(categories, catFilterQuery) {
-        if (catFilterQuery.isBlank()) categories
-        else categories.filter { it.name.contains(catFilterQuery.trim(), ignoreCase = true) }
+    val filteredCategories: List<CategoryInfo> = remember(categories, catFilterQuery) {
+        val q = catFilterQuery.trim()
+        if (q.isEmpty()) categories
+        else categories.filter { entry: CategoryInfo -> entry.name.contains(q, ignoreCase = true) }
     }
-    val allCount = remember(categories) { categories.sumOf { it.count } }
-    val favCount = remember(playlist.id, mediaType, refreshTrigger) {
+    val allCount: Int = remember(categories) {
+        categories.sumOf { entry: CategoryInfo -> entry.count }
+    }
+    val favCount: Int = remember(playlist.id, mediaType, refreshTrigger) {
         repo.db.getFavoriteCount(playlist.id, mediaType)
     }
-    val histCount = remember(playlist.id, mediaType, refreshTrigger) {
+    val histCount: Int = remember(playlist.id, mediaType, refreshTrigger) {
         repo.db.getHistoryCount(playlist.id, mediaType)
     }
 
@@ -138,7 +141,9 @@ fun BrowseScreen(
         openedCategory = null
         channelSearchQuery = ""
         if (targetCat != null && targetCat !in listOf("ALL", "FAV", "HIST")) {
-            val idx = filteredCategories.indexOfFirst { it.name.equals(targetCat, ignoreCase = true) }
+            val idx = filteredCategories.indexOfFirst { entry: CategoryInfo ->
+                entry.name.equals(targetCat, ignoreCase = true)
+            }
             if (idx >= 0) {
                 scope.launch {
                     runCatching { catListState.scrollToItem((idx + 4).coerceAtLeast(0)) }
@@ -336,7 +341,7 @@ fun BrowseScreen(
                                     }
                                     item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
 
-                                    items(filteredCategories, key = { it.name }) { cat ->
+                                    items(filteredCategories, key = { cat: CategoryInfo -> cat.name }) { cat: CategoryInfo ->
                                         val isLocked = lockedCategories.contains(cat.name)
                                         val isLastOpened = lastFocusedCategory?.equals(cat.name, ignoreCase = true) == true
                                         VerticalCategoryCard(
@@ -516,7 +521,7 @@ fun BrowseScreen(
                         item { CategoryRowItem(strings.favourites, favCount, landscapeCategory == "FAV", false, isTvMode, { landscapeCategory = "FAV" }, {}) }
                         item { CategoryRowItem(strings.history, histCount, landscapeCategory == "HIST", false, isTvMode, { landscapeCategory = "HIST" }, {}) }
                         item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
-                        items(categories, key = { it.name }) { cat ->
+                        items(categories, key = { cat: CategoryInfo -> cat.name }) { cat: CategoryInfo ->
                             val isLocked = lockedCategories.contains(cat.name)
                             CategoryRowItem(
                                 name = cat.name,

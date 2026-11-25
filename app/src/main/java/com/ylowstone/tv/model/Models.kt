@@ -70,21 +70,21 @@ enum class AppLanguage(val code: String) {
 enum class AppIconOption(
     val key: String,
     val label: String,
-    val aliasActivity: String,
+    val aliasClassName: String,
     @DrawableRes val previewRes: Int
 ) {
-    OBSIDIAN("obsidian", "Obsidian", "com.ylowstone.tv.IconObsidian", R.drawable.icon_preview_obsidian),
-    CYAN("cyan", "Cyan", "com.ylowstone.tv.IconCyan", R.drawable.icon_preview_cyan),
-    EMERALD("emerald", "Emerald", "com.ylowstone.tv.IconEmerald", R.drawable.icon_preview_emerald),
-    AMBER("amber", "Amber", "com.ylowstone.tv.IconAmber", R.drawable.icon_preview_amber),
-    VIOLET("violet", "Violet", "com.ylowstone.tv.IconViolet", R.drawable.icon_preview_violet),
-    ROSE("rose", "Rose", "com.ylowstone.tv.IconRose", R.drawable.icon_preview_rose),
-    COBALT("cobalt", "Cobalt", "com.ylowstone.tv.IconCobalt", R.drawable.icon_preview_cobalt),
-    CRIMSON("crimson", "Crimson", "com.ylowstone.tv.IconCrimson", R.drawable.icon_preview_crimson),
-    TEAL("teal", "Teal", "com.ylowstone.tv.IconTeal", R.drawable.icon_preview_teal),
-    GOLD("gold", "Gold", "com.ylowstone.tv.IconGold", R.drawable.icon_preview_gold),
-    ICE("ice", "Ice", "com.ylowstone.tv.IconIce", R.drawable.icon_preview_ice),
-    PLASMA("plasma", "Plasma", "com.ylowstone.tv.IconPlasma", R.drawable.icon_preview_plasma);
+    OBSIDIAN("obsidian", "Obsidian", "com.ylowstone.tv.IconObsidian", R.drawable.icon_prev_obsidian),
+    CYAN("cyan", "Cyan", "com.ylowstone.tv.IconCyan", R.drawable.icon_prev_pearl_azure),
+    EMERALD("emerald", "Emerald", "com.ylowstone.tv.IconEmerald", R.drawable.icon_prev_emerald),
+    AMBER("amber", "Amber", "com.ylowstone.tv.IconAmber", R.drawable.icon_prev_solar_gold),
+    VIOLET("violet", "Violet", "com.ylowstone.tv.IconViolet", R.drawable.icon_prev_nebula),
+    ROSE("rose", "Rose", "com.ylowstone.tv.IconRose", R.drawable.icon_prev_crimson),
+    COBALT("cobalt", "Cobalt", "com.ylowstone.tv.IconCobalt", R.drawable.icon_prev_cobalt),
+    CRIMSON("crimson", "Crimson", "com.ylowstone.tv.IconCrimson", R.drawable.icon_prev_crimson),
+    TEAL("teal", "Teal", "com.ylowstone.tv.IconTeal", R.drawable.icon_prev_pearl_mint),
+    GOLD("gold", "Gold", "com.ylowstone.tv.IconGold", R.drawable.icon_prev_solar_gold),
+    ICE("ice", "Ice", "com.ylowstone.tv.IconIce", R.drawable.icon_prev_slate_blue),
+    PLASMA("plasma", "Plasma", "com.ylowstone.tv.IconPlasma", R.drawable.icon_prev_midnight);
 
     companion object {
         fun fromKey(key: String?): AppIconOption =
@@ -179,20 +179,25 @@ data class ChannelItem(
     val containerExtension: String = "",
     val rating: String = "",
     val isFavorite: Boolean = false,
-    val lastWatched: Long = 0L
+    val lastWatched: Long = 0L,
+    val lastWatchedAt: Long = 0L
 ) {
     fun isAdultContent(): Boolean = isAdultCategoryOrTitle(category, name)
 }
 
 data class TaggedChannel(
     val channel: ChannelItem,
-    val playlistName: String
+    val playlistName: String,
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L
 )
 
-data class CategoryCount(
+data class CategoryInfo(
     val name: String,
     val count: Int
 )
+
+typealias CategoryCount = CategoryInfo
 
 data class EpisodeItem(
     val id: String,
