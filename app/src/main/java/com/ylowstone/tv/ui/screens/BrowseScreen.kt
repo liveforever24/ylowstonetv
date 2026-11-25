@@ -50,6 +50,7 @@ import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.*
 import com.ylowstone.tv.ui.components.ChannelLogoBox
+import com.ylowstone.tv.ui.components.ChannelLongPressActionDialog
 import com.ylowstone.tv.ui.components.PinDialog
 import com.ylowstone.tv.ui.components.ProfileYBadgeButton
 import com.ylowstone.tv.ui.components.GlossyGridScrollPositionPill
@@ -80,7 +81,6 @@ fun BrowseScreen(
     onToggleFavorite: (ChannelItem) -> Unit,
     onSelectChannelInline: (ChannelItem, List<ChannelItem>) -> Unit,
     onLaunchPlayer: (ChannelItem, List<ChannelItem>, Boolean) -> Unit,
-    onLongPressChannel: (ChannelItem) -> Unit,
     onFloatCurrent: () -> Unit,
     onOpenProfileMenu: () -> Unit
 ) {
@@ -95,6 +95,7 @@ fun BrowseScreen(
     var debouncedChannelSearch by remember(playlist.id, mediaType) { mutableStateOf("") }
     var unlockedTempCategories by remember(playlist.id) { mutableStateOf<Set<String>>(emptySet()) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
+    var longPressTargetChannel by remember { mutableStateOf<ChannelItem?>(null) }
 
     LaunchedEffect(channelSearchQuery) {
         delay(150)
@@ -208,7 +209,7 @@ fun BrowseScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = if (openedCategory == null) strings.longPressPinHint else strings.swipeDownToCategories,
+                                text = if (openedCategory == null) strings.longPressPinHint else "Tekan lama item untuk salin link, cek status & grup",
                                 color = c.textSecondary,
                                 fontSize = 11.sp
                             )
@@ -252,77 +253,77 @@ fun BrowseScreen(
 
                             val catListState = rememberLazyListState()
                             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                                LazyColumn(
-                                    state = catListState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(bottom = 20.dp),
-                                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                                ) {
-                                    item {
-                                        VerticalCategoryCard(
-                                            name = strings.allChannels,
-                                            count = allCount,
-                                            icon = Icons.Rounded.GridView,
-                                            locked = false,
-                                            highlight = true,
-                                            onClick = { openedCategory = "ALL" },
-                                            onLongClick = {}
-                                        )
-                                    }
-                                    item {
-                                        VerticalCategoryCard(
-                                            name = strings.favourites,
-                                            count = favCount,
-                                            icon = Icons.Rounded.Favorite,
-                                            locked = false,
-                                            highlight = false,
-                                            onClick = { openedCategory = "FAV" },
-                                            onLongClick = {}
-                                        )
-                                    }
-                                    item {
-                                        VerticalCategoryCard(
-                                            name = strings.history,
-                                            count = histCount,
-                                            icon = Icons.Rounded.History,
-                                            locked = false,
-                                            highlight = false,
-                                            onClick = { openedCategory = "HIST" },
-                                            onLongClick = {}
-                                        )
-                                    }
-                                    item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
-
-                                    items(filteredCategories, key = { it.name }) { cat ->
-                                        val isLocked = lockedCategories.contains(cat.name)
-                                        VerticalCategoryCard(
-                                            name = cat.name,
-                                            count = cat.count,
-                                            icon = if (isLocked) Icons.Rounded.Lock else Icons.Rounded.FolderOpen,
-                                            locked = isLocked,
-                                            highlight = false,
-                                            onClick = {
-                                                if (isLocked && !unlockedTempCategories.contains(cat.name)) {
-                                                    pinActionCategory = cat.name
-                                                    pinActionMode = "OPEN_LOCKED"
-                                                    pinActionIsPortrait = true
-                                                } else {
-                                                    openedCategory = cat.name
-                                                }
-                                            },
-                                            onLongClick = {
-                                                pinActionCategory = cat.name
-                                                pinActionMode = "TOGGLE_LOCK"
-                                                pinActionIsPortrait = true
-                                            }
-                                        )
-                                    }
+                            LazyColumn(
+                                state = catListState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(bottom = 20.dp),
+                                verticalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
+                                item {
+                                    VerticalCategoryCard(
+                                        name = strings.allChannels,
+                                        count = allCount,
+                                        icon = Icons.Rounded.GridView,
+                                        locked = false,
+                                        highlight = true,
+                                        onClick = { openedCategory = "ALL" },
+                                        onLongClick = {}
+                                    )
                                 }
-                                GlossyScrollPositionPill(
-                                    listState = catListState,
-                                    totalItemsCount = filteredCategories.size + 4,
-                                    modifier = Modifier.align(Alignment.CenterEnd)
-                                )
+                                item {
+                                    VerticalCategoryCard(
+                                        name = strings.favourites,
+                                        count = favCount,
+                                        icon = Icons.Rounded.Favorite,
+                                        locked = false,
+                                        highlight = false,
+                                        onClick = { openedCategory = "FAV" },
+                                        onLongClick = {}
+                                    )
+                                }
+                                item {
+                                    VerticalCategoryCard(
+                                        name = strings.history,
+                                        count = histCount,
+                                        icon = Icons.Rounded.History,
+                                        locked = false,
+                                        highlight = false,
+                                        onClick = { openedCategory = "HIST" },
+                                        onLongClick = {}
+                                    )
+                                }
+                                item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
+
+                                items(filteredCategories, key = { it.name }) { cat ->
+                                    val isLocked = lockedCategories.contains(cat.name)
+                                    VerticalCategoryCard(
+                                        name = cat.name,
+                                        count = cat.count,
+                                        icon = if (isLocked) Icons.Rounded.Lock else Icons.Rounded.FolderOpen,
+                                        locked = isLocked,
+                                        highlight = false,
+                                        onClick = {
+                                            if (isLocked && !unlockedTempCategories.contains(cat.name)) {
+                                                pinActionCategory = cat.name
+                                                pinActionMode = "OPEN_LOCKED"
+                                                pinActionIsPortrait = true
+                                            } else {
+                                                openedCategory = cat.name
+                                            }
+                                        },
+                                        onLongClick = {
+                                            pinActionCategory = cat.name
+                                            pinActionMode = "TOGGLE_LOCK"
+                                            pinActionIsPortrait = true
+                                        }
+                                    )
+                                }
+                            }
+                            GlossyScrollPositionPill(
+                                listState = catListState,
+                                totalItemsCount = filteredCategories.size + 4,
+                                modifier = Modifier.align(Alignment.CenterEnd)
+                            )
                             }
                         }
                     } else {
@@ -379,100 +380,39 @@ fun BrowseScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            if (mediaType == MediaType.LIVE && activeChannel != null && playerMode == PlayerMode.NONE) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(18.dp))
-                                        .background(c.surface)
-                                        .border(1.dp, c.glassBorder, RoundedCornerShape(18.dp))
-                                        .padding(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(16f / 9f)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(Color.Black)
-                                    ) {
-                                        AndroidView(
-                                            factory = { ctx ->
-                                                PlayerView(ctx).apply {
-                                                    player = sharedPlayer
-                                                    useController = false
-                                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                                }
-                                            },
-                                            update = { it.player = sharedPlayer },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(activeChannel.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text(activeChannel.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
-                                        }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            OutlinedButton(
-                                                onClick = onFloatCurrent,
-                                                shape = RoundedCornerShape(12.dp),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                            ) {
-                                                Icon(Icons.Rounded.PictureInPictureAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                                Text(strings.floatPlayer, fontSize = 11.sp)
-                                            }
-                                            Button(
-                                                onClick = { onLaunchPlayer(activeChannel, channels, true) },
-                                                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                                                shape = RoundedCornerShape(12.dp),
-                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                                            ) {
-                                                Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                                Text(strings.fullscreen, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
                             if (mediaType == MediaType.LIVE) {
                                 val liveListState = rememberLazyListState()
                                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                                    LazyColumn(
-                                        state = liveListState,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentPadding = PaddingValues(bottom = 20.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        items(channels, key = { it.id }) { ch ->
-                                            val active = activeChannel?.id == ch.id
-                                            ChannelListRow(
-                                                ch = ch,
-                                                active = active,
-                                                isTvMode = isTvMode,
-                                                onClick = {
-                                                    onLaunchPlayer(ch, channels, false)
-                                                },
-                                                onLongClick = { onLongPressChannel(ch) },
-                                                onToggleFav = {
-                                                    onToggleFavorite(ch)
-                                                    refreshTrigger++
-                                                }
-                                            )
-                                        }
+                                LazyColumn(
+                                    state = liveListState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(bottom = 20.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    items(channels, key = { it.id }) { ch ->
+                                        val active = activeChannel?.id == ch.id
+                                        ChannelListRow(
+                                            ch = ch,
+                                            active = active,
+                                            isTvMode = isTvMode,
+                                            onClick = {
+                                                onLaunchPlayer(ch, channels, false)
+                                            },
+                                            onLongClick = {
+                                                longPressTargetChannel = ch
+                                            },
+                                            onToggleFav = {
+                                                onToggleFavorite(ch)
+                                                refreshTrigger++
+                                            }
+                                        )
                                     }
-                                    GlossyScrollPositionPill(
-                                        listState = liveListState,
-                                        totalItemsCount = channels.size,
-                                        modifier = Modifier.align(Alignment.CenterEnd)
-                                    )
+                                }
+                                GlossyScrollPositionPill(
+                                    listState = liveListState,
+                                    totalItemsCount = channels.size,
+                                    modifier = Modifier.align(Alignment.CenterEnd)
+                                )
                                 }
                             } else {
                                 PosterGrid(
@@ -491,7 +431,9 @@ fun BrowseScreen(
                                             onLaunchPlayer(item, channels, false)
                                         }
                                     },
-                                    onLongPressItem = { item -> onLongPressChannel(item) },
+                                    onLongClickItem = { item ->
+                                        longPressTargetChannel = item
+                                    },
                                     onToggleFav = { item ->
                                         onToggleFavorite(item)
                                         refreshTrigger++
@@ -581,79 +523,16 @@ fun BrowseScreen(
                                 active = active,
                                 isTvMode = isTvMode,
                                 onClick = {
-                                    if (active) onLaunchPlayer(ch, channels, false)
-                                    else onSelectChannelInline(ch, channels)
+                                    onLaunchPlayer(ch, channels, isTvMode)
                                 },
-                                onLongClick = { onLongPressChannel(ch) },
+                                onLongClick = {
+                                    longPressTargetChannel = ch
+                                },
                                 onToggleFav = {
                                     onToggleFavorite(ch)
                                     refreshTrigger++
                                 }
                             )
-                        }
-                    }
-
-                    Column(
-                        modifier = Modifier
-                            .weight(0.95f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(c.surface)
-                            .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.Black)
-                                .clickable(enabled = activeChannel != null) {
-                                    activeChannel?.let { onLaunchPlayer(it, channels, true) }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (activeChannel != null && playerMode == PlayerMode.NONE) {
-                                AndroidView(
-                                    factory = { ctx ->
-                                        PlayerView(ctx).apply {
-                                            player = sharedPlayer
-                                            useController = false
-                                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                        }
-                                    },
-                                    update = { it.player = sharedPlayer },
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = Color.White.copy(alpha = 0.35f), modifier = Modifier.size(40.dp))
-                                    Text(strings.tapToWatch, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
-                                }
-                            }
-                        }
-
-                        activeChannel?.let { ch ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(ch.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(ch.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
-                                }
-                                Button(
-                                    onClick = { onLaunchPlayer(ch, channels, true) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(strings.fullscreen, color = c.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
                         }
                     }
                 } else {
@@ -670,10 +549,12 @@ fun BrowseScreen(
                                 }
                             } else {
                                 repo.db.markWatched(item.id)
-                                onLaunchPlayer(item, channels, false)
+                                onLaunchPlayer(item, channels, isTvMode)
                             }
                         },
-                        onLongPressItem = { item -> onLongPressChannel(item) },
+                        onLongClickItem = { item ->
+                            longPressTargetChannel = item
+                        },
                         onToggleFav = { item ->
                             onToggleFavorite(item)
                             refreshTrigger++
@@ -683,6 +564,16 @@ fun BrowseScreen(
                 }
             }
         }
+    }
+
+    longPressTargetChannel?.let { targetCh ->
+        ChannelLongPressActionDialog(
+            channel = targetCh,
+            playlistName = playlist.name,
+            repo = repo,
+            onDismiss = { longPressTargetChannel = null },
+            onGroupsUpdated = { refreshTrigger++ }
+        )
     }
 
     pinActionCategory?.let { catName ->
@@ -759,9 +650,11 @@ fun BrowseScreen(
                                                     )
                                                 }
                                                 val picked = epChannels.first { it.streamUrl == ep.streamUrl }
-                                                onLaunchPlayer(picked, epChannels, false)
+                                                onLaunchPlayer(picked, epChannels, isTvMode)
                                             },
-                                            onLongClick = { onLongPressChannel(epChannel) }
+                                            onLongClick = {
+                                                longPressTargetChannel = epChannel
+                                            }
                                         )
                                         .padding(10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -896,7 +789,7 @@ private fun PosterGrid(
     channels: List<ChannelItem>,
     isTvMode: Boolean,
     onOpenItem: (ChannelItem) -> Unit,
-    onLongPressItem: (ChannelItem) -> Unit,
+    onLongClickItem: (ChannelItem) -> Unit,
     onToggleFav: (ChannelItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -904,78 +797,78 @@ private fun PosterGrid(
     val context = LocalContext.current
     val gridState = rememberLazyGridState()
     Box(modifier = modifier) {
-        LazyVerticalGrid(
-            state = gridState,
-            columns = GridCells.Adaptive(minSize = 112.dp),
-            contentPadding = PaddingValues(bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            items(channels, key = { it.id }) { item ->
-                Column(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(c.surface)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                        .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
-                        .glossyPressPill(14f)
-                        .combinedClickable(
-                            onClick = { onOpenItem(item) },
-                            onLongClick = { onLongPressItem(item) }
-                        )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(146.dp)
-                            .background(c.surfaceElevated),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(context)
-                                .data(item.logoUrl)
-                                .crossfade(true)
-                                .size(260)
-                                .build(),
-                            contentDescription = item.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        IconButton(
-                            onClick = { onToggleFav(item) },
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(4.dp)
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.55f))
-                        ) {
-                            Icon(
-                                if (item.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                                contentDescription = "Fav",
-                                tint = if (item.isFavorite) c.accent else Color.White,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                    }
-                    Text(
-                        text = item.name,
-                        color = c.textPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(8.dp)
+    LazyVerticalGrid(
+        state = gridState,
+        columns = GridCells.Adaptive(minSize = 112.dp),
+        contentPadding = PaddingValues(bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        items(channels, key = { it.id }) { item ->
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(c.surface)
+                    .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                    .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
+                    .glossyPressPill(14f)
+                    .combinedClickable(
+                        onClick = { onOpenItem(item) },
+                        onLongClick = { onLongClickItem(item) }
                     )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(146.dp)
+                        .background(c.surfaceElevated),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(item.logoUrl)
+                            .crossfade(true)
+                            .size(260)
+                            .build(),
+                        contentDescription = item.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    IconButton(
+                        onClick = { onToggleFav(item) },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f))
+                    ) {
+                        Icon(
+                            if (item.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            contentDescription = "Fav",
+                            tint = if (item.isFavorite) c.accent else Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
                 }
+                Text(
+                    text = item.name,
+                    color = c.textPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(8.dp)
+                )
             }
         }
-        GlossyGridScrollPositionPill(
-            gridState = gridState,
-            totalItemsCount = channels.size,
-            modifier = Modifier.align(Alignment.CenterEnd)
-        )
+    }
+    GlossyGridScrollPositionPill(
+        gridState = gridState,
+        totalItemsCount = channels.size,
+        modifier = Modifier.align(Alignment.CenterEnd)
+    )
     }
 }
 

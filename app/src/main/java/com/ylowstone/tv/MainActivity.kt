@@ -119,9 +119,6 @@ class MainActivity : ComponentActivity() {
         return RemoteAction(Icon.createWithResource(this, iconRes), title, title, pi)
     }
 
-    /**
-     * Fase 3: System PiP minimalis — hanya aksi Play/Pause (selain tombol bawaan Expand/Layar Penuh & Tutup X dari sistem Android).
-     */
     private fun buildPipParams(autoEnter: Boolean, playing: Boolean): PictureInPictureParams {
         val actions = listOf(
             makeRemoteAction(
