@@ -1,3 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@mipmap/ic_launcher*,@drawable/icon_fg_*,@drawable/icon_prev_*,@drawable/ic_pip_*,@drawable/ic_empty_fg,@drawable/ic_launcher_monochrome,@drawable/profile_y_badge,@drawable/tv_banner,@drawable/ylowstone_y_emblem,@drawable/ylowstone_wordmark" />
+    tools:keep="@mipmap/ic_launcher*,@drawable/icon_fg_*,@drawable/icon_prev_*,@drawable/ic_pip_*,@drawable/ic_empty_fg,@drawable/ic_launcher_monochrome,@drawable/profile_y_badge,@drawable/tv_banner,@drawable/ylowstone_y_emblem,@drawable/ylowstone_wordmark,@raw/splash_intro" />

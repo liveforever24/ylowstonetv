@@ -1,8 +1,7 @@
 package com.ylowstone.tv.ui.screens
 
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioTrack
+import android.media.MediaPlayer
+import android.media.audiofx.LoudnessEnhancer
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
@@ -36,6 +35,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.ylowstone.tv.R
@@ -43,22 +43,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.exp
-import kotlin.math.sin
-import kotlin.math.tanh
 
 /**
  * Splash Screen V4 — Ember Spotlight Curtain
- * Non-skippable, dilengkapi audio intro sintetis elegan 1,0 detik (auto-normalized).
+ * Non-skippable, audio custom splash_intro.mp3 dengan LoudnessEnhancer (+14 dB).
  */
 @Composable
 fun SplashOverlayScreen(onFinished: () -> Unit) {
     // Kunci tombol Back selama animasi splash berjalan
     BackHandler(enabled = true) {}
 
+    val context = LocalContext.current
     val quintOut = remember { CubicBezierEasing(0.22f, 1.0f, 0.36f, 1.0f) }
 
     val emberAlpha = remember { Animatable(0f) }
@@ -69,17 +64,28 @@ fun SplashOverlayScreen(onFinished: () -> Unit) {
     val wordmarkOffsetY = remember { Animatable(18f) }
     val globalAlpha = remember { Animatable(1f) }
 
-    val audioRef = remember { AtomicReference<AudioTrack?>(null) }
+    val playerRef = remember { AtomicReference<MediaPlayer?>(null) }
+    val enhancerRef = remember { AtomicReference<LoudnessEnhancer?>(null) }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            audioRef.getAndSet(null)?.let { track ->
+    val releaseAudio = remember {
+        {
+            enhancerRef.getAndSet(null)?.let { fx ->
                 runCatching {
-                    track.stop()
-                    track.release()
+                    fx.enabled = false
+                    fx.release()
+                }
+            }
+            playerRef.getAndSet(null)?.let { mp ->
+                runCatching {
+                    if (mp.isPlaying) mp.stop()
+                    mp.release()
                 }
             }
         }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { releaseAudio() }
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "liveDot")
@@ -94,18 +100,26 @@ fun SplashOverlayScreen(onFinished: () -> Unit) {
     )
 
     LaunchedEffect(Unit) {
-        // 0. Audio intro hangat & jernih tepat 1,0 detik
+        // 0. Putar splash_intro.mp3 dengan penguat volume +14 dB
         launch(Dispatchers.IO) {
-            val track = createEmberIntroAudioTrack()
-            if (track != null) {
-                audioRef.set(track)
-                runCatching { track.play() }
-                delay(1150)
-                audioRef.getAndSet(null)?.let { t ->
-                    runCatching {
-                        t.stop()
-                        t.release()
+            runCatching {
+                val mp = MediaPlayer.create(context, R.raw.splash_intro)
+                if (mp != null) {
+                    mp.setVolume(1.0f, 1.0f)
+                    val fx = runCatching {
+                        LoudnessEnhancer(mp.audioSessionId).apply {
+                            setTargetGain(1400) // +14 dB (bisa naik/turun: 1000=+10dB, 1800=+18dB)
+                            enabled = true
+                        }
+                    }.getOrNull()
+                    enhancerRef.set(fx)
+                    playerRef.set(mp)
+                    mp.setOnCompletionListener { releaseAudio() }
+                    mp.setOnErrorListener { _, _, _ ->
+                        releaseAudio()
+                        true
                     }
+                    mp.start()
                 }
             }
         }
@@ -146,6 +160,7 @@ fun SplashOverlayScreen(onFinished: () -> Unit) {
         // 5. Tahan sebentar lalu fade-out mulus ke layar utama
         delay(1450)
         globalAlpha.animateTo(0f, tween(380, easing = FastOutSlowInEasing))
+        releaseAudio()
         onFinished()
     }
 
@@ -231,62 +246,3 @@ fun SplashOverlayScreen(onFinished: () -> Unit) {
         }
     }
 }
-
-private fun createEmberIntroAudioTrack(): AudioTrack? = runCatching {
-    val sampleRate = 44100
-    val durationSec = 1.0
-    val numSamples = (sampleRate * durationSec).toInt()
-    val raw = DoubleArray(numSamples)
-
-    // Warm cinematic Dmaj9 chime — jernih di speaker HP, halus, selesai bersih di 1,0 detik
-    val freqs  = doubleArrayOf(220.00, 293.66, 369.99, 440.00, 554.37, 659.25, 880.00)
-    val amps   = doubleArrayOf(0.26,   0.30,   0.26,   0.28,   0.20,   0.18,   0.12)
-    val decays = doubleArrayOf(1.6,    1.7,    1.9,    2.1,    2.5,    2.9,    3.6)
-
-    var maxAbs = 1e-6
-    for (i in 0 until numSamples) {
-        val t = i.toDouble() / sampleRate
-        val attack  = if (t < 0.08) 0.5 * (1.0 - cos(PI * t / 0.08)) else 1.0
-        val release = if (t > 0.72) 0.5 * (1.0 + cos(PI * (t - 0.72) / 0.28)) else 1.0
-
-        var sample = 0.0
-        for (k in freqs.indices) {
-            sample += amps[k] * exp(-decays[k] * t) * sin(2.0 * PI * freqs[k] * t)
-        }
-        // Soft analog warmth agar terasa penuh tapi tidak pecah
-        val shaped = tanh(sample * 1.35) * attack * release
-        raw[i] = shaped
-        val a = abs(shaped)
-        if (a > maxAbs) maxAbs = a
-    }
-
-    // Normalisasi otomatis ke 92% volume maksimal
-    val pcm = ShortArray(numSamples)
-    val scale = 0.92 / maxAbs
-    for (i in 0 until numSamples) {
-        val v = (raw[i] * scale).coerceIn(-1.0, 1.0)
-        pcm[i] = (v * Short.MAX_VALUE).toInt().toShort()
-    }
-
-    val track = AudioTrack.Builder()
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                .build()
-        )
-        .setAudioFormat(
-            AudioFormat.Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(sampleRate)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                .build()
-        )
-        .setBufferSizeInBytes(pcm.size * 2)
-        .setTransferMode(AudioTrack.MODE_STATIC)
-        .build()
-
-    track.write(pcm, 0, pcm.size)
-    track.setVolume(1.0f)
-    track
-}.getOrNull()
