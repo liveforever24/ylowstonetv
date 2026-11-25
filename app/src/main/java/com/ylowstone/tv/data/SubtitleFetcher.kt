@@ -55,7 +55,7 @@ object SubtitleFetcher {
             val conn = (URL(sb.toString()).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15000
                 readTimeout = 20000
-                setRequestProperty("User-Agent", "YlowstoneTV/2.2.7")
+                setRequestProperty("User-Agent", "YlowstoneTV/2.3.1")
             }
             val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             conn.disconnect()
@@ -97,7 +97,7 @@ object SubtitleFetcher {
             val conn = (URL(sb.toString()).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 20000
                 readTimeout = 30000
-                setRequestProperty("User-Agent", "YlowstoneTV/2.2.7")
+                setRequestProperty("User-Agent", "YlowstoneTV/2.3.1")
             }
             if (conn.responseCode !in 200..299) {
                 conn.disconnect()

@@ -40,8 +40,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.ylowstone.tv.data.IptvRepository
@@ -74,12 +77,11 @@ fun BrowseScreen(
     pinCode: String,
     strings: AppStrings,
     isTvMode: Boolean,
-    onBackToHome: () -> Unit = {},
     onToggleLockCategory: (String) -> Unit,
     onToggleFavorite: (ChannelItem) -> Unit,
     onSelectChannelInline: (ChannelItem, List<ChannelItem>) -> Unit,
     onLaunchPlayer: (ChannelItem, List<ChannelItem>, Boolean) -> Unit,
-    onLongPressChannel: (ChannelItem) -> Unit = {},
+    onLongPressChannel: (ChannelItem) -> Unit,
     onFloatCurrent: () -> Unit,
     onOpenProfileMenu: () -> Unit
 ) {
@@ -88,15 +90,12 @@ fun BrowseScreen(
     val scope = rememberCoroutineScope()
 
     var openedCategory by remember(playlist.id, mediaType) { mutableStateOf<String?>(null) }
-    var lastFocusedCategory by remember(playlist.id, mediaType) { mutableStateOf<String?>(null) }
     var landscapeCategory by remember(playlist.id, mediaType) { mutableStateOf("ALL") }
     var catFilterQuery by remember(playlist.id, mediaType) { mutableStateOf("") }
     var channelSearchQuery by remember(playlist.id, mediaType) { mutableStateOf("") }
     var debouncedChannelSearch by remember(playlist.id, mediaType) { mutableStateOf("") }
     var unlockedTempCategories by remember(playlist.id) { mutableStateOf<Set<String>>(emptySet()) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
-    var lastCategoryBackTime by remember { mutableLongStateOf(0L) }
-
     val catListState = rememberLazyListState()
 
     LaunchedEffect(channelSearchQuery) {
@@ -104,21 +103,18 @@ fun BrowseScreen(
         debouncedChannelSearch = channelSearchQuery
     }
 
-    val categories: List<CategoryInfo> = remember(playlist.id, mediaType, refreshTrigger) {
+    val categories = remember(playlist.id, mediaType, refreshTrigger) {
         repo.db.getCategories(playlist.id, mediaType)
     }
-    val filteredCategories: List<CategoryInfo> = remember(categories, catFilterQuery) {
-        val q = catFilterQuery.trim()
-        if (q.isEmpty()) categories
-        else categories.filter { entry: CategoryInfo -> entry.name.contains(q, ignoreCase = true) }
+    val filteredCategories = remember(categories, catFilterQuery) {
+        if (catFilterQuery.isBlank()) categories
+        else categories.filter { it.name.contains(catFilterQuery.trim(), ignoreCase = true) }
     }
-    val allCount: Int = remember(categories) {
-        categories.sumOf { entry: CategoryInfo -> entry.count }
-    }
-    val favCount: Int = remember(playlist.id, mediaType, refreshTrigger) {
+    val allCount = remember(categories) { categories.sumOf { it.count } }
+    val favCount = remember(playlist.id, mediaType, refreshTrigger) {
         repo.db.getFavoriteCount(playlist.id, mediaType)
     }
-    val histCount: Int = remember(playlist.id, mediaType, refreshTrigger) {
+    val histCount = remember(playlist.id, mediaType, refreshTrigger) {
         repo.db.getHistoryCount(playlist.id, mediaType)
     }
 
@@ -136,37 +132,6 @@ fun BrowseScreen(
         MediaType.SERIES -> strings.series
     }
 
-    fun returnToCategoryListKeepingPosition() {
-        val targetCat = openedCategory ?: lastFocusedCategory
-        openedCategory = null
-        channelSearchQuery = ""
-        if (targetCat != null && targetCat !in listOf("ALL", "FAV", "HIST")) {
-            val idx = filteredCategories.indexOfFirst { entry: CategoryInfo ->
-                entry.name.equals(targetCat, ignoreCase = true)
-            }
-            if (idx >= 0) {
-                scope.launch {
-                    runCatching { catListState.scrollToItem((idx + 4).coerceAtLeast(0)) }
-                }
-            }
-        }
-    }
-
-    BackHandler(enabled = playerMode == PlayerMode.NONE) {
-        if (openedCategory != null) {
-            returnToCategoryListKeepingPosition()
-        } else {
-            val now = System.currentTimeMillis()
-            if (now - lastCategoryBackTime <= 2000L) {
-                lastCategoryBackTime = 0L
-                onBackToHome()
-            } else {
-                lastCategoryBackTime = now
-                Toast.makeText(context, "Tekan kembali sekali lagi untuk ke Beranda", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -174,6 +139,10 @@ fun BrowseScreen(
             .statusBarsPadding()
     ) {
         val isPortrait = maxWidth < 600.dp
+        BackHandler(enabled = isPortrait && openedCategory != null && playerMode != PlayerMode.FULLSCREEN && playerMode != PlayerMode.SPLIT) {
+            openedCategory = null
+            channelSearchQuery = ""
+        }
         val activeCatForQuery = if (isPortrait) (openedCategory ?: "ALL") else landscapeCategory
         val isActiveCatLocked = lockedCategories.contains(activeCatForQuery) && !unlockedTempCategories.contains(activeCatForQuery)
 
@@ -219,7 +188,7 @@ fun BrowseScreen(
                     ) {
                         if (openedCategory != null) {
                             IconButton(
-                                onClick = { returnToCategoryListKeepingPosition() },
+                                onClick = { openedCategory = null; channelSearchQuery = "" },
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
@@ -245,7 +214,7 @@ fun BrowseScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = if (openedCategory == null) strings.longPressPinHint else "Tekan lama item untuk salin link, cek status & grup",
+                                text = if (openedCategory == null) strings.longPressPinHint else strings.longPressItemHint,
                                 color = c.textSecondary,
                                 fontSize = 11.sp
                             )
@@ -301,11 +270,7 @@ fun BrowseScreen(
                                             icon = Icons.Rounded.GridView,
                                             locked = false,
                                             highlight = true,
-                                            selected = false,
-                                            onClick = {
-                                                lastFocusedCategory = "ALL"
-                                                openedCategory = "ALL"
-                                            },
+                                            onClick = { openedCategory = "ALL" },
                                             onLongClick = {}
                                         )
                                     }
@@ -316,11 +281,7 @@ fun BrowseScreen(
                                             icon = Icons.Rounded.Favorite,
                                             locked = false,
                                             highlight = false,
-                                            selected = false,
-                                            onClick = {
-                                                lastFocusedCategory = "FAV"
-                                                openedCategory = "FAV"
-                                            },
+                                            onClick = { openedCategory = "FAV" },
                                             onLongClick = {}
                                         )
                                     }
@@ -331,28 +292,21 @@ fun BrowseScreen(
                                             icon = Icons.Rounded.History,
                                             locked = false,
                                             highlight = false,
-                                            selected = false,
-                                            onClick = {
-                                                lastFocusedCategory = "HIST"
-                                                openedCategory = "HIST"
-                                            },
+                                            onClick = { openedCategory = "HIST" },
                                             onLongClick = {}
                                         )
                                     }
                                     item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
 
-                                    items(filteredCategories, key = { cat: CategoryInfo -> cat.name }) { cat: CategoryInfo ->
+                                    items(filteredCategories, key = { it.name }) { cat ->
                                         val isLocked = lockedCategories.contains(cat.name)
-                                        val isLastOpened = lastFocusedCategory?.equals(cat.name, ignoreCase = true) == true
                                         VerticalCategoryCard(
                                             name = cat.name,
                                             count = cat.count,
                                             icon = if (isLocked) Icons.Rounded.Lock else Icons.Rounded.FolderOpen,
                                             locked = isLocked,
                                             highlight = false,
-                                            selected = isLastOpened,
                                             onClick = {
-                                                lastFocusedCategory = cat.name
                                                 if (isLocked && !unlockedTempCategories.contains(cat.name)) {
                                                     pinActionCategory = cat.name
                                                     pinActionMode = "OPEN_LOCKED"
@@ -362,7 +316,6 @@ fun BrowseScreen(
                                                 }
                                             },
                                             onLongClick = {
-                                                lastFocusedCategory = cat.name
                                                 pinActionCategory = cat.name
                                                 pinActionMode = "TOGGLE_LOCK"
                                                 pinActionIsPortrait = true
@@ -392,7 +345,8 @@ fun BrowseScreen(
                                         detectVerticalDragGestures(
                                             onDragEnd = {
                                                 if (totalDrag > 70f) {
-                                                    returnToCategoryListKeepingPosition()
+                                                    openedCategory = null
+                                                    channelSearchQuery = ""
                                                 }
                                                 totalDrag = 0f
                                             }
@@ -400,7 +354,7 @@ fun BrowseScreen(
                                             if (dragAmount > 0f) totalDrag += dragAmount
                                         }
                                     }
-                                    .clickable { returnToCategoryListKeepingPosition() }
+                                    .clickable { openedCategory = null; channelSearchQuery = "" }
                                     .padding(vertical = 7.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -430,6 +384,69 @@ fun BrowseScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
+                            if (mediaType == MediaType.LIVE && activeChannel != null && playerMode == PlayerMode.NONE) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(c.surface)
+                                        .border(1.dp, c.glassBorder, RoundedCornerShape(18.dp))
+                                        .padding(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(16f / 9f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color.Black)
+                                    ) {
+                                        AndroidView(
+                                            factory = { ctx ->
+                                                PlayerView(ctx).apply {
+                                                    player = sharedPlayer
+                                                    useController = false
+                                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                                }
+                                            },
+                                            update = { it.player = sharedPlayer },
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(activeChannel.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(activeChannel.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            OutlinedButton(
+                                                onClick = onFloatCurrent,
+                                                shape = RoundedCornerShape(12.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                            ) {
+                                                Icon(Icons.Rounded.PictureInPictureAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text(strings.floatPlayer, fontSize = 11.sp)
+                                            }
+                                            Button(
+                                                onClick = { onLaunchPlayer(activeChannel, channels, true) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                                                shape = RoundedCornerShape(12.dp),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                            ) {
+                                                Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text(strings.fullscreen, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             if (mediaType == MediaType.LIVE) {
                                 val liveListState = rememberLazyListState()
                                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -445,7 +462,9 @@ fun BrowseScreen(
                                                 ch = ch,
                                                 active = active,
                                                 isTvMode = isTvMode,
-                                                onClick = { onLaunchPlayer(ch, channels, false) },
+                                                onClick = {
+                                                    onLaunchPlayer(ch, channels, false)
+                                                },
                                                 onLongClick = { onLongPressChannel(ch) },
                                                 onToggleFav = {
                                                     onToggleFavorite(ch)
@@ -477,7 +496,7 @@ fun BrowseScreen(
                                             onLaunchPlayer(item, channels, false)
                                         }
                                     },
-                                    onLongClickItem = { item -> onLongPressChannel(item) },
+                                    onLongPressItem = { item -> onLongPressChannel(item) },
                                     onToggleFav = { item ->
                                         onToggleFavorite(item)
                                         refreshTrigger++
@@ -490,6 +509,7 @@ fun BrowseScreen(
                 }
             }
         } else {
+            // Landscape / Android TV split-screen
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -521,7 +541,7 @@ fun BrowseScreen(
                         item { CategoryRowItem(strings.favourites, favCount, landscapeCategory == "FAV", false, isTvMode, { landscapeCategory = "FAV" }, {}) }
                         item { CategoryRowItem(strings.history, histCount, landscapeCategory == "HIST", false, isTvMode, { landscapeCategory = "HIST" }, {}) }
                         item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
-                        items(categories, key = { cat: CategoryInfo -> cat.name }) { cat: CategoryInfo ->
+                        items(categories, key = { it.name }) { cat ->
                             val isLocked = lockedCategories.contains(cat.name)
                             CategoryRowItem(
                                 name = cat.name,
@@ -565,13 +585,80 @@ fun BrowseScreen(
                                 ch = ch,
                                 active = active,
                                 isTvMode = isTvMode,
-                                onClick = { onLaunchPlayer(ch, channels, isTvMode) },
+                                onClick = {
+                                    if (active) onLaunchPlayer(ch, channels, false)
+                                    else onSelectChannelInline(ch, channels)
+                                },
                                 onLongClick = { onLongPressChannel(ch) },
                                 onToggleFav = {
                                     onToggleFavorite(ch)
                                     refreshTrigger++
                                 }
                             )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(0.95f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(c.surface)
+                            .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.Black)
+                                .clickable(enabled = activeChannel != null) {
+                                    activeChannel?.let { onLaunchPlayer(it, channels, true) }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (activeChannel != null && playerMode == PlayerMode.NONE) {
+                                AndroidView(
+                                    factory = { ctx ->
+                                        PlayerView(ctx).apply {
+                                            player = sharedPlayer
+                                            useController = false
+                                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                        }
+                                    },
+                                    update = { it.player = sharedPlayer },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = Color.White.copy(alpha = 0.35f), modifier = Modifier.size(40.dp))
+                                    Text(strings.tapToWatch, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
+                                }
+                            }
+                        }
+
+                        activeChannel?.let { ch ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(ch.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(ch.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
+                                }
+                                Button(
+                                    onClick = { onLaunchPlayer(ch, channels, true) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(strings.fullscreen, color = c.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 } else {
@@ -588,10 +675,10 @@ fun BrowseScreen(
                                 }
                             } else {
                                 repo.db.markWatched(item.id)
-                                onLaunchPlayer(item, channels, isTvMode)
+                                onLaunchPlayer(item, channels, false)
                             }
                         },
-                        onLongClickItem = { item -> onLongPressChannel(item) },
+                        onLongPressItem = { item -> onLongPressChannel(item) },
                         onToggleFav = { item ->
                             onToggleFavorite(item)
                             refreshTrigger++
@@ -677,7 +764,7 @@ fun BrowseScreen(
                                                     )
                                                 }
                                                 val picked = epChannels.first { it.streamUrl == ep.streamUrl }
-                                                onLaunchPlayer(picked, epChannels, isTvMode)
+                                                onLaunchPlayer(picked, epChannels, false)
                                             },
                                             onLongClick = { onLongPressChannel(epChannel) }
                                         )
@@ -715,27 +802,16 @@ private fun VerticalCategoryCard(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     locked: Boolean,
     highlight: Boolean,
-    selected: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
     val c = LocalYlowColors.current
-    val bgColor = when {
-        highlight -> c.accentContainer
-        selected -> c.surfaceElevated
-        else -> c.surface
-    }
-    val borderColor = when {
-        highlight -> c.accent.copy(alpha = 0.5f)
-        selected -> c.accent.copy(alpha = 0.65f)
-        else -> c.glassBorder
-    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(bgColor)
-            .border(1.dp, borderColor, RoundedCornerShape(14.dp))
+            .background(if (highlight) c.accentContainer else c.surface)
+            .border(1.dp, if (highlight) c.accent.copy(alpha = 0.5f) else c.glassBorder, RoundedCornerShape(14.dp))
             .glossyPressPill(14f)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 13.dp),
@@ -751,16 +827,16 @@ private fun VerticalCategoryCard(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (highlight || locked || selected) c.accent else c.surfaceElevated),
+                    .background(if (highlight || locked) c.accent else c.surfaceElevated),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = if (highlight || locked || selected) c.onAccent else c.textPrimary, modifier = Modifier.size(18.dp))
+                Icon(icon, contentDescription = null, tint = if (highlight || locked) c.onAccent else c.textPrimary, modifier = Modifier.size(18.dp))
             }
             Text(
                 text = name,
-                color = if (selected) c.accent else c.textPrimary,
+                color = c.textPrimary,
                 fontSize = 14.sp,
-                fontWeight = if (highlight || selected) FontWeight.Bold else FontWeight.SemiBold,
+                fontWeight = if (highlight) FontWeight.Bold else FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -783,6 +859,28 @@ private fun ChannelListRow(
     onToggleFav: () -> Unit
 ) {
     val c = LocalYlowColors.current
+    if (ch.isProviderSeparator()) {
+        val cleanTitle = ch.name.trim().trim('#', '=', '-', ' ')
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(modifier = Modifier.width(3.dp).height(14.dp).clip(RoundedCornerShape(2.dp)).background(c.accent))
+            Text(
+                text = cleanTitle.ifBlank { ch.name },
+                color = c.textSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        return
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -825,7 +923,7 @@ private fun PosterGrid(
     channels: List<ChannelItem>,
     isTvMode: Boolean,
     onOpenItem: (ChannelItem) -> Unit,
-    onLongClickItem: (ChannelItem) -> Unit,
+    onLongPressItem: (ChannelItem) -> Unit,
     onToggleFav: (ChannelItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -833,78 +931,78 @@ private fun PosterGrid(
     val context = LocalContext.current
     val gridState = rememberLazyGridState()
     Box(modifier = modifier) {
-    LazyVerticalGrid(
-        state = gridState,
-        columns = GridCells.Adaptive(minSize = 112.dp),
-        contentPadding = PaddingValues(bottom = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        items(channels, key = { it.id }) { item ->
-            Column(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(c.surface)
-                    .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                    .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
-                    .glossyPressPill(14f)
-                    .combinedClickable(
-                        onClick = { onOpenItem(item) },
-                        onLongClick = { onLongClickItem(item) }
-                    )
-            ) {
-                Box(
+        LazyVerticalGrid(
+            state = gridState,
+            columns = GridCells.Adaptive(minSize = 112.dp),
+            contentPadding = PaddingValues(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(channels, key = { it.id }) { item ->
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(146.dp)
-                        .background(c.surfaceElevated),
-                    contentAlignment = Alignment.Center
-                ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(item.logoUrl)
-                            .crossfade(true)
-                            .size(260)
-                            .build(),
-                        contentDescription = item.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    IconButton(
-                        onClick = { onToggleFav(item) },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(4.dp)
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.55f))
-                    ) {
-                        Icon(
-                            if (item.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                            contentDescription = "Fav",
-                            tint = if (item.isFavorite) c.accent else Color.White,
-                            modifier = Modifier.size(15.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(c.surface)
+                        .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                        .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
+                        .glossyPressPill(14f)
+                        .combinedClickable(
+                            onClick = { onOpenItem(item) },
+                            onLongClick = { onLongPressItem(item) }
                         )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(146.dp)
+                            .background(c.surfaceElevated),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(item.logoUrl)
+                                .crossfade(true)
+                                .size(260)
+                                .build(),
+                            contentDescription = item.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        IconButton(
+                            onClick = { onToggleFav(item) },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.55f))
+                        ) {
+                            Icon(
+                                if (item.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                contentDescription = "Fav",
+                                tint = if (item.isFavorite) c.accent else Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
                     }
+                    Text(
+                        text = item.name,
+                        color = c.textPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(8.dp)
+                    )
                 }
-                Text(
-                    text = item.name,
-                    color = c.textPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(8.dp)
-                )
             }
         }
-    }
-    GlossyGridScrollPositionPill(
-        gridState = gridState,
-        totalItemsCount = channels.size,
-        modifier = Modifier.align(Alignment.CenterEnd)
-    )
+        GlossyGridScrollPositionPill(
+            gridState = gridState,
+            totalItemsCount = channels.size,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
 }
 

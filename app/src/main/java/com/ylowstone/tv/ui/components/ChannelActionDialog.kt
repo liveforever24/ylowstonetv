@@ -2,16 +2,15 @@ package com.ylowstone.tv.ui.components
 
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.ContentValues
 import android.content.Context
-import android.database.sqlite.SQLiteDatabase
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -25,169 +24,37 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ylowstone.tv.data.DatabaseHelper
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.ChannelItem
+import com.ylowstone.tv.model.StreamHealthResult
+import com.ylowstone.tv.model.StreamHealthState
 import com.ylowstone.tv.ui.theme.LocalYlowColors
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.Request
-import java.util.concurrent.TimeUnit
 
-enum class LinkHealthState { IDLE, CHECKING, ACTIVE, DELAY, DEAD }
-
-data class LinkCheckOutcome(
-    val state: LinkHealthState,
-    val latencyMs: Long = 0L,
-    val detail: String = ""
-)
-
-object WatchGroupBridge {
-    val PRESET_GROUPS = listOf("Sports", "Event Pertandingan", "Daftar Tontonan")
-
-    private fun resolveTableAndCols(db: SQLiteDatabase): Pair<String, Set<String>> {
-        val cols = HashSet<String>()
-        db.rawQuery("PRAGMA table_info(watch_groups)", null).use { c ->
-            while (c.moveToNext()) {
-                c.getString(1)?.let { cols.add(it) }
-            }
-        }
-        if (cols.isNotEmpty()) return "watch_groups" to cols
-
-        db.execSQL(
-            """
-            CREATE TABLE IF NOT EXISTS watch_groups (
-                group_name TEXT NOT NULL,
-                stream_url TEXT NOT NULL,
-                playlist_id INTEGER NOT NULL DEFAULT 0,
-                playlist_name TEXT NOT NULL DEFAULT '',
-                channel_id INTEGER NOT NULL DEFAULT 0,
-                stream_id TEXT NOT NULL DEFAULT '',
-                name TEXT NOT NULL DEFAULT '',
-                category TEXT NOT NULL DEFAULT '',
-                logo_url TEXT NOT NULL DEFAULT '',
-                media_type TEXT NOT NULL DEFAULT 'LIVE',
-                added_at INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (group_name, stream_url)
-            )
-            """.trimIndent()
-        )
-        db.rawQuery("PRAGMA table_info(watch_groups)", null).use { c ->
-            while (c.moveToNext()) {
-                c.getString(1)?.let { cols.add(it) }
-            }
-        }
-        return "watch_groups" to cols
+/**
+ * Menyembunyikan potongan username/password Xtream di teks preview UI agar aman saat di-screenshot,
+ * sementara link asli utuh tetap disalin ke clipboard saat tombol ditekan.
+ */
+private fun maskStreamUrlForPreview(url: String): String {
+    val clean = url.trim()
+    val xtreamPattern = Regex("""(https?://[^/]+/(?:live|movie|series)/)([^/]+)/([^/]+)(/.*)""")
+    val match = xtreamPattern.find(clean)
+    if (match != null) {
+        val prefix = match.groupValues[1]
+        val suffix = match.groupValues[4]
+        return "$prefix••••/••••$suffix"
     }
-
-    fun getAllGroupNames(dbHelper: DatabaseHelper): List<String> {
-        val db = dbHelper.writableDatabase
-        val (table, cols) = resolveTableAndCols(db)
-        val groupCol = if (cols.contains("group_name")) "group_name" else "name"
-        val result = LinkedHashSet<String>(PRESET_GROUPS)
-        runCatching {
-            db.rawQuery("SELECT DISTINCT $groupCol FROM $table", null).use { c ->
-                while (c.moveToNext()) {
-                    val g = c.getString(0)?.trim().orEmpty()
-                    if (g.isNotEmpty()) result.add(g)
-                }
-            }
-        }
-        return result.toList()
-    }
-
-    fun getGroupsForStream(dbHelper: DatabaseHelper, streamUrl: String): Set<String> {
-        if (streamUrl.isBlank()) return emptySet()
-        val db = dbHelper.writableDatabase
-        val (table, cols) = resolveTableAndCols(db)
-        val groupCol = if (cols.contains("group_name")) "group_name" else return emptySet()
-        val set = HashSet<String>()
-        runCatching {
-            db.rawQuery(
-                "SELECT $groupCol FROM $table WHERE stream_url = ?",
-                arrayOf(streamUrl)
-            ).use { c ->
-                while (c.moveToNext()) {
-                    c.getString(0)?.trim()?.takeIf { it.isNotEmpty() }?.let { set.add(it) }
-                }
-            }
-        }
-        return set
-    }
-
-    fun toggleChannelInGroup(
-        dbHelper: DatabaseHelper,
-        groupName: String,
-        ch: ChannelItem,
-        playlistName: String
-    ): Boolean {
-        val cleanGroup = groupName.trim()
-        if (cleanGroup.isEmpty() || ch.streamUrl.isBlank()) return false
-        val db = dbHelper.writableDatabase
-        val (table, cols) = resolveTableAndCols(db)
-        val existing = getGroupsForStream(dbHelper, ch.streamUrl)
-        return if (existing.contains(cleanGroup)) {
-            db.delete(table, "group_name = ? AND stream_url = ?", arrayOf(cleanGroup, ch.streamUrl))
-            false
-        } else {
-            val cv = ContentValues()
-            if (cols.contains("group_name")) cv.put("group_name", cleanGroup)
-            if (cols.contains("stream_url")) cv.put("stream_url", ch.streamUrl)
-            if (cols.contains("playlist_id")) cv.put("playlist_id", ch.playlistId)
-            if (cols.contains("playlist_name")) cv.put("playlist_name", playlistName)
-            if (cols.contains("channel_id")) cv.put("channel_id", ch.id)
-            if (cols.contains("stream_id")) cv.put("stream_id", ch.streamId)
-            if (cols.contains("name")) cv.put("name", ch.name)
-            if (cols.contains("category")) cv.put("category", ch.category)
-            if (cols.contains("logo_url")) cv.put("logo_url", ch.logoUrl)
-            if (cols.contains("media_type")) cv.put("media_type", ch.mediaType.name)
-            if (cols.contains("added_at")) cv.put("added_at", System.currentTimeMillis())
-            if (cols.contains("created_at")) cv.put("created_at", System.currentTimeMillis())
-            db.insertWithOnConflict(table, null, cv, SQLiteDatabase.CONFLICT_REPLACE)
-            true
-        }
-    }
+    return clean
 }
 
-suspend fun checkStreamLinkHealth(repo: IptvRepository, streamUrl: String): LinkCheckOutcome =
-    withContext(Dispatchers.IO) {
-        if (streamUrl.isBlank()) {
-            return@withContext LinkCheckOutcome(LinkHealthState.DEAD, 0L, "URL kosong")
-        }
-        val pingClient = repo.httpClient.newBuilder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
-            .build()
-
-        val startNs = System.nanoTime()
-        try {
-            val req = Request.Builder()
-                .url(streamUrl.trim())
-                .header("User-Agent", "YlowstoneTV/2.3.0")
-                .header("Range", "bytes=0-1024")
-                .get()
-                .build()
-            pingClient.newCall(req).execute().use { resp ->
-                val elapsedMs = ((System.nanoTime() - startNs) / 1_000_000L).coerceAtLeast(1L)
-                val code = resp.code
-                if (code in 200..299 || code == 206 || code in 300..399) {
-                    if (elapsedMs <= 1600L) {
-                        LinkCheckOutcome(LinkHealthState.ACTIVE, elapsedMs, "Aktif (${elapsedMs} ms)")
-                    } else {
-                        LinkCheckOutcome(LinkHealthState.DELAY, elapsedMs, "Delay (${elapsedMs} ms)")
-                    }
-                } else {
-                    LinkCheckOutcome(LinkHealthState.DEAD, elapsedMs, "Mati (HTTP $code)")
-                }
-            }
-        } catch (e: Exception) {
-            val elapsedMs = ((System.nanoTime() - startNs) / 1_000_000L).coerceAtLeast(1L)
-            LinkCheckOutcome(LinkHealthState.DEAD, elapsedMs, "Mati (Timeout / Error)")
-        }
-    }
-
+/**
+ * Menu tekan lama (long-press) 3-in-1 untuk Live TV, Film, Seri, & Pencarian:
+ * 1. Salin Link Stream (preview tersamar, clipboard utuh)
+ * 2. Cek Status Aktif / Delay / Mati
+ * 3. Kelompokkan Kategori Tontonan (Sports, Event Pertandingan, Daftar Tontonan, atau grup kustom)
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChannelLongPressDialog(
     channel: ChannelItem,
@@ -195,42 +62,69 @@ fun ChannelLongPressDialog(
     repo: IptvRepository,
     strings: AppStrings,
     onDismiss: () -> Unit,
-    onWatchGroupsChanged: () -> Unit = {}
+    onWatchGroupsChanged: () -> Unit
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var linkStatus by remember(channel.streamUrl) {
-        mutableStateOf(LinkCheckOutcome(LinkHealthState.IDLE))
+    var isChecking by remember(channel.streamUrl) { mutableStateOf(false) }
+    var healthResult by remember(channel.streamUrl) { mutableStateOf<StreamHealthResult?>(null) }
+
+    var allGroups by remember(channel.streamUrl) { mutableStateOf(repo.db.getAllWatchGroupNames()) }
+    var memberGroups by remember(channel.streamUrl) { mutableStateOf(repo.db.getGroupsForStream(channel.streamUrl)) }
+    var customGroupInput by remember { mutableStateOf("") }
+
+    fun runHealthCheck() {
+        if (isChecking) return
+        isChecking = true
+        healthResult = null
+        scope.launch {
+            healthResult = repo.checkStreamHealth(channel.streamUrl)
+            isChecking = false
+        }
     }
-    var showGroupPicker by remember { mutableStateOf(false) }
-    var availableGroups by remember { mutableStateOf(WatchGroupBridge.getAllGroupNames(repo.db)) }
-    var assignedGroups by remember(channel.streamUrl) {
-        mutableStateOf(WatchGroupBridge.getGroupsForStream(repo.db, channel.streamUrl))
+
+    fun toggleGroup(groupName: String) {
+        val clean = groupName.trim()
+        if (clean.isEmpty()) return
+        if (memberGroups.contains(clean)) {
+            repo.db.removeFromWatchGroup(clean, channel.streamUrl)
+            memberGroups = memberGroups - clean
+            Toast.makeText(context, "${strings.removedFromGroup} $clean", Toast.LENGTH_SHORT).show()
+        } else {
+            repo.db.addToWatchGroup(clean, channel, playlistName)
+            memberGroups = memberGroups + clean
+            if (!allGroups.contains(clean)) {
+                allGroups = allGroups + clean
+            }
+            Toast.makeText(context, "${strings.addedToGroup} $clean", Toast.LENGTH_SHORT).show()
+        }
+        onWatchGroupsChanged()
     }
-    var newGroupName by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = c.surface,
+        shape = RoundedCornerShape(22.dp),
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                ChannelLogoBox(channel.logoUrl, 36.dp, corner = 8.dp)
+                ChannelLogoBox(channel.logoUrl, 42.dp, corner = 10.dp)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = channel.name,
                         color = c.textPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "${channel.mediaType.name} • ${channel.category}",
+                        text = "${playlistName.ifBlank { "YlowstoneTV" }} • ${channel.category}",
                         color = c.textSecondary,
                         fontSize = 11.sp,
                         maxLines = 1,
@@ -240,7 +134,13 @@ fun ChannelLongPressDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 1. Salin Link Stream
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -249,188 +149,223 @@ fun ChannelLongPressDialog(
                         .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
                         .clickable {
                             val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            cm.setPrimaryClip(ClipData.newPlainText("YlowstoneTV Link", channel.streamUrl))
-                            Toast.makeText(context, "Link disalin ke papan klip", Toast.LENGTH_SHORT).show()
-                            onDismiss()
+                            cm.setPrimaryClip(ClipData.newPlainText(channel.name, channel.streamUrl))
+                            Toast.makeText(context, strings.copied, Toast.LENGTH_SHORT).show()
                         }
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Icon(Icons.Rounded.ContentCopy, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(c.accentContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.ContentCopy, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
+                    }
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("1. Salin Link", color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Text(
-                            text = channel.streamUrl,
+                            text = strings.copyStreamLink,
+                            color = c.textPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = maskStreamUrlForPreview(channel.streamUrl),
                             color = c.textSecondary,
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(c.surfaceElevated)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                        .clickable(enabled = linkStatus.state != LinkHealthState.CHECKING) {
-                            linkStatus = LinkCheckOutcome(LinkHealthState.CHECKING)
-                            scope.launch {
-                                linkStatus = checkStreamLinkHealth(repo, channel.streamUrl)
-                            }
-                        }
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Rounded.NetworkCheck, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
-                        Column {
-                            Text("2. Cek Status Link", color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                text = when (linkStatus.state) {
-                                    LinkHealthState.IDLE -> "Ketuk untuk cek Aktif / Delay / Mati"
-                                    LinkHealthState.CHECKING -> "Memeriksa respon server..."
-                                    else -> linkStatus.detail
-                                },
-                                color = c.textSecondary,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-
-                    when (linkStatus.state) {
-                        LinkHealthState.CHECKING -> {
-                            CircularProgressIndicator(
-                                color = c.accent,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        LinkHealthState.ACTIVE -> StatusBadgePill("AKTIF", Color(0xFF22C55E))
-                        LinkHealthState.DELAY -> StatusBadgePill("DELAY", Color(0xFFF59E0B))
-                        LinkHealthState.DEAD -> StatusBadgePill("MATI", Color(0xFFEF4444))
-                        LinkHealthState.IDLE -> {}
-                    }
-                }
-
+                // 2. Cek Status Stream (Aktif / Delay / Mati)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
                         .background(c.surfaceElevated)
                         .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                        .clickable { showGroupPicker = !showGroupPicker }
+                        .clickable(enabled = !isChecking) { runHealthCheck() }
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.weight(1f)
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(c.accentContainer),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Rounded.Bookmarks, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
-                            Column {
-                                Text("3. Kategori Tontonan", color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            if (isChecking) {
+                                CircularProgressIndicator(
+                                    color = c.accent,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            } else {
+                                Icon(Icons.Rounded.NetworkCheck, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.checkStreamStatus,
+                                color = c.textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = if (isChecking) strings.checkingStreamStatus
+                                else if (healthResult == null) "${strings.statusActive} / ${strings.statusDelay} / ${strings.statusDead}"
+                                else strings.recheckStatus,
+                                color = c.textSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    healthResult?.let { res ->
+                        val (statusColor, statusLabel, statusIcon) = when (res.state) {
+                            StreamHealthState.ACTIVE -> Triple(Color(0xFF22C55E), strings.statusActive, Icons.Rounded.CheckCircle)
+                            StreamHealthState.DELAY -> Triple(Color(0xFFF59E0B), strings.statusDelay, Icons.Rounded.Schedule)
+                            StreamHealthState.DEAD -> Triple(Color(0xFFEF4444), strings.statusDead, Icons.Rounded.Cancel)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(statusColor.copy(alpha = 0.14f))
+                                .border(1.dp, statusColor.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(statusIcon, contentDescription = null, tint = statusColor, modifier = Modifier.size(18.dp))
+                            Text(
+                                text = statusLabel,
+                                color = statusColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            val meta = buildString {
+                                if (res.latencyMs > 0L) append("${res.latencyMs} ms")
+                                if (res.detail.isNotBlank()) {
+                                    if (isNotEmpty()) append(" • ")
+                                    append(res.detail)
+                                }
+                            }
+                            if (meta.isNotBlank()) {
                                 Text(
-                                    text = if (assignedGroups.isEmpty()) "Sports, Event Pertandingan, Daftar Tontonan..."
-                                    else "Grup: ${assignedGroups.joinToString(", ")}",
-                                    color = if (assignedGroups.isEmpty()) c.textSecondary else c.accent,
+                                    text = meta,
+                                    color = c.textSecondary,
                                     fontSize = 11.sp,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
                             }
                         }
-                        Icon(
-                            if (showGroupPicker) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                            contentDescription = null,
-                            tint = c.textSecondary
+                    }
+                }
+
+                // 3. Kelompokkan Kategori Tontonan
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(c.surfaceElevated)
+                        .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Rounded.Bookmarks, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = strings.groupToCategory,
+                            color = c.textPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
 
-                    if (showGroupPicker) {
-                        HorizontalDivider(color = c.glassBorder)
-                        availableGroups.forEach { grp ->
-                            val checked = assignedGroups.contains(grp)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        allGroups.forEach { grp ->
+                            val selected = memberGroups.contains(grp)
                             Row(
                                 modifier = Modifier
-                                    .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(if (checked) c.accentContainer else Color.Transparent)
-                                    .clickable {
-                                        val added = WatchGroupBridge.toggleChannelInGroup(repo.db, grp, channel, playlistName)
-                                        assignedGroups = WatchGroupBridge.getGroupsForStream(repo.db, channel.streamUrl)
-                                        onWatchGroupsChanged()
-                                        Toast.makeText(
-                                            context,
-                                            if (added) "Ditambahkan ke $grp" else "Dihapus dari $grp",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                    .padding(horizontal = 8.dp, vertical = 7.dp),
+                                    .background(if (selected) c.accent else c.surface)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (selected) c.accent else c.glassBorder,
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { toggleGroup(grp) }
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
+                                Icon(
+                                    imageVector = if (selected) Icons.Rounded.Check else Icons.Rounded.Add,
+                                    contentDescription = null,
+                                    tint = if (selected) c.onAccent else c.textSecondary,
+                                    modifier = Modifier.size(14.dp)
+                                )
                                 Text(
                                     text = grp,
-                                    color = if (checked) c.accent else c.textPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (checked) FontWeight.Bold else FontWeight.Medium
-                                )
-                                Icon(
-                                    if (checked) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                                    contentDescription = null,
-                                    tint = if (checked) c.accent else c.textSecondary,
-                                    modifier = Modifier.size(18.dp)
+                                    color = if (selected) c.onAccent else c.textPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                                 )
                             }
                         }
+                    }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = newGroupName,
-                                onValueChange = { newGroupName = it },
-                                placeholder = { Text("Grup baru...", fontSize = 12.sp) },
-                                singleLine = true,
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.weight(1f)
-                            )
-                            IconButton(
-                                onClick = {
-                                    val clean = newGroupName.trim()
-                                    if (clean.isNotEmpty()) {
-                                        WatchGroupBridge.toggleChannelInGroup(repo.db, clean, channel, playlistName)
-                                        availableGroups = WatchGroupBridge.getAllGroupNames(repo.db)
-                                        assignedGroups = WatchGroupBridge.getGroupsForStream(repo.db, channel.streamUrl)
-                                        newGroupName = ""
-                                        onWatchGroupsChanged()
-                                        Toast.makeText(context, "Ditambahkan ke $clean", Toast.LENGTH_SHORT).show()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = customGroupInput,
+                            onValueChange = { customGroupInput = it },
+                            placeholder = { Text(strings.newGroupPlaceholder, fontSize = 11.sp) },
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = {
+                                val trimmed = customGroupInput.trim()
+                                if (trimmed.isNotEmpty()) {
+                                    if (!memberGroups.contains(trimmed)) {
+                                        toggleGroup(trimmed)
                                     }
-                                },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(c.accent)
-                            ) {
-                                Icon(Icons.Rounded.Add, contentDescription = "Add", tint = c.onAccent)
-                            }
+                                    customGroupInput = ""
+                                }
+                            },
+                            enabled = customGroupInput.isNotBlank(),
+                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Text(strings.addGroupBtn, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -442,23 +377,4 @@ fun ChannelLongPressDialog(
             }
         }
     )
-}
-
-@Composable
-private fun StatusBadgePill(label: String, badgeColor: Color) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(badgeColor.copy(alpha = 0.18f))
-            .border(1.dp, badgeColor.copy(alpha = 0.65f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-    ) {
-        Text(
-            text = label,
-            color = badgeColor,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 0.5.sp
-        )
-    }
 }

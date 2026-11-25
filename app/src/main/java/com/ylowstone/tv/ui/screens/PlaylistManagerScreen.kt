@@ -92,6 +92,7 @@ fun PlaylistManagerScreen(
                 .fillMaxSize()
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
+            // Minimalist clean top header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -210,6 +211,7 @@ fun PlaylistManagerScreen(
                                 .padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
+                            // v2.3.1: Ikon refresh di kartu dihapus; aksi Perbarui murni di menu titik tiga (⋮)
                             Box(modifier = Modifier.fillMaxWidth()) {
                                 Box(
                                     modifier = Modifier
@@ -258,6 +260,7 @@ fun PlaylistManagerScreen(
                         }
                     }
 
+                    // Add Playlist tile
                     item {
                         Column(
                             modifier = Modifier
@@ -279,7 +282,7 @@ fun PlaylistManagerScreen(
                                     .background(c.accent),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Rounded.Add, contentDescription = strings.addPlaylist, tint = Color.White, modifier = Modifier.size(26.dp))
+                                Icon(Icons.Rounded.Add, contentDescription = strings.addPlaylist, tint = c.onAccent, modifier = Modifier.size(26.dp))
                             }
                             Spacer(Modifier.height(10.dp))
                             Text(strings.addPlaylist, color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
@@ -297,6 +300,7 @@ fun PlaylistManagerScreen(
             }
         }
 
+        // Loading overlay
         if (isLoading) {
             Box(
                 modifier = Modifier
@@ -325,6 +329,7 @@ fun PlaylistManagerScreen(
         }
     }
 
+    // 3-dot / Long-press action menu dialog (Edit, Tampilkan Link, Perbarui, Hapus)
     actionTarget?.let { target ->
         val isAdminProtected = adminPlaylistIds.contains(target.id)
         AlertDialog(
@@ -370,6 +375,7 @@ fun PlaylistManagerScreen(
         )
     }
 
+    // Show & Copy Playlist Link dialog (with password reveal toggle)
     inspectLinkTarget?.let { target ->
         var reveal by remember { mutableStateOf(false) }
         val displayLink = if (reveal) target.buildShareableLink(streamFormat) else target.buildMaskedLink(streamFormat)
@@ -523,7 +529,7 @@ private fun PlaylistEditorDialog(
                         ) {
                             Text(
                                 text = title,
-                                color = if (active) Color.White else c.textSecondary,
+                                color = if (active) c.onAccent else c.textSecondary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,

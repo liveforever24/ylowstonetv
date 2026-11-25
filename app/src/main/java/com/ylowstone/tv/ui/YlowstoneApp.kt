@@ -25,17 +25,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.ylowstone.tv.data.AppPrefs
 import com.ylowstone.tv.data.ActiveSubtitleSession
 import com.ylowstone.tv.data.IptvRepository
+import com.ylowstone.tv.data.SubtitleFetcher
 import com.ylowstone.tv.i18n.stringsFor
 import com.ylowstone.tv.model.*
 import com.ylowstone.tv.ui.components.ChannelLongPressDialog
@@ -99,10 +102,10 @@ fun YlowstoneApp(
     var loadingMessage by remember { mutableStateOf("") }
 
     var showProfileDropdown by remember { mutableStateOf(false) }
-    var showBackToHomeDialog by remember { mutableStateOf(false) }
     var quickUpdateDialogInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var longPressTarget by remember { mutableStateOf<Pair<ChannelItem, String>?>(null) }
     var lastBackPressTime by remember { mutableLongStateOf(0L) }
+    var lastCategoryBackPressTime by remember { mutableLongStateOf(0L) }
 
     // Shared Persistent Media3 Player
     var activeChannel by remember { mutableStateOf<ChannelItem?>(null) }
@@ -114,11 +117,17 @@ fun YlowstoneApp(
     var isBuffering by remember { mutableStateOf(false) }
     var tracksVersion by remember { mutableIntStateOf(0) }
     var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
+    var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
-    val sharedPlayer = remember {
-        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.3.0")
+    val sharedPlayer = remember(settings.bufferProfile) {
+        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.3.1")
+        val bp = settings.bufferProfile
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
+            .build()
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dsFactory))
+            .setLoadControl(loadControl)
             .build()
             .apply {
                 trackSelectionParameters = trackSelectionParameters
@@ -129,10 +138,81 @@ fun YlowstoneApp(
             }
     }
 
+    // Apply embedded subtitle language preference whenever setting changes
+    LaunchedEffect(sharedPlayer, settings.autoSubtitleLang) {
+        val b = sharedPlayer.trackSelectionParameters.buildUpon()
+        when (settings.autoSubtitleLang) {
+            AutoSubtitleLang.ID -> {
+                b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                b.setPreferredTextLanguages("id", "in", "en")
+            }
+            AutoSubtitleLang.EN -> {
+                b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                b.setPreferredTextLanguages("en", "id")
+            }
+            AutoSubtitleLang.OFF -> {
+                b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            }
+        }
+        sharedPlayer.trackSelectionParameters = b.build()
+    }
+
+    // v2.3.1 Perbaikan #4: Auto-Subtitle Bahasa Indonesia untuk Film & Seri (otomatis deteksi SxxExx tiap ganti episode)
+    LaunchedEffect(activeChannel?.streamUrl, settings.autoSubtitleLang) {
+        val ch = activeChannel ?: return@LaunchedEffect
+        val isVod = ch.mediaType == MediaType.MOVIE || ch.mediaType == MediaType.SERIES
+        if (!isVod || settings.autoSubtitleLang != AutoSubtitleLang.ID) return@LaunchedEffect
+        if (subtitleSession.streamUrl == ch.streamUrl && subtitleSession.cues.isNotEmpty()) return@LaunchedEffect
+
+        val (qTitle, sNum, eNum) = if (ch.mediaType != MediaType.SERIES) {
+            Triple(ch.name, null as Int?, null as Int?)
+        } else {
+            val m = Regex("""[Ss](\d+)[Ee](\d+)""").find(ch.name)
+            val s = m?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val e = m?.groupValues?.getOrNull(2)?.toIntOrNull()
+            val titleCandidate = if (s != null && ch.category.isNotBlank()) ch.category else ch.name
+            Triple(titleCandidate, s, e)
+        }
+
+        SubtitleFetcher.searchIndoSubtitles(
+            rawTitle = qTitle,
+            isSeries = ch.mediaType == MediaType.SERIES,
+            season = sNum,
+            episode = eNum
+        ).onSuccess { candidates ->
+            if (activeChannel?.streamUrl != ch.streamUrl) return@onSuccess
+            if (candidates.isEmpty()) return@onSuccess
+            val first = candidates.first()
+            SubtitleFetcher.downloadSubtitleToCache(
+                context = context,
+                zipUrl = first.zipUrl,
+                season = sNum,
+                episode = eNum
+            ).onSuccess { rawFile ->
+                if (activeChannel?.streamUrl != ch.streamUrl) return@onSuccess
+                val cues = SubtitleFetcher.parseSrtCues(rawFile)
+                if (cues.isNotEmpty()) {
+                    subtitleSession = ActiveSubtitleSession(
+                        streamUrl = ch.streamUrl,
+                        candidates = candidates,
+                        rawFile = rawFile,
+                        cues = cues,
+                        label = first.releaseName,
+                        offsetMs = 0L
+                    )
+                    tracksVersion++
+                }
+            }
+        }
+    }
+
     DisposableEffect(sharedPlayer) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
+                if (playbackState == Player.STATE_READY) {
+                    liveReconnectAttempts = 0
+                }
             }
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
@@ -141,7 +221,20 @@ fun YlowstoneApp(
                 tracksVersion++
             }
             override fun onPlayerError(error: PlaybackException) {
-                Toast.makeText(context, "Stream error: ${error.errorCodeName}", Toast.LENGTH_SHORT).show()
+                val cur = activeChannel
+                if (cur != null && cur.mediaType == MediaType.LIVE && settings.autoReconnectLive && liveReconnectAttempts < 2) {
+                    liveReconnectAttempts++
+                    scope.launch {
+                        delay(1500L)
+                        if (activeChannel?.streamUrl == cur.streamUrl) {
+                            sharedPlayer.setMediaItem(MediaItem.fromUri(cur.streamUrl))
+                            sharedPlayer.prepare()
+                            sharedPlayer.playWhenReady = true
+                        }
+                    }
+                } else {
+                    Toast.makeText(context, "Stream error: ${error.errorCodeName}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
         sharedPlayer.addListener(listener)
@@ -177,7 +270,6 @@ fun YlowstoneApp(
         else String.format(java.util.Locale.US, "%02d:%02d", m, s)
     }
 
-    // Periodic watch progress saver for general Movies & Series
     LaunchedEffect(activeChannel?.streamUrl, isPlaying) {
         val cur = activeChannel ?: return@LaunchedEffect
         if (cur.isAdultContent()) return@LaunchedEffect
@@ -196,6 +288,7 @@ fun YlowstoneApp(
     fun playStream(ch: ChannelItem, queue: List<ChannelItem>) {
         val sameStream = activeChannel?.streamUrl == ch.streamUrl
         if (!sameStream) {
+            liveReconnectAttempts = 0
             saveCurrentVodProgress(refreshHome = false)
             if (subtitleSession.streamUrl != ch.streamUrl) {
                 subtitleSession = ActiveSubtitleSession(streamUrl = ch.streamUrl)
@@ -262,7 +355,6 @@ fun YlowstoneApp(
             playerMode = PlayerMode.FULLSCREEN
             isLandscapeFullscreen = true
         } else {
-            // Fase 3: buka dalam mode Split-Screen (Ponsel: video atas + daftar putar bawah; TV: video kiri + daftar putar kanan)
             playerMode = PlayerMode.SPLIT
             isLandscapeFullscreen = false
         }
@@ -447,30 +539,14 @@ fun YlowstoneApp(
         stage = AppStage.ADMIN_LOGIN
     }
 
-    fun syncAdminFromServer() {
-        val savedPin = prefs.getAdminPin()
-        if (savedPin.isBlank()) {
-            returnStageAfterLogin = stage
-            loginError = ""
-            stage = AppStage.ADMIN_LOGIN
-            return
-        }
-        isLoading = true
-        loadingMessage = strings.adminSyncing
-        scope.launch {
-            val res = repo.loginAdmin(savedPin)
-            res.onSuccess { auth ->
-                applyAdminPlaylists(auth.playlists, savedPin)
-            }.onFailure { err ->
-                isLoading = false
-                val msg = err.message.orEmpty()
-                if (msg.contains("salah", ignoreCase = true) || msg.contains("401")) {
-                    Toast.makeText(context, strings.adminSessionExpired, Toast.LENGTH_LONG).show()
-                    performAdminLogout()
-                } else {
-                    Toast.makeText(context, "Error: $msg", Toast.LENGTH_LONG).show()
-                }
-            }
+    // v2.3.1 Perbaikan #1: Sync murni hanya 1 playlist yang sedang aktif dipilih (tidak tarik ulang server / semua playlist)
+    fun syncActivePlaylistOnly() {
+        val current = activePlaylist ?: playlists.firstOrNull()
+        if (current != null) {
+            val fresh = repo.db.getAllPlaylists().firstOrNull { it.id == current.id } ?: current
+            syncAndEnter(fresh, null, enterAfter = false)
+        } else {
+            Toast.makeText(context, strings.noPlaylistYet, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -512,13 +588,25 @@ fun YlowstoneApp(
         }
     }
 
+    // v2.3.1 Perbaikan #3: Gestur Back 2x dari layar Kategori -> langsung Beranda tanpa pop-up
+    fun handleDoubleBackToHome() {
+        val now = System.currentTimeMillis()
+        if (now - lastCategoryBackPressTime <= 2000L) {
+            lastCategoryBackPressTime = 0L
+            if (activeTab == MainTab.LIVE && activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
+                playerMode = PlayerMode.FLOATING
+            }
+            activeTab = MainTab.HOME
+        } else {
+            lastCategoryBackPressTime = now
+            Toast.makeText(context, strings.pressBackAgainHome, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     BackHandler(enabled = stage != AppStage.SPLASH) {
         when {
             longPressTarget != null -> {
                 longPressTarget = null
-            }
-            showBackToHomeDialog -> {
-                showBackToHomeDialog = false
             }
             playerMode == PlayerMode.FULLSCREEN -> {
                 saveCurrentVodProgress(refreshHome = true)
@@ -550,7 +638,7 @@ fun YlowstoneApp(
             stage == AppStage.WORKSPACE -> {
                 when (activeTab) {
                     MainTab.LIVE, MainTab.MOVIES, MainTab.SERIES -> {
-                        showBackToHomeDialog = true
+                        handleDoubleBackToHome()
                     }
                     MainTab.SEARCH -> {
                         activeTab = MainTab.HOME
@@ -571,7 +659,7 @@ fun YlowstoneApp(
         }
     }
 
-    YlowstoneTheme(themeMode = settings.themeMode) {
+    YlowstoneTheme(themeMode = settings.themeMode, accentPreset = settings.accentPreset) {
         if (isInPipMode && activeChannel != null) {
             PipVideoSurface(exoPlayer = sharedPlayer, isPlaying = isPlaying)
             return@YlowstoneTheme
@@ -991,7 +1079,7 @@ fun YlowstoneApp(
                         stage = AppStage.ADMIN_LOGIN
                     },
                     onSyncAdminPlaylists = {
-                        syncAdminFromServer()
+                        syncActivePlaylistOnly()
                     },
                     onLogoutAdmin = {
                         performAdminLogout()
@@ -1000,7 +1088,7 @@ fun YlowstoneApp(
                 )
             }
 
-            // Fase 3: Split-Screen Player Overlay (Ponsel: video atas + daftar putar bawah; TV: video kiri + daftar putar kanan)
+            // Split-Screen Player Overlay
             if (playerMode == PlayerMode.SPLIT && activeChannel != null && stage != AppStage.SPLASH) {
                 SplitPlayerScreen(
                     exoPlayer = sharedPlayer,
@@ -1037,7 +1125,7 @@ fun YlowstoneApp(
                 )
             }
 
-            // Fase 3: Minimalist Floating Mini-Player (Hanya Layar Penuh, Play/Pause, dan Tutup X)
+            // Minimalist Floating Mini-Player
             if (playerMode == PlayerMode.FLOATING && activeChannel != null && stage != AppStage.SPLASH) {
                 DraggableFloatingPlayer(
                     exoPlayer = sharedPlayer,
@@ -1091,7 +1179,7 @@ fun YlowstoneApp(
             }
         }
 
-        // Fase 2: Menu Tekan Lama (Long-Press) 3-in-1
+        // Menu Tekan Lama (Long-Press) 3-in-1
         longPressTarget?.let { (ch, plName) ->
             ChannelLongPressDialog(
                 channel = ch,
@@ -1100,48 +1188,6 @@ fun YlowstoneApp(
                 strings = strings,
                 onDismiss = { longPressTarget = null },
                 onWatchGroupsChanged = { homeDataVersion++ }
-            )
-        }
-
-        // Konfirmasi Kembali Beranda saat menekan gestur kembali di TV / FILM / SERI
-        if (showBackToHomeDialog) {
-            val c = LocalYlowColors.current
-            AlertDialog(
-                onDismissRequest = { showBackToHomeDialog = false },
-                containerColor = c.surface,
-                title = {
-                    Text(
-                        text = strings.returnHomeTitle,
-                        color = c.textPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                text = {
-                    Text(
-                        text = strings.returnHomeBody,
-                        color = c.textSecondary,
-                        fontSize = 14.sp
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showBackToHomeDialog = false
-                            if (activeTab == MainTab.LIVE && activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
-                                playerMode = PlayerMode.FLOATING
-                            }
-                            activeTab = MainTab.HOME
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent)
-                    ) {
-                        Text(strings.yesBtn, color = c.onAccent, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showBackToHomeDialog = false }) {
-                        Text(strings.noBtn, color = c.textSecondary, fontWeight = FontWeight.SemiBold)
-                    }
-                }
             )
         }
 

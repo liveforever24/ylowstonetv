@@ -18,6 +18,7 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.InputStream
 import java.io.InputStreamReader
+import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 
 class IptvRepository(private val context: Context, val db: DatabaseHelper) {
@@ -29,13 +30,77 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
         .followSslRedirects(true)
         .build()
 
-    private fun resolvePlaylistStreamExtension(profile: PlaylistProfile, streamFormat: StreamFormat): String {
-        if (streamFormat != StreamFormat.AUTO) return streamFormat.ext
-        val lowerUrl = profile.url.lowercase()
-        return when {
-            lowerUrl.contains("type=ts") || lowerUrl.contains("output=ts") -> "ts"
-            lowerUrl.contains("m3u8") || lowerUrl.contains("hls") -> "m3u8"
-            else -> "m3u8"
+    private val healthCheckClient: OkHttpClient by lazy {
+        httpClient.newBuilder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(6, TimeUnit.SECONDS)
+            .callTimeout(8, TimeUnit.SECONDS)
+            .build()
+    }
+
+    /**
+     * Cek status stream IPTV secara cepat (Aktif / Delay / Mati) dengan fallback HEAD -> Range GET.
+     */
+    suspend fun checkStreamHealth(
+        streamUrl: String,
+        userAgent: String = ""
+    ): StreamHealthResult = withContext(Dispatchers.IO) {
+        val cleanUrl = streamUrl.trim()
+        if (cleanUrl.isBlank() || (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://"))) {
+            return@withContext StreamHealthResult(
+                state = StreamHealthState.DEAD,
+                latencyMs = 0L,
+                httpCode = 0,
+                detail = "URL tidak valid"
+            )
+        }
+        val ua = userAgent.ifBlank { "YlowstoneTV/2.3.1" }
+        val startMs = System.currentTimeMillis()
+        try {
+            val headReq = Request.Builder()
+                .url(cleanUrl)
+                .header("User-Agent", ua)
+                .head()
+                .build()
+            healthCheckClient.newCall(headReq).execute().use { resp ->
+                val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                if (resp.code in 200..399) {
+                    val state = if (elapsed <= 1800L) StreamHealthState.ACTIVE else StreamHealthState.DELAY
+                    return@withContext StreamHealthResult(state, elapsed, resp.code, "HTTP ${resp.code}")
+                }
+                // Banyak server IPTV menolak HEAD (403/405/501) -> coba fallback GET Range kecil
+                if (resp.code !in setOf(403, 405, 501, 400)) {
+                    return@withContext StreamHealthResult(StreamHealthState.DEAD, elapsed, resp.code, "HTTP ${resp.code}")
+                }
+            }
+
+            val getStart = System.currentTimeMillis()
+            val getReq = Request.Builder()
+                .url(cleanUrl)
+                .header("User-Agent", ua)
+                .header("Range", "bytes=0-1024")
+                .get()
+                .build()
+            healthCheckClient.newCall(getReq).execute().use { resp ->
+                val elapsed = (System.currentTimeMillis() - getStart).coerceAtLeast(1L)
+                if (resp.code in 200..399) {
+                    val state = if (elapsed <= 1800L) StreamHealthState.ACTIVE else StreamHealthState.DELAY
+                    StreamHealthResult(state, elapsed, resp.code, "HTTP ${resp.code}")
+                } else {
+                    StreamHealthResult(StreamHealthState.DEAD, elapsed, resp.code, "HTTP ${resp.code}")
+                }
+            }
+        } catch (e: SocketTimeoutException) {
+            val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+            StreamHealthResult(StreamHealthState.DEAD, elapsed, 0, "Timeout")
+        } catch (e: Exception) {
+            val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+            StreamHealthResult(
+                state = StreamHealthState.DEAD,
+                latencyMs = elapsed,
+                httpCode = 0,
+                detail = e.message?.take(48) ?: "Offline"
+            )
         }
     }
 
@@ -257,10 +322,11 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
         val apiBase = "$base/player_api.php?username=$u&password=$p"
         val ua = profile.userAgent
 
+        // 1. Live TV
         onProgress("Streaming Live TV...")
         val liveCats = fetchCategoryMap(apiBase, "get_live_categories", ua)
         runCatching {
-            val ext = resolvePlaylistStreamExtension(profile, streamFormat)
+            val ext = streamFormat.ext
             streamJsonArray("$apiBase&action=get_live_streams", ua) { reader ->
                 var sid = ""
                 var name = ""
@@ -300,6 +366,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
         }
         onBatchFull()
 
+        // 2. Movies (VOD)
         onProgress("Streaming Movies...")
         val vodCats = fetchCategoryMap(apiBase, "get_vod_categories", ua)
         runCatching {
@@ -347,6 +414,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
         }
         onBatchFull()
 
+        // 3. Series
         onProgress("Streaming Series...")
         val seriesCats = fetchCategoryMap(apiBase, "get_series_categories", ua)
         runCatching {
@@ -447,6 +515,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
             list.sortedWith(compareBy({ it.season }, { it.episodeNum }))
         }
 
+    // ---- GitHub Releases Auto-Updater ----
     suspend fun checkGitHubUpdate(): Result<UpdateInfo> = withContext(Dispatchers.IO) {
         runCatching {
             val apiUrl = "https://api.github.com/repos/liveforever24/ylowstonetv/releases/latest"
@@ -617,4 +686,5 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
             }
         }
     }
+
 }
