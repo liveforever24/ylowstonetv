@@ -121,7 +121,7 @@ fun YlowstoneApp(
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
     val sharedPlayer = remember(settings.bufferProfile) {
-        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.3.1")
+        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.3.3")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -183,10 +183,11 @@ fun YlowstoneApp(
         ).onSuccess { candidates ->
             if (activeChannel?.streamUrl != ch.streamUrl) return@onSuccess
             if (candidates.isEmpty()) return@onSuccess
-            val first = candidates.first()
+            val best = SubtitleFetcher.pickBestCandidate(candidates, ch.name, sNum, eNum) ?: candidates.first()
+            val savedOffset = prefs.getSeriesSubtitleOffsetMs(qTitle)
             SubtitleFetcher.downloadSubtitleToCache(
                 context = context,
-                zipUrl = first.zipUrl,
+                zipUrl = best.zipUrl,
                 season = sNum,
                 episode = eNum
             ).onSuccess { rawFile ->
@@ -198,8 +199,8 @@ fun YlowstoneApp(
                         candidates = candidates,
                         rawFile = rawFile,
                         cues = cues,
-                        label = first.releaseName,
-                        offsetMs = 0L
+                        label = best.releaseName,
+                        offsetMs = savedOffset
                     )
                     tracksVersion++
                 }
@@ -801,6 +802,7 @@ fun YlowstoneApp(
                         settings = settings,
                         lockedCategories = lockedCategories,
                         strings = strings,
+                        prefs = prefs,
                         repo = repo,
                         onBack = { stage = returnStageAfterSettings },
                         onUpdateSettings = { updated ->
@@ -820,6 +822,10 @@ fun YlowstoneApp(
                             prefs.saveSettings(updated)
                             prefs.clearAllLockedCategories(playlists.map { it.id })
                             lockedCategories = emptySet()
+                            homeDataVersion++
+                        },
+                        onBackupRestored = { restored ->
+                            settings = restored
                             homeDataVersion++
                         }
                     )
@@ -1015,29 +1021,23 @@ fun YlowstoneApp(
                 }
             }
 
-            // Global Sync / Indexing Overlay
+            // Global Sync / Indexing Overlay (v2.3.3: Bumerang melayang bersih tanpa kotak hitam)
             if (isLoading && stage != AppStage.PLAYLISTS) {
-                val c = LocalYlowColors.current
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.68f)),
+                        .background(Color.Black.copy(alpha = 0.76f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
-                        modifier = Modifier
-                            .widthIn(min = 240.dp, max = 320.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(c.surface)
-                            .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
-                            .padding(24.dp),
+                        modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        BoomerangLoadingIndicator(style = settings.loadingAnimStyle, size = 64.dp)
+                        BoomerangLoadingIndicator(style = settings.loadingAnimStyle, size = 78.dp)
                         Text(
                             text = loadingMessage.ifBlank { strings.loadingPlaylist },
-                            color = c.textPrimary,
+                            color = Color.White.copy(alpha = 0.92f),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
                             textAlign = TextAlign.Center
@@ -1176,7 +1176,15 @@ fun YlowstoneApp(
                         playerMode = PlayerMode.FLOATING
                         isLandscapeFullscreen = false
                     },
-                    onTracksModified = { tracksVersion++ }
+                    onTracksModified = { tracksVersion++ },
+                    skipIntroMode = settings.skipIntroMode,
+                    skipIntroSeconds = prefs.getSeriesIntroSeconds(
+                        activeChannel!!.category.ifBlank { activeChannel!!.name },
+                        settings.skipIntroSeconds
+                    ),
+                    autoNextEpisode = settings.autoNextEpisode,
+                    onSaveSeriesSubtitleOffset = { sKey, offMs -> prefs.saveSeriesSubtitleOffsetMs(sKey, offMs) },
+                    onSaveSeriesIntroSeconds = { sKey, sec -> prefs.saveSeriesIntroSeconds(sKey, sec) }
                 )
             }
         }

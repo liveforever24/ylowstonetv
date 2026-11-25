@@ -55,10 +55,13 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.ylowstone.tv.data.ActiveSubtitleSession
 import com.ylowstone.tv.data.IptvRepository
+import com.ylowstone.tv.data.SrtCue
+import com.ylowstone.tv.data.SubtitleCandidate
 import com.ylowstone.tv.data.SubtitleFetcher
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.ChannelItem
 import com.ylowstone.tv.model.MediaType
+import com.ylowstone.tv.model.SkipIntroMode
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -115,16 +118,18 @@ fun PipVideoSurface(exoPlayer: ExoPlayer, isPlaying: Boolean) {
     }
 }
 
+/**
+ * Fase 3: Minimalist Floating Mini-Player:
+ * - Idle: 100% clean video inside rounded corners (ZERO buttons visible)
+ * - Single tap: reveals ONLY 3 minimalist controls: Layar Penuh (Fullscreen), Play/Pause, and Tutup (X)
+ */
 @OptIn(UnstableApi::class)
 @Composable
 fun DraggableFloatingPlayer(
     exoPlayer: ExoPlayer,
     channel: ChannelItem,
     isPlaying: Boolean,
-    onPrev: () -> Unit = {},
-    onNext: () -> Unit = {},
     onExpandFullscreen: () -> Unit,
-    onEnterSystemPip: () -> Unit = {},
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -135,7 +140,7 @@ fun DraggableFloatingPlayer(
 
     LaunchedEffect(controlsVisible) {
         if (controlsVisible) {
-            delay(3200)
+            delay(3000)
             controlsVisible = false
         }
     }
@@ -191,6 +196,7 @@ fun DraggableFloatingPlayer(
                     .background(Color.Black.copy(alpha = 0.52f))
                     .padding(10.dp)
             ) {
+                // Top Row: Layar Penuh (kiri) & Tutup X (kanan)
                 Row(
                     modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
                     verticalAlignment = Alignment.CenterVertically,
@@ -198,27 +204,38 @@ fun DraggableFloatingPlayer(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(30.dp)
                             .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.68f))
+                            .background(Color.Black.copy(alpha = 0.65f))
                             .clickable { controlsVisible = false; onExpandFullscreen() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Rounded.Fullscreen, contentDescription = "Fullscreen", tint = Color.White, modifier = Modifier.size(19.dp))
+                        Icon(
+                            Icons.Rounded.Fullscreen,
+                            contentDescription = "Fullscreen",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
 
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(30.dp)
                             .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.68f))
+                            .background(Color.Black.copy(alpha = 0.65f))
                             .clickable(onClick = onClose),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.Rounded.Close,
+                            contentDescription = "Close",
+                            tint = Color.White,
+                            modifier = Modifier.size(17.dp)
+                        )
                     }
                 }
 
+                // Center: Play / Pause ONLY
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)
@@ -238,18 +255,24 @@ fun DraggableFloatingPlayer(
 
                 Text(
                     text = channel.name,
-                    color = Color.White.copy(alpha = 0.92f),
+                    color = Color.White.copy(alpha = 0.9f),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 4.dp)
+                    modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 2.dp)
                 )
             }
         }
     }
 }
 
+/**
+ * Custom Drag-Only Seekbar (Anti-Accidental-Tap!):
+ * - Tapping anywhere on the track does NOTHING so accidental touches never jump the movie!
+ * - Responds strictly to intentional horizontal dragging (detectHorizontalDragGestures).
+ * - Seeks ExoPlayer smoothly on drag release.
+ */
 @Composable
 private fun DragOnlySeekBar(
     positionMs: Long,
@@ -294,6 +317,7 @@ private fun DragOnlySeekBar(
             )
         }
 
+        // Pure Drag-Only Touch Area (NO clickable, NO tap-to-jump!)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -323,6 +347,7 @@ private fun DragOnlySeekBar(
                 },
             contentAlignment = Alignment.CenterStart
         ) {
+            // Track background
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -330,6 +355,7 @@ private fun DragOnlySeekBar(
                     .clip(RoundedCornerShape(4.dp))
                     .background(Color.White.copy(alpha = 0.28f))
             )
+            // Filled progress track
             Box(
                 modifier = Modifier
                     .fillMaxWidth(displayFraction)
@@ -337,6 +363,7 @@ private fun DragOnlySeekBar(
                     .clip(RoundedCornerShape(4.dp))
                     .background(c.accent)
             )
+            // Thumb knob positioned along width
             Box(
                 modifier = Modifier
                     .offset {
@@ -374,7 +401,12 @@ fun FullscreenPlayerScreen(
     subtitleSession: ActiveSubtitleSession,
     onUpdateSubtitleSession: (ActiveSubtitleSession) -> Unit,
     onMinimizeToFloat: () -> Unit,
-    onTracksModified: () -> Unit
+    onTracksModified: () -> Unit,
+    skipIntroMode: SkipIntroMode = SkipIntroMode.MANUAL,
+    skipIntroSeconds: Int = 85,
+    autoNextEpisode: Boolean = true,
+    onSaveSeriesSubtitleOffset: (String, Long) -> Unit = { _, _ -> },
+    onSaveSeriesIntroSeconds: (String, Int) -> Unit = { _, _ -> }
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -393,6 +425,7 @@ fun FullscreenPlayerScreen(
     var showTrackDrawer by remember { mutableStateOf(false) }
     var isSeekDragging by remember { mutableStateOf(false) }
 
+    // Indonesian Subtitle (Hoisted in YlowstoneApp so it survives PiP, Minimize, and App Switching!)
     val currentSubSession = if (subtitleSession.streamUrl == currentChannel.streamUrl) {
         subtitleSession
     } else {
@@ -473,6 +506,7 @@ fun FullscreenPlayerScreen(
         }
     }
 
+    // Movie & Series playback + high-precision 150ms subtitle timeline polling
     var positionMs by remember(currentChannel.streamUrl) { mutableLongStateOf(exoPlayer.currentPosition.coerceAtLeast(0L)) }
     var durationMs by remember(currentChannel.streamUrl) { mutableLongStateOf(exoPlayer.duration.coerceAtLeast(0L)) }
     LaunchedEffect(exoPlayer, currentChannel.streamUrl, isVod, activeSubCues.isNotEmpty()) {
@@ -489,9 +523,60 @@ fun FullscreenPlayerScreen(
         SubtitleFetcher.findCueTextAt(activeSubCues, positionMs + subOffsetMs)
     }
 
+    val isSeriesEpisode = currentChannel.mediaType == MediaType.SERIES
+    val hasNextEpisode = isSeriesEpisode && channelList.size > 1 && currentIndex < channelList.lastIndex
+    val nextEpisodeItem = if (hasNextEpisode) channelList[currentIndex + 1] else null
+
+    // v2.3.3: Skip Intro state (Manual pill in first 3 min or Auto-skip once per episode)
+    var introSkippedThisEp by remember(currentChannel.streamUrl) { mutableStateOf(false) }
+    val skipIntroTargetMs = skipIntroSeconds.coerceIn(15, 180) * 1000L
+
+    LaunchedEffect(currentChannel.streamUrl, skipIntroMode, isSeriesEpisode, positionMs, durationMs) {
+        if (!isSeriesEpisode || introSkippedThisEp || skipIntroMode != SkipIntroMode.AUTO) return@LaunchedEffect
+        if (durationMs > skipIntroTargetMs + 30_000L && positionMs in 2_000L..12_000L) {
+            introSkippedThisEp = true
+            exoPlayer.seekTo(skipIntroTargetMs)
+            positionMs = skipIntroTargetMs
+            Toast.makeText(context, "${strings.skipIntroBtn} (+${skipIntroSeconds}s)", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val showSkipIntroPill = isSeriesEpisode &&
+        skipIntroMode == SkipIntroMode.MANUAL &&
+        !introSkippedThisEp &&
+        !isScreenLocked &&
+        !showChannelDrawer &&
+        !showTrackDrawer &&
+        durationMs > skipIntroTargetMs + 20_000L &&
+        positionMs in 2_000L..(skipIntroTargetMs - 3_000L).coerceAtLeast(3_000L)
+
+    // v2.3.3: Auto-Next Episode countdown in final 15 seconds of a Series episode
+    var autoNextCancelled by remember(currentChannel.streamUrl) { mutableStateOf(false) }
+    var autoNextTriggered by remember(currentChannel.streamUrl) { mutableStateOf(false) }
+    val remainingMs = if (durationMs > 0L) (durationMs - positionMs).coerceAtLeast(0L) else Long.MAX_VALUE
+    val showAutoNextPill = autoNextEpisode &&
+        hasNextEpisode &&
+        !autoNextCancelled &&
+        !autoNextTriggered &&
+        !isScreenLocked &&
+        !showChannelDrawer &&
+        !showTrackDrawer &&
+        durationMs > 60_000L &&
+        remainingMs in 1L..15_000L
+    val autoNextSecLeft = ((remainingMs + 999L) / 1000L).coerceIn(1L, 15L)
+
+    LaunchedEffect(showAutoNextPill, remainingMs, nextEpisodeItem?.streamUrl) {
+        if (showAutoNextPill && remainingMs <= 1200L && nextEpisodeItem != null && !autoNextTriggered) {
+            autoNextTriggered = true
+            onSelectChannel(nextEpisodeItem)
+        }
+    }
+
+
+    // Top-Left In-Video Clock & Date Pill: 0-5s Bright (100%) -> 5-10s Dimmed (35%) -> Fade Out Completely
     var dateLine by remember { mutableStateOf("") }
     var timeLine by remember { mutableStateOf("") }
-    var clockStage by remember { mutableIntStateOf(2) }
+    var clockStage by remember { mutableIntStateOf(2) } // 2 = bright, 1 = dim, 0 = hidden
     var clockTriggerNonce by remember { mutableIntStateOf(0) }
     LaunchedEffect(currentChannel.streamUrl, clockTriggerNonce) {
         val dateFmt = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
@@ -506,6 +591,7 @@ fun FullscreenPlayerScreen(
         clockStage = 0
     }
 
+    // Double-Tap ±10s Skip HUD (Movies & Series ONLY)
     var skipHudText by remember { mutableStateOf("") }
     var skipHudNonce by remember { mutableIntStateOf(0) }
     LaunchedEffect(skipHudNonce) {
@@ -515,6 +601,7 @@ fun FullscreenPlayerScreen(
         }
     }
 
+    // In-Landscape Channel Drawer Search
     var drawerSearchQuery by remember { mutableStateOf("") }
     var drawerSearchResults by remember { mutableStateOf<List<ChannelItem>>(channelList) }
 
@@ -590,6 +677,7 @@ fun FullscreenPlayerScreen(
             modifier = Modifier.fillMaxSize()
         )
 
+        // Direct Indonesian Subtitle Overlay inside video frame
         if (currentSubtitleText.isNotEmpty()) {
             val subBottomPad = when {
                 controlsVisible && !isScreenLocked && isVod -> 112.dp
@@ -616,6 +704,7 @@ fun FullscreenPlayerScreen(
             }
         }
 
+        // Top-Left In-Video Clock & Date Capsule: Bright (5s) -> Dimmed (5s) -> Hidden
         val clockTargetAlpha by animateFloatAsState(
             targetValue = if (clockStage == 2) 1f else 0.34f,
             animationSpec = tween(durationMillis = 550),
@@ -688,7 +777,9 @@ fun FullscreenPlayerScreen(
             }
         }
 
+        // Tap + Double-Tap (±10s for Movies/Series) + Optional Left/Right Vertical Gestures
         Row(modifier = Modifier.fillMaxSize()) {
+            // Left Half: Tap toggle controls, Double-Tap -10s (VOD only), Vertical Drag Brightness
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -731,6 +822,7 @@ fun FullscreenPlayerScreen(
                         } else Modifier
                     )
             )
+            // Right Half: Tap toggle controls, Double-Tap +10s (VOD only), Vertical Drag Volume
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -777,6 +869,7 @@ fun FullscreenPlayerScreen(
             CircularProgressIndicator(color = c.accent, modifier = Modifier.align(Alignment.Center))
         }
 
+        // Double-Tap ±10s Skip HUD Badge
         AnimatedVisibility(
             visible = skipHudText.isNotEmpty(),
             enter = fadeIn(),
@@ -804,6 +897,7 @@ fun FullscreenPlayerScreen(
             }
         }
 
+        // Brightness / Volume Gesture HUD
         AnimatedVisibility(
             visible = activeHud.isNotEmpty() && showGestures,
             enter = fadeIn(),
@@ -826,6 +920,101 @@ fun FullscreenPlayerScreen(
             }
         }
 
+        // v2.3.3: Floating Skip Intro Pill (Series)
+        AnimatedVisibility(
+            visible = showSkipIntroPill,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .systemBarsPadding()
+                .padding(end = 22.dp, bottom = if (controlsVisible) 108.dp else 28.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.78f))
+                    .border(1.dp, c.accent.copy(alpha = 0.7f), RoundedCornerShape(16.dp))
+                    .clickable {
+                        introSkippedThisEp = true
+                        exoPlayer.seekTo(skipIntroTargetMs)
+                        positionMs = skipIntroTargetMs
+                        onSaveSeriesIntroSeconds(parsedSeriesInfo.first, skipIntroSeconds)
+                    }
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(Icons.Rounded.FastForward, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
+                Text(
+                    text = "${strings.skipIntroBtn} (+${skipIntroSeconds}s)",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // v2.3.3: Auto-Next Episode Countdown Pill (Series)
+        AnimatedVisibility(
+            visible = showAutoNextPill && nextEpisodeItem != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .systemBarsPadding()
+                .padding(end = 22.dp, bottom = if (controlsVisible) 108.dp else 28.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color.Black.copy(alpha = 0.84f))
+                    .border(1.dp, c.accent.copy(alpha = 0.75f), RoundedCornerShape(18.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Column(modifier = Modifier.widthIn(max = 180.dp)) {
+                    Text(
+                        text = "${strings.nextEpisodeIn} ${autoNextSecLeft}s",
+                        color = c.accent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = nextEpisodeItem?.name.orEmpty(),
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(c.accent)
+                        .clickable {
+                            autoNextTriggered = true
+                            nextEpisodeItem?.let { onSelectChannel(it) }
+                        }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(strings.playNowBtn, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.14f))
+                        .clickable { autoNextCancelled = true }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Text(strings.cancel, color = Color.White, fontSize = 11.sp)
+                }
+            }
+        }
+
+        // Screen Locked Unlock Pill
         if (isScreenLocked && controlsVisible) {
             Box(
                 modifier = Modifier
@@ -845,6 +1034,7 @@ fun FullscreenPlayerScreen(
             }
         }
 
+        // ---- STREAMLINED BALANCED-PROPORTIONED PLAYER CONTROLS OVERLAY ----
         AnimatedVisibility(
             visible = controlsVisible && !isScreenLocked && !showChannelDrawer && !showTrackDrawer,
             enter = fadeIn(),
@@ -865,6 +1055,7 @@ fun FullscreenPlayerScreen(
                     .systemBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
+                // Top Bar: Left Minimize/Back + Title | Right Search, Lock, Settings
                 Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -888,6 +1079,7 @@ fun FullscreenPlayerScreen(
                             }
                         }
 
+                        // Clean Right Controls: Search + Lock + Settings/Tracks ONLY
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
                                 onClick = { showChannelDrawer = true },
@@ -911,6 +1103,7 @@ fun FullscreenPlayerScreen(
                     }
                 }
 
+                // Larger, Tighter Clean Pro-style Center Controls (Prev · Play/Pause · Next)
                 Row(
                     modifier = Modifier.align(Alignment.Center),
                     horizontalArrangement = Arrangement.spacedBy(26.dp),
@@ -953,6 +1146,7 @@ fun FullscreenPlayerScreen(
                     }
                 }
 
+                // Bottom Region: Drag-Only Seekbar (Movies & Series ONLY!) + Larger Balanced Bottom Bar
                 Column(
                     modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -995,6 +1189,7 @@ fun FullscreenPlayerScreen(
             }
         }
 
+        // Left Channel Drawer WITH BUILT-IN SEARCH (stays Landscape!)
         AnimatedVisibility(
             visible = showChannelDrawer,
             enter = fadeIn(),
@@ -1076,6 +1271,7 @@ fun FullscreenPlayerScreen(
             }
         }
 
+        // Right Settings & Tracks Drawer (with Indonesian Subtitles + Sync Controls)
         AnimatedVisibility(
             visible = showTrackDrawer,
             enter = fadeIn(),
@@ -1208,7 +1404,9 @@ fun FullscreenPlayerScreen(
                                                 .clip(RoundedCornerShape(6.dp))
                                                 .background(Color.White.copy(alpha = 0.15f))
                                                 .clickable {
-                                                    onUpdateSubtitleSession(currentSubSession.copy(offsetMs = subOffsetMs - 500L))
+                                                    val nextOff = subOffsetMs - 500L
+                                                    onUpdateSubtitleSession(currentSubSession.copy(offsetMs = nextOff))
+                                                    onSaveSeriesSubtitleOffset(parsedSeriesInfo.first, nextOff)
                                                 }
                                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                                         ) {
@@ -1220,6 +1418,7 @@ fun FullscreenPlayerScreen(
                                                 .background(Color.White.copy(alpha = 0.15f))
                                                 .clickable {
                                                     onUpdateSubtitleSession(currentSubSession.copy(offsetMs = 0L))
+                                                    onSaveSeriesSubtitleOffset(parsedSeriesInfo.first, 0L)
                                                 }
                                                 .padding(horizontal = 7.dp, vertical = 4.dp)
                                         ) {
@@ -1230,7 +1429,9 @@ fun FullscreenPlayerScreen(
                                                 .clip(RoundedCornerShape(6.dp))
                                                 .background(Color.White.copy(alpha = 0.15f))
                                                 .clickable {
-                                                    onUpdateSubtitleSession(currentSubSession.copy(offsetMs = subOffsetMs + 500L))
+                                                    val nextOff = subOffsetMs + 500L
+                                                    onUpdateSubtitleSession(currentSubSession.copy(offsetMs = nextOff))
+                                                    onSaveSeriesSubtitleOffset(parsedSeriesInfo.first, nextOff)
                                                 }
                                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                                         ) {
@@ -1238,13 +1439,34 @@ fun FullscreenPlayerScreen(
                                         }
                                     }
                                 }
-                                Text(
-                                    "Lepas Subtitle",
-                                    color = Color(0xFFFF8A80),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.clickable { clearExternalSubtitle() }
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(7.dp))
+                                            .background(c.accent.copy(alpha = 0.22f))
+                                            .border(1.dp, c.accent.copy(alpha = 0.5f), RoundedCornerShape(7.dp))
+                                            .clickable {
+                                                val synced = SubtitleFetcher.computeQuickSyncOffsetMs(activeSubCues, positionMs, subOffsetMs)
+                                                onUpdateSubtitleSession(currentSubSession.copy(offsetMs = synced))
+                                                onSaveSeriesSubtitleOffset(parsedSeriesInfo.first, synced)
+                                                Toast.makeText(context, "${strings.quickSyncSubBtn} (${String.format(Locale.US, "%+.1fs", synced / 1000.0)})", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .padding(horizontal = 9.dp, vertical = 5.dp)
+                                    ) {
+                                        Text(strings.quickSyncSubBtn, color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text(
+                                        "Lepas Subtitle",
+                                        color = Color(0xFFFF8A80),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.clickable { clearExternalSubtitle() }
+                                    )
+                                }
                             }
                         }
 

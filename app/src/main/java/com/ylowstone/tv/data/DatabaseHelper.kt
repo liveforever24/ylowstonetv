@@ -707,6 +707,36 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         lastWatchedAt = c.getLong(11)
     )
 
+
+    fun getAllFavoriteStreamUrls(): List<String> {
+        val list = mutableListOf<String>()
+        readableDatabase.rawQuery(
+            "SELECT DISTINCT stream_url FROM channels WHERE is_favorite = 1",
+            null
+        ).use { c ->
+            while (c.moveToNext()) {
+                val u = c.getString(0)?.trim()
+                if (!u.isNullOrEmpty()) list.add(u)
+            }
+        }
+        return list
+    }
+
+    fun restoreFavoriteStreamUrls(urls: Set<String>) {
+        if (urls.isEmpty()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val cv = ContentValues().apply { put("is_favorite", 1) }
+            for (u in urls) {
+                db.update("channels", cv, "stream_url = ?", arrayOf(u))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     fun toggleFavorite(channelId: Long, newFav: Boolean) {
         val cv = ContentValues().apply { put("is_favorite", if (newFav) 1 else 0) }
         writableDatabase.update("channels", cv, "id = ?", arrayOf(channelId.toString()))

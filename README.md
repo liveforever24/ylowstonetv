@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v2.3.2-0A0C0E?style=flat-square&logo=android&logoColor=E89D3C" alt="Release v2.3.2" />
+  <img src="https://img.shields.io/badge/Release-v2.3.3-0A0C0E?style=flat-square&logo=android&logoColor=E89D3C" alt="Release v2.3.3" />
   <img src="https://img.shields.io/badge/Platform-Android%2010%2B%20%7C%20Android%20TV-121512?style=flat-square" alt="Platform" />
   <img src="https://img.shields.io/badge/Stack-Kotlin%20%C2%B7%20Jetpack%20Compose-1A1E19?style=flat-square" alt="Kotlin Jetpack Compose" />
   <img src="https://img.shields.io/badge/Player-Media3%20ExoPlayer-2B2110?style=flat-square" alt="Media3 ExoPlayer" />
@@ -19,22 +19,22 @@
 
 YlowstoneTV is engineered around three strict constraints: **zero visual bloat**, **sub-second navigation across 175,000+ indexed entries**, and **full user control**. No ads, no tracking telemetry, no cramped bottom navigation bars—just an AMOLED-first interface anchored by deterministic SQLite indexing and a persistent Media3 ExoPlayer pipeline.
 
-## Core Capabilities (`v2.3.2`)
+## Core Capabilities (`v2.3.3`)
 
 - **Ylowstone Signature Design & Adaptive Bento Engine:** Pure `#000000` AMOLED canvas paired with splash-derived Smoked Olive and Amber Sunstone tones, a borderless floating `Y` emblem, an asymmetric Bento Grid on smartphones (tall Live TV left, stacked Movies/Series right), and a horizontal D-Pad Hero-Rail on Android TV.
-- **Native 60fps Boomerang Loading Animations:** Hardware-accelerated Jetpack Compose `Canvas` morphing loaders (*Moto Boomerang*, *Amber Boomerang*, *Aurora Boomerang*) configurable with live preview inside Settings for playlist sync, refresh, and import states.
-- **3-in-1 Stream Inspector & Custom Watch Groups:** Long-press any Live TV channel, movie, series, or search result to copy the stream URL (credential-masked in UI preview), run a real-time health probe (**Active / Delay / Offline** with millisecond latency), or organize custom watch groups (*Sports*, *Event Pertandingan*, *Daftar Tontonan*, or user-defined groups) with collapsible Show/Hide controls on Home.
-- **Responsive Split-Screen & Minimalist Floating/PiP Player:** Split-screen playback adapts automatically to Portrait (video top + interactive queue bottom) and Landscape/TV (side-by-side video + D-Pad queue). Floating Mini-Player and System PiP expose only **Fullscreen**, **Play/Pause**, and **Close (`X`)**.
-- **Auto-Subtitle Pipeline & Drag-Only Seekbar:** Automatic Indonesian/preferred-language subtitle resolution for Movies & Series with automatic `SxxExx` episode/season detection, paired with an accidental-tap-proof drag-only timeline and ±10s double-tap skip.
-- **Resilient Streaming & Active-Only Sync:** Configurable **Auto / HLS / MPEG-TS** stream format, tunable **Buffer Profiles** (*Low Latency*, *Balanced*, *Anti-Buffering*), silent **Live TV Auto-Reconnect** on transient network drops, and fast single-playlist sync.
-- **Layered Anti-Misclick Navigation:** Back gesture from a channel list returns to Categories while preserving exact scroll position; double-back within 2 seconds exits Categories to Home without intrusive confirmation pop-ups.
-- **Theme Presets, 12 Custom Icons & Privacy Guardrails:** 5 curated accent palettes (*Ylowstone Signature*, *Pixel Fog*, *Obsidian Crimson*, *Hydrogen Ice*, *Emerald Studio*) across System/Light/AMOLED modes, 12 switchable 3D launcher icons, 4-digit PIN category locks, and automatic adult-content filtering on Home.
+- **Borderless 60fps Boomerang Loading Animations:** Hardware-accelerated Jetpack Compose `Canvas` morphing loaders (*Chroma Boomerang*, *Amber Boomerang*, *Aurora Boomerang*) floating cleanly over a dimmed backdrop with live preview inside Settings.
+- **Smart Series Playback (Skip Intro & Auto-Next Episode):** Floating *Skip Intro* pill during the opening minutes of an episode with *Off / Manual / Auto* modes and per-series duration memory, paired with a 15-second *Auto-Next Episode* countdown pill for seamless binge playback.
+- **Smart Subtitle Sync & Auto-Subtitle Pipeline:** Release-tag candidate scoring for automatic Indonesian/preferred-language subtitles, per-series sync offset memory across episodes, and a 1-tap *Quick Sync* button alongside an accidental-tap-proof drag-only seekbar.
+- **3-in-1 Stream Inspector & Custom Watch Groups:** Long-press any Live TV channel, movie, series, or search result to copy the stream URL (credential-masked in UI preview), probe stream health (**Active / Delay / Offline** with millisecond latency), or organize custom watch groups (*Sports*, *Event Pertandingan*, *Daftar Tontonan*, or user-defined groups) with Show/Hide controls on Home.
+- **Responsive Split-Screen & Minimalist Floating/PiP Player:** Split-screen playback adapts to Portrait (video top + queue bottom) and Landscape/TV (side-by-side video + D-Pad queue). Floating Mini-Player and System PiP expose only **Fullscreen**, **Play/Pause**, and **Close (`X`)**.
+- **Resilient Streaming, Active-Only Sync & JSON Backup:** Configurable **Auto / HLS / MPEG-TS** stream format, tunable **Buffer Profiles**, silent **Live TV Auto-Reconnect**, single-playlist sync, layered anti-misclick Back navigation, and 1-file `.json` Backup & Restore for settings, favorites, and watch groups.
+- **Curated Theme Presets & 12 Custom Icons:** 6 minimalist accent palettes (*Ylowstone Signature*, *AMOLED Noir*, *Velvet Crimson*, *Slate Mist*, *Hydrogen Ice*, *Emerald Studio*) across System/Light/AMOLED modes, 12 switchable 3D launcher icons, and 4-digit PIN category locks.
 
 ## System Architecture
 
 ```text
 ┌────────────────────────────────────┐      HTTPS / JSON      ┌──────────────────────────────┐
-│   YlowstoneTV Android / TV App     │ ◄────────────────────► │   Vercel Edge API (api/)     │
+│   YlowstoneTV Android / TV App     │ ◄────────────────────► │   Edge API Backend (api/)    │
 │  Kotlin · Jetpack Compose · SQLite │   /api/login           │   PIN Auth · Subtitle Proxy  │
 │  Media3 ExoPlayer · OkHttp · Coil  │   /api/subtitles       └──────────────────────────────┘
 └─────────────────┬──────────────────┘

@@ -26,7 +26,7 @@ class AppPrefs(context: Context) {
             deviceMode = runCatching { DeviceMode.valueOf(prefs.getString("device_mode", "SMARTPHONE")!!) }.getOrDefault(DeviceMode.SMARTPHONE),
             themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "AMOLED")!!) }.getOrDefault(ThemeMode.AMOLED),
             accentPreset = AccentPreset.fromKey(prefs.getString("accent_preset", "amber_sunstone")),
-            loadingAnimStyle = LoadingAnimStyle.fromKey(prefs.getString("loading_anim_style", "moto_boomerang")),
+            loadingAnimStyle = LoadingAnimStyle.fromKey(prefs.getString("loading_anim_style", "chroma_boomerang")),
             appIcon = AppIconOption.fromKey(prefs.getString("app_icon", "obsidian")),
             language = resolvedLang,
             favoriteViewMode = runCatching { FavoriteViewMode.valueOf(prefs.getString("favorite_view_mode", "GRID")!!) }.getOrDefault(FavoriteViewMode.GRID),
@@ -35,6 +35,9 @@ class AppPrefs(context: Context) {
             bufferProfile = runCatching { BufferProfile.valueOf(prefs.getString("buffer_profile", "BALANCED")!!) }.getOrDefault(BufferProfile.BALANCED),
             autoReconnectLive = prefs.getBoolean("auto_reconnect_live", true),
             autoSubtitleLang = runCatching { AutoSubtitleLang.valueOf(prefs.getString("auto_subtitle_lang", "ID")!!) }.getOrDefault(AutoSubtitleLang.ID),
+            skipIntroMode = runCatching { SkipIntroMode.valueOf(prefs.getString("skip_intro_mode", "MANUAL")!!) }.getOrDefault(SkipIntroMode.MANUAL),
+            skipIntroSeconds = prefs.getInt("skip_intro_seconds", 85).coerceIn(15, 180),
+            autoNextEpisode = prefs.getBoolean("auto_next_episode", true),
             pinCode = prefs.getString("pin_code", "1234") ?: "1234",
             use24HourClock = prefs.getBoolean("use_24h", true),
             preferExternalPlayer = prefs.getBoolean("prefer_external", false)
@@ -57,13 +60,46 @@ class AppPrefs(context: Context) {
             .putString("buffer_profile", s.bufferProfile.name)
             .putBoolean("auto_reconnect_live", s.autoReconnectLive)
             .putString("auto_subtitle_lang", s.autoSubtitleLang.name)
+            .putString("skip_intro_mode", s.skipIntroMode.name)
+            .putInt("skip_intro_seconds", s.skipIntroSeconds)
+            .putBoolean("auto_next_episode", s.autoNextEpisode)
             .putString("pin_code", s.pinCode)
             .putBoolean("use_24h", s.use24HourClock)
             .putBoolean("prefer_external", s.preferExternalPlayer)
             .apply()
     }
 
-    // ---- Vercel Admin Auth Session ----
+    // ---- Per-Series Subtitle Offset & Intro Duration Memory (v2.3.3) ----
+    private fun normalizeSeriesKey(raw: String): String {
+        return raw.lowercase(Locale.US).replace(Regex("""[^a-z0-9]+"""), "_").trim('_').take(48)
+    }
+
+    fun getSeriesSubtitleOffsetMs(seriesKey: String): Long {
+        val k = normalizeSeriesKey(seriesKey)
+        if (k.isEmpty()) return 0L
+        return prefs.getLong("sub_offset_$k", 0L)
+    }
+
+    fun saveSeriesSubtitleOffsetMs(seriesKey: String, offsetMs: Long) {
+        val k = normalizeSeriesKey(seriesKey)
+        if (k.isEmpty()) return
+        prefs.edit().putLong("sub_offset_$k", offsetMs).apply()
+    }
+
+    fun getSeriesIntroSeconds(seriesKey: String, fallback: Int): Int {
+        val k = normalizeSeriesKey(seriesKey)
+        if (k.isEmpty()) return fallback
+        val stored = prefs.getInt("intro_sec_$k", -1)
+        return if (stored in 15..180) stored else fallback
+    }
+
+    fun saveSeriesIntroSeconds(seriesKey: String, seconds: Int) {
+        val k = normalizeSeriesKey(seriesKey)
+        if (k.isEmpty()) return
+        prefs.edit().putInt("intro_sec_$k", seconds.coerceIn(15, 180)).apply()
+    }
+
+    // ---- Admin Auth Session ----
     fun isAdminLoggedIn(): Boolean = prefs.getBoolean("admin_logged_in", false)
 
     fun getAdminPin(): String = prefs.getString("admin_pin_token", "") ?: ""

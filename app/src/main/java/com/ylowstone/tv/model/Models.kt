@@ -10,25 +10,35 @@ enum class FavoriteViewMode { GRID, LIST }
 
 enum class AccentPreset(val key: String, val label: String) {
     AMBER_SUNSTONE("amber_sunstone", "Ylowstone Signature"),
-    PIXEL_FOG("pixel_fog", "Pixel Fog"),
-    OBSIDIAN_CRIMSON("obsidian_crimson", "Obsidian Crimson"),
+    AMOLED_NOIR("amoled_noir", "AMOLED Noir"),
+    VELVET_CRIMSON("velvet_crimson", "Velvet Crimson"),
+    SLATE_MIST("slate_mist", "Slate Mist"),
     HYDROGEN_ICE("hydrogen_ice", "Hydrogen Ice"),
     EMERALD_STUDIO("emerald_studio", "Emerald Studio");
 
     companion object {
-        fun fromKey(k: String?): AccentPreset = entries.firstOrNull { it.key == k } ?: AMBER_SUNSTONE
+        fun fromKey(k: String?): AccentPreset = when (k) {
+            "pixel_fog" -> SLATE_MIST
+            "obsidian_crimson" -> VELVET_CRIMSON
+            else -> entries.firstOrNull { it.key == k } ?: AMBER_SUNSTONE
+        }
     }
 }
 
 enum class LoadingAnimStyle(val key: String) {
-    MOTOROLA_BOOMERANG("moto_boomerang"),
+    CHROMA_BOOMERANG("chroma_boomerang"),
     YLLOWSTONE_EMBER("ylowstone_ember"),
     AURORA_EMERALD("aurora_emerald");
 
     companion object {
-        fun fromKey(k: String?): LoadingAnimStyle = entries.firstOrNull { it.key == k } ?: MOTOROLA_BOOMERANG
+        fun fromKey(k: String?): LoadingAnimStyle = when (k) {
+            "moto_boomerang" -> CHROMA_BOOMERANG
+            else -> entries.firstOrNull { it.key == k } ?: CHROMA_BOOMERANG
+        }
     }
 }
+
+enum class SkipIntroMode { OFF, MANUAL, AUTO }
 
 enum class BufferProfile(
     val minBufferMs: Int,
@@ -220,7 +230,7 @@ data class AppSettings(
     val deviceMode: DeviceMode = DeviceMode.SMARTPHONE,
     val themeMode: ThemeMode = ThemeMode.AMOLED,
     val accentPreset: AccentPreset = AccentPreset.AMBER_SUNSTONE,
-    val loadingAnimStyle: LoadingAnimStyle = LoadingAnimStyle.MOTOROLA_BOOMERANG,
+    val loadingAnimStyle: LoadingAnimStyle = LoadingAnimStyle.CHROMA_BOOMERANG,
     val appIcon: AppIconOption = AppIconOption.OBSIDIAN,
     val language: AppLanguage = AppLanguage.ID,
     val favoriteViewMode: FavoriteViewMode = FavoriteViewMode.GRID,
@@ -229,6 +239,9 @@ data class AppSettings(
     val bufferProfile: BufferProfile = BufferProfile.BALANCED,
     val autoReconnectLive: Boolean = true,
     val autoSubtitleLang: AutoSubtitleLang = AutoSubtitleLang.ID,
+    val skipIntroMode: SkipIntroMode = SkipIntroMode.MANUAL,
+    val skipIntroSeconds: Int = 85,
+    val autoNextEpisode: Boolean = true,
     val pinCode: String = "1234",
     val use24HourClock: Boolean = true,
     val preferExternalPlayer: Boolean = false

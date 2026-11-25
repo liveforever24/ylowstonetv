@@ -39,6 +39,47 @@ object SubtitleFetcher {
     private val SRT_TIME_REGEX = Regex("""(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})""")
     private val HTML_TAG_REGEX = Regex("""<[^>]+>""")
 
+    /**
+     * Memilih kandidat subtitle dengan kecocokan release-tag tertinggi terhadap judul stream (WEB-DL, BluRay, 1080p, SxxExx).
+     */
+    fun pickBestCandidate(
+        candidates: List<SubtitleCandidate>,
+        streamTitle: String,
+        season: Int?,
+        episode: Int?
+    ): SubtitleCandidate? {
+        if (candidates.isEmpty()) return null
+        val target = streamTitle.lowercase(Locale.US)
+        val tags = listOf("web-dl", "webrip", "bluray", "bdrip", "1080p", "720p", "2160p", "4k", "hdr", "x265", "hevc", "x264")
+        val epTag = if (season != null && episode != null) {
+            String.format(Locale.US, "s%02de%02d", season, episode)
+        } else null
+
+        return candidates.maxByOrNull { cand ->
+            val rel = cand.releaseName.lowercase(Locale.US)
+            var score = 0
+            if (epTag != null && rel.contains(epTag)) score += 30
+            if (!cand.fullSeason && epTag != null) score += 8
+            for (tag in tags) {
+                if (target.contains(tag) && rel.contains(tag)) score += 10
+            }
+            if (rel.contains("web-dl") || rel.contains("webrip")) score += 4
+            score
+        } ?: candidates.first()
+    }
+
+    /**
+     * Menghitung offset agar cue dialog terdekat sejajar dengan posisi pemutaran saat ini (Quick Tap-Sync).
+     */
+    fun computeQuickSyncOffsetMs(cues: List<SrtCue>, currentPosMs: Long, currentOffsetMs: Long): Long {
+        if (cues.isEmpty()) return currentOffsetMs
+        val effectivePos = currentPosMs + currentOffsetMs
+        val nearest = cues.minByOrNull { cue ->
+            kotlin.math.abs(cue.startMs - effectivePos)
+        } ?: return currentOffsetMs
+        return nearest.startMs - currentPosMs
+    }
+
     suspend fun searchIndoSubtitles(
         rawTitle: String,
         isSeries: Boolean,
@@ -55,7 +96,7 @@ object SubtitleFetcher {
             val conn = (URL(sb.toString()).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15000
                 readTimeout = 20000
-                setRequestProperty("User-Agent", "YlowstoneTV/2.3.1")
+                setRequestProperty("User-Agent", "YlowstoneTV/2.3.3")
             }
             val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             conn.disconnect()
@@ -97,7 +138,7 @@ object SubtitleFetcher {
             val conn = (URL(sb.toString()).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 20000
                 readTimeout = 30000
-                setRequestProperty("User-Agent", "YlowstoneTV/2.3.1")
+                setRequestProperty("User-Agent", "YlowstoneTV/2.3.3")
             }
             if (conn.responseCode !in 200..299) {
                 conn.disconnect()

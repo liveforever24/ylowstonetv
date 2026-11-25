@@ -3,6 +3,8 @@ package com.ylowstone.tv.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -32,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.imageLoader
 import com.ylowstone.tv.BuildConfig
+import com.ylowstone.tv.data.AppPrefs
+import com.ylowstone.tv.data.BackupManager
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.*
@@ -48,15 +52,40 @@ fun SettingsScreen(
     settings: AppSettings,
     lockedCategories: Set<String>,
     strings: AppStrings,
+    prefs: AppPrefs,
     repo: IptvRepository,
     onBack: () -> Unit,
     onUpdateSettings: (AppSettings) -> Unit,
     onUnlockCategory: (String) -> Unit,
-    onResetPinAndLocks: () -> Unit
+    onResetPinAndLocks: () -> Unit,
+    onBackupRestored: (AppSettings) -> Unit = {}
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    val exportBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            BackupManager.exportToUri(context, uri, prefs, repo.db)
+                .onSuccess { Toast.makeText(context, strings.backupExportSuccess, Toast.LENGTH_SHORT).show() }
+                .onFailure { Toast.makeText(context, "Error: ${it.message}", Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    val importBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            BackupManager.importFromUri(context, uri, prefs, repo.db)
+                .onSuccess { restored ->
+                    onBackupRestored(restored)
+                    Toast.makeText(context, strings.backupImportSuccess, Toast.LENGTH_SHORT).show()
+                }
+                .onFailure { Toast.makeText(context, "Error: ${it.message}", Toast.LENGTH_LONG).show() }
+        }
+    }
 
     var expandedSection by remember { mutableStateOf("THEME") }
     var showChangePin by remember { mutableStateOf(false) }
@@ -192,7 +221,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(8.dp))
                 SegmentedChoiceRow(
                     options = listOf(
-                        LoadingAnimStyle.MOTOROLA_BOOMERANG to strings.loadingAnimMoto,
+                        LoadingAnimStyle.CHROMA_BOOMERANG to strings.loadingAnimChroma,
                         LoadingAnimStyle.YLLOWSTONE_EMBER to strings.loadingAnimAmber,
                         LoadingAnimStyle.AURORA_EMERALD to strings.loadingAnimAurora
                     ),
@@ -376,6 +405,33 @@ fun SettingsScreen(
                     Spacer(Modifier.width(6.dp))
                     Text(strings.clearCache, fontSize = 12.sp)
                 }
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = c.glassBorder)
+                Spacer(Modifier.height(10.dp))
+                Text(strings.backupSectionTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { exportBackupLauncher.launch("ylowstonetv_backup_v233.json") },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Rounded.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text(strings.exportBackupBtn, fontSize = 11.sp, maxLines = 1)
+                    }
+                    Button(
+                        onClick = { importBackupLauncher.launch(arrayOf("application/json", "*/*")) },
+                        colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Rounded.Download, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text(strings.importBackupBtn, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                }
+
             }
 
             // 6. Playback & Streaming (v2.3.1: Auto Stream Format, Buffer Profile, Auto-Reconnect, Auto-Subtitle)
@@ -487,6 +543,51 @@ fun SettingsScreen(
                     selected = settings.autoSubtitleLang,
                     onSelect = { onUpdateSettings(settings.copy(autoSubtitleLang = it)) }
                 )
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = c.glassBorder)
+                Spacer(Modifier.height(10.dp))
+                Text(strings.skipIntroTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                SegmentedChoiceRow(
+                    options = listOf(
+                        SkipIntroMode.OFF to strings.skipIntroOff,
+                        SkipIntroMode.MANUAL to strings.skipIntroManual,
+                        SkipIntroMode.AUTO to strings.skipIntroAuto
+                    ),
+                    selected = settings.skipIntroMode,
+                    onSelect = { onUpdateSettings(settings.copy(skipIntroMode = it)) }
+                )
+                if (settings.skipIntroMode != SkipIntroMode.OFF) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("${strings.skipIntroDurationLabel}: ${settings.skipIntroSeconds}s", color = c.textSecondary, fontSize = 10.sp)
+                    Spacer(Modifier.height(4.dp))
+                    SegmentedChoiceRow(
+                        options = listOf(60 to "60s", 85 to "85s", 100 to "100s"),
+                        selected = settings.skipIntroSeconds,
+                        onSelect = { onUpdateSettings(settings.copy(skipIntroSeconds = it)) }
+                    )
+                }
+
+                HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(strings.autoNextTitle, color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(strings.autoNextDesc, color = c.textSecondary, fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = settings.autoNextEpisode,
+                        onCheckedChange = { onUpdateSettings(settings.copy(autoNextEpisode = it)) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = c.onAccent,
+                            checkedTrackColor = c.accent
+                        )
+                    )
+                }
+
             }
 
             // 7. Language

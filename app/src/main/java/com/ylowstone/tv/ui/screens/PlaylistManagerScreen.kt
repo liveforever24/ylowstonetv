@@ -67,7 +67,7 @@ fun PlaylistManagerScreen(
     isTvMode: Boolean,
     isLoading: Boolean,
     loadingMessage: String,
-    loadingAnimStyle: LoadingAnimStyle = LoadingAnimStyle.MOTOROLA_BOOMERANG,
+    loadingAnimStyle: LoadingAnimStyle = LoadingAnimStyle.CHROMA_BOOMERANG,
     onOpenPlaylist: (PlaylistProfile) -> Unit,
     onSavePlaylist: (PlaylistProfile, Uri?) -> Unit,
     onRefreshPlaylist: (PlaylistProfile) -> Unit,
@@ -303,29 +303,26 @@ fun PlaylistManagerScreen(
             }
         }
 
-        // Loading overlay
+        // Loading overlay (v2.3.3: Bumerang melayang bersih tanpa kotak hitam)
         if (isLoading) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.72f))
+                    .background(Color.Black.copy(alpha = 0.76f))
                     .clickable(enabled = false) {},
                 contentAlignment = Alignment.Center
             ) {
                 Column(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(c.surface)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(20.dp))
-                        .padding(24.dp),
+                    modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    BoomerangLoadingIndicator(style = loadingAnimStyle, size = 62.dp)
+                    BoomerangLoadingIndicator(style = loadingAnimStyle, size = 76.dp)
                     Text(
                         text = loadingMessage.ifBlank { strings.loadingPlaylist },
-                        color = c.textPrimary,
-                        fontSize = 13.sp
+                        color = Color.White.copy(alpha = 0.92f),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }

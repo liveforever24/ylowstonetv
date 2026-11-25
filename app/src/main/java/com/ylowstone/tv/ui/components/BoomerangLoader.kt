@@ -17,20 +17,19 @@ import androidx.compose.ui.unit.dp
 import com.ylowstone.tv.model.LoadingAnimStyle
 
 /**
- * Animasi loading "Bumerang" ala Motorola Edge 60 Fusion (60fps native Compose Canvas):
+ * Animasi loading "Bumerang" 60fps native Compose Canvas:
  * - 4 lapisan squircle lembut transparan yang saling bertumpuk
- * - Berotasi berlawanan arah & mengembang-mengempis halus dengan kurva boomerang (Reverse)
- * - 3 pilihan palet warna: Bumerang Moto (biru-ungu-magenta), Bumerang Amber (splash YlowstoneTV), Bumerang Aurora (emerald-cyan)
+ * - Berotasi berlawanan arah & mengembang-mengempis halus dengan kurva bolak-balik
+ * - 3 pilihan palet: Bumerang Kroma, Bumerang Amber, dan Bumerang Aurora
  */
 @Composable
 fun BoomerangLoadingIndicator(
-    style: LoadingAnimStyle = LoadingAnimStyle.MOTOROLA_BOOMERANG,
+    style: LoadingAnimStyle = LoadingAnimStyle.CHROMA_BOOMERANG,
     size: Dp = 64.dp,
     modifier: Modifier = Modifier
 ) {
     val transition = rememberInfiniteTransition(label = "boomerangLoader")
 
-    // Rotasi bolak-balik (efek "bumerang") + putaran kontinu lembut
     val angleA by transition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
@@ -68,25 +67,24 @@ fun BoomerangLoadingIndicator(
         label = "breath"
     )
 
-    // 4 pasangan gradasi warna per gaya animasi
     val palettes: List<Pair<Color, Color>> = when (style) {
-        LoadingAnimStyle.MOTOROLA_BOOMERANG -> listOf(
-            Color(0xAA9D174D) to Color(0xAA7E22CE), // Deep Magenta -> Violet
-            Color(0xB86D28D9) to Color(0xB82563EB), // Purple -> Royal Blue
-            Color(0xC43B82F6) to Color(0xC406B6D4), // Electric Blue -> Cyan
-            Color(0xB88B5CF6) to Color(0xB838BDF8)  // Soft Violet -> Sky Blue
+        LoadingAnimStyle.CHROMA_BOOMERANG -> listOf(
+            Color(0xAA9D174D) to Color(0xAA7E22CE),
+            Color(0xB86D28D9) to Color(0xB82563EB),
+            Color(0xC43B82F6) to Color(0xC406B6D4),
+            Color(0xB88B5CF6) to Color(0xB838BDF8)
         )
         LoadingAnimStyle.YLLOWSTONE_EMBER -> listOf(
-            Color(0xAA1F4A37) to Color(0xAA2E6F56), // Smoked Olive-Emerald
-            Color(0xB892400E) to Color(0xB8D97706), // Deep Bronze -> Warm Amber
-            Color(0xC4E89D3C) to Color(0xC4F5C26B), // Amber Sunstone -> Gold
-            Color(0xB0E2D5BE) to Color(0xB0C98A2E)  // Champagne Titanium -> Amber
+            Color(0xAA1F4A37) to Color(0xAA2E6F56),
+            Color(0xB892400E) to Color(0xB8D97706),
+            Color(0xC4E89D3C) to Color(0xC4F5C26B),
+            Color(0xB0E2D5BE) to Color(0xB0C98A2E)
         )
         LoadingAnimStyle.AURORA_EMERALD -> listOf(
-            Color(0xAA065F46) to Color(0xAA0D9488), // Deep Forest -> Teal
-            Color(0xB8059669) to Color(0xB806B6D4), // Emerald -> Cyan
-            Color(0xC410B981) to Color(0xC438BDF8), // Bright Emerald -> Sky
-            Color(0xB034D399) to Color(0xB022D3EE)  // Mint -> Aqua
+            Color(0xAA065F46) to Color(0xAA0D9488),
+            Color(0xB8059669) to Color(0xB806B6D4),
+            Color(0xC410B981) to Color(0xC438BDF8),
+            Color(0xB034D399) to Color(0xB022D3EE)
         )
     }
 
