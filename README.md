@@ -1,19 +1,19 @@
-&lt;p align=&quot;center&quot;&gt;
-  &lt;img src=&quot;docs/banner.png&quot; alt=&quot;YlowstoneTV Banner&quot; width=&quot;100%&quot; /&gt;
-&lt;/p&gt;
+<p align="center">
+  <img src="docs/banner.png" alt="YlowstoneTV Banner" width="100%" />
+</p>
 
-&lt;h1 align=&quot;center&quot;&gt;YlowstoneTV&lt;/h1&gt;
+<h1 align="center">YlowstoneTV</h1>
 
-&lt;p align=&quot;center&quot;&gt;
-  &lt;strong&gt;Zero-bloat native IPTV &amp;amp; Xtream media engine for Android and Android TV.&lt;/strong&gt;
-&lt;/p&gt;
+<p align="center">
+  <strong>Zero-bloat native IPTV &amp; Xtream media engine for Android and Android TV.</strong>
+</p>
 
-&lt;p align=&quot;center&quot;&gt;
-  &lt;img src=&quot;https://img.shields.io/badge/Release-v2.3.2-0A0C0E?style=flat-square&amp;logo=android&amp;logoColor=E89D3C&quot; alt=&quot;Release v2.3.2&quot; /&gt;
-  &lt;img src=&quot;https://www.google.com/search?q=https://img.shields.io/badge/Platform-Android%252010%252B%2520%257C%2520Android%2520TV-121512%3Fstyle%3Dflat-square&quot; alt=&quot;Platform&quot; /&gt;
-  &lt;img src=&quot;https://www.google.com/search?q=https://img.shields.io/badge/Stack-Kotlin%2520%25C2%25B7%2520Jetpack%2520Compose-1A1E19%3Fstyle%3Dflat-square&quot; alt=&quot;Kotlin Jetpack Compose&quot; /&gt;
-  &lt;img src=&quot;https://www.google.com/search?q=https://img.shields.io/badge/Player-Media3%2520ExoPlayer-2B2110%3Fstyle%3Dflat-square&quot; alt=&quot;Media3 ExoPlayer&quot; /&gt;
-&lt;/p&gt;
+<p align="center">
+  <img src="https://img.shields.io/badge/Release-v2.3.2-0A0C0E?style=flat-square&logo=android&logoColor=E89D3C" alt="Release v2.3.2" />
+  <img src="https://img.shields.io/badge/Platform-Android%2010%2B%20%7C%20Android%20TV-121512?style=flat-square" alt="Platform" />
+  <img src="https://img.shields.io/badge/Stack-Kotlin%20%C2%B7%20Jetpack%20Compose-1A1E19?style=flat-square" alt="Kotlin Jetpack Compose" />
+  <img src="https://img.shields.io/badge/Player-Media3%20ExoPlayer-2B2110?style=flat-square" alt="Media3 ExoPlayer" />
+</p>
 
 ## Engineering Philosophy
 
@@ -61,7 +61,7 @@ YlowstoneTV is engineered around three strict constraints: **zero visual bloat**
 app/build/outputs/apk/release/app-release.apk
 ```
 
-Prebuilt releases are published automatically via GitHub Actions on the [Releases](https://www.google.com/search?q=https://github.com/liveforever24/ylowstonetv/releases) page.
+Prebuilt releases are published automatically via GitHub Actions on the [Releases](https://github.com/liveforever24/ylowstonetv/releases) page.
 
 ## Disclaimer
 
