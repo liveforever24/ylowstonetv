@@ -37,6 +37,7 @@ import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.*
 import com.ylowstone.tv.ui.components.PinDialog
 import com.ylowstone.tv.ui.theme.LocalYlowColors
+import com.ylowstone.tv.ui.theme.resolveAccentTokens
 import com.ylowstone.tv.util.AppIconManager
 import kotlinx.coroutines.launch
 
@@ -81,7 +82,6 @@ fun SettingsScreen(
             .background(c.bg)
             .systemBarsPadding()
     ) {
-        // ---- Top Header ----
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -102,7 +102,6 @@ fun SettingsScreen(
         }
         HorizontalDivider(color = c.glassBorder, thickness = 0.6.dp)
 
-        // ---- Scrollable Settings List ----
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -110,11 +109,10 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 32.dp)
         ) {
-            // 1. Theme
             YlowSettingsRow(
                 icon = Icons.Rounded.Contrast,
                 title = strings.appearanceTheme,
-                subtitle = themeLabel,
+                subtitle = "$themeLabel • ${settings.accentPreset.label}",
                 expanded = expandedSection == "THEME",
                 onClick = { expandedSection = if (expandedSection == "THEME") "" else "THEME" }
             ) {
@@ -127,9 +125,56 @@ fun SettingsScreen(
                     selected = settings.themeMode,
                     onSelect = { onUpdateSettings(settings.copy(themeMode = it)) }
                 )
+
+                Spacer(Modifier.height(12.dp))
+                Text("Aksen Warna Minimalis", color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AccentPreset.entries.chunked(2).forEach { pair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            pair.forEach { preset ->
+                                val (swatch, _, _) = resolveAccentTokens(preset, c.isDark)
+                                val active = settings.accentPreset == preset
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (active) c.accentContainer else c.surface)
+                                        .border(
+                                            width = if (active) 1.5.dp else 1.dp,
+                                            color = if (active) c.accent else c.glassBorder,
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .clickable { onUpdateSettings(settings.copy(accentPreset = preset)) }
+                                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .clip(CircleShape)
+                                            .background(swatch)
+                                    )
+                                    Text(
+                                        text = preset.label,
+                                        color = if (active) c.accent else c.textPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
-            // 2. Tampilan Saluran Favorit di Beranda (Kotak / Daftar)
             YlowSettingsRow(
                 icon = Icons.Rounded.DashboardCustomize,
                 title = strings.favoriteLayoutTitle,
@@ -147,7 +192,6 @@ fun SettingsScreen(
                 )
             }
 
-            // 3. Device Mode (Phone / TV)
             YlowSettingsRow(
                 icon = Icons.Rounded.Devices,
                 title = strings.deviceMode,
@@ -162,7 +206,6 @@ fun SettingsScreen(
                 )
             }
 
-            // 4. 12 Switchable 3D App Icons
             YlowSettingsRow(
                 icon = Icons.Rounded.Apps,
                 title = strings.appIconTitle,
@@ -223,7 +266,6 @@ fun SettingsScreen(
                 }
             }
 
-            // 5. Category PIN Management
             YlowSettingsRow(
                 icon = Icons.Rounded.Lock,
                 title = strings.privacyStorageSection,
@@ -306,11 +348,10 @@ fun SettingsScreen(
                 }
             }
 
-            // 6. Playback & Streaming
             YlowSettingsRow(
                 icon = Icons.Rounded.PlayCircleOutline,
                 title = strings.playbackSection,
-                subtitle = settings.streamFormat.label,
+                subtitle = "${settings.streamFormat.label} • ${settings.bufferProfile.label}",
                 expanded = expandedSection == "PLAYBACK",
                 onClick = { expandedSection = if (expandedSection == "PLAYBACK") "" else "PLAYBACK" }
             ) {
@@ -332,7 +373,34 @@ fun SettingsScreen(
                         )
                     )
                 }
+
                 HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Auto-Subtitle Film & Seri", color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Otomatis pasang bahasa terakhir dipilih (${settings.preferredSubtitleLang.uppercase()}) tiap episode/film",
+                            color = c.textSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Switch(
+                        checked = settings.autoSubtitleEnabled,
+                        onCheckedChange = { onUpdateSettings(settings.copy(autoSubtitleEnabled = it)) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = c.onAccent,
+                            checkedTrackColor = c.accent
+                        )
+                    )
+                }
+
+                HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -351,17 +419,35 @@ fun SettingsScreen(
                         )
                     )
                 }
+
                 HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
+
                 Text(strings.streamFormatTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 SegmentedChoiceRow(
-                    options = listOf(StreamFormat.HLS to StreamFormat.HLS.label, StreamFormat.TS to StreamFormat.TS.label),
+                    options = listOf(
+                        StreamFormat.AUTO to "Otomatis",
+                        StreamFormat.HLS to "HLS (.m3u8)",
+                        StreamFormat.TS to "TS (.ts)"
+                    ),
                     selected = settings.streamFormat,
                     onSelect = { onUpdateSettings(settings.copy(streamFormat = it)) }
                 )
+
+                Spacer(Modifier.height(10.dp))
+                Text("Profil Buffer & Respons Live", color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                SegmentedChoiceRow(
+                    options = listOf(
+                        BufferProfile.LOW_LATENCY to "Cepat",
+                        BufferProfile.BALANCED to "Seimbang",
+                        BufferProfile.ANTI_BUFFER to "Anti-Buffer"
+                    ),
+                    selected = settings.bufferProfile,
+                    onSelect = { onUpdateSettings(settings.copy(bufferProfile = it)) }
+                )
             }
 
-            // 7. Language
             YlowSettingsRow(
                 icon = Icons.Rounded.Language,
                 title = strings.appLanguage,
@@ -376,7 +462,6 @@ fun SettingsScreen(
                 )
             }
 
-            // 8. Check Updates
             YlowSettingsRow(
                 icon = Icons.Rounded.SystemUpdate,
                 title = strings.checkUpdates,
@@ -438,7 +523,6 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(22.dp))
 
-            // ---- Minimalist Footer Links ----
             Column(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,

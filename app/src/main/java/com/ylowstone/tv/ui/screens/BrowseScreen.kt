@@ -1,6 +1,7 @@
 package com.ylowstone.tv.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -73,6 +74,7 @@ fun BrowseScreen(
     pinCode: String,
     strings: AppStrings,
     isTvMode: Boolean,
+    onBackToHome: () -> Unit = {},
     onToggleLockCategory: (String) -> Unit,
     onToggleFavorite: (ChannelItem) -> Unit,
     onSelectChannelInline: (ChannelItem, List<ChannelItem>) -> Unit,
@@ -86,12 +88,16 @@ fun BrowseScreen(
     val scope = rememberCoroutineScope()
 
     var openedCategory by remember(playlist.id, mediaType) { mutableStateOf<String?>(null) }
+    var lastFocusedCategory by remember(playlist.id, mediaType) { mutableStateOf<String?>(null) }
     var landscapeCategory by remember(playlist.id, mediaType) { mutableStateOf("ALL") }
     var catFilterQuery by remember(playlist.id, mediaType) { mutableStateOf("") }
     var channelSearchQuery by remember(playlist.id, mediaType) { mutableStateOf("") }
     var debouncedChannelSearch by remember(playlist.id, mediaType) { mutableStateOf("") }
     var unlockedTempCategories by remember(playlist.id) { mutableStateOf<Set<String>>(emptySet()) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
+    var lastCategoryBackTime by remember { mutableLongStateOf(0L) }
+
+    val catListState = rememberLazyListState()
 
     LaunchedEffect(channelSearchQuery) {
         delay(150)
@@ -125,6 +131,35 @@ fun BrowseScreen(
         MediaType.LIVE -> strings.liveTv
         MediaType.MOVIE -> strings.movies
         MediaType.SERIES -> strings.series
+    }
+
+    fun returnToCategoryListKeepingPosition() {
+        val targetCat = openedCategory ?: lastFocusedCategory
+        openedCategory = null
+        channelSearchQuery = ""
+        if (targetCat != null && targetCat !in listOf("ALL", "FAV", "HIST")) {
+            val idx = filteredCategories.indexOfFirst { it.name.equals(targetCat, ignoreCase = true) }
+            if (idx >= 0) {
+                scope.launch {
+                    runCatching { catListState.scrollToItem((idx + 4).coerceAtLeast(0)) }
+                }
+            }
+        }
+    }
+
+    BackHandler(enabled = playerMode == PlayerMode.NONE) {
+        if (openedCategory != null) {
+            returnToCategoryListKeepingPosition()
+        } else {
+            val now = System.currentTimeMillis()
+            if (now - lastCategoryBackTime <= 2000L) {
+                lastCategoryBackTime = 0L
+                onBackToHome()
+            } else {
+                lastCategoryBackTime = now
+                Toast.makeText(context, "Tekan kembali sekali lagi untuk ke Beranda", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     BoxWithConstraints(
@@ -179,7 +214,7 @@ fun BrowseScreen(
                     ) {
                         if (openedCategory != null) {
                             IconButton(
-                                onClick = { openedCategory = null; channelSearchQuery = "" },
+                                onClick = { returnToCategoryListKeepingPosition() },
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
@@ -247,79 +282,94 @@ fun BrowseScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            val catListState = rememberLazyListState()
                             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                            LazyColumn(
-                                state = catListState,
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(bottom = 20.dp),
-                                verticalArrangement = Arrangement.spacedBy(7.dp)
-                            ) {
-                                item {
-                                    VerticalCategoryCard(
-                                        name = strings.allChannels,
-                                        count = allCount,
-                                        icon = Icons.Rounded.GridView,
-                                        locked = false,
-                                        highlight = true,
-                                        onClick = { openedCategory = "ALL" },
-                                        onLongClick = {}
-                                    )
-                                }
-                                item {
-                                    VerticalCategoryCard(
-                                        name = strings.favourites,
-                                        count = favCount,
-                                        icon = Icons.Rounded.Favorite,
-                                        locked = false,
-                                        highlight = false,
-                                        onClick = { openedCategory = "FAV" },
-                                        onLongClick = {}
-                                    )
-                                }
-                                item {
-                                    VerticalCategoryCard(
-                                        name = strings.history,
-                                        count = histCount,
-                                        icon = Icons.Rounded.History,
-                                        locked = false,
-                                        highlight = false,
-                                        onClick = { openedCategory = "HIST" },
-                                        onLongClick = {}
-                                    )
-                                }
-                                item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
+                                LazyColumn(
+                                    state = catListState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(bottom = 20.dp),
+                                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                                ) {
+                                    item {
+                                        VerticalCategoryCard(
+                                            name = strings.allChannels,
+                                            count = allCount,
+                                            icon = Icons.Rounded.GridView,
+                                            locked = false,
+                                            highlight = true,
+                                            selected = false,
+                                            onClick = {
+                                                lastFocusedCategory = "ALL"
+                                                openedCategory = "ALL"
+                                            },
+                                            onLongClick = {}
+                                        )
+                                    }
+                                    item {
+                                        VerticalCategoryCard(
+                                            name = strings.favourites,
+                                            count = favCount,
+                                            icon = Icons.Rounded.Favorite,
+                                            locked = false,
+                                            highlight = false,
+                                            selected = false,
+                                            onClick = {
+                                                lastFocusedCategory = "FAV"
+                                                openedCategory = "FAV"
+                                            },
+                                            onLongClick = {}
+                                        )
+                                    }
+                                    item {
+                                        VerticalCategoryCard(
+                                            name = strings.history,
+                                            count = histCount,
+                                            icon = Icons.Rounded.History,
+                                            locked = false,
+                                            highlight = false,
+                                            selected = false,
+                                            onClick = {
+                                                lastFocusedCategory = "HIST"
+                                                openedCategory = "HIST"
+                                            },
+                                            onLongClick = {}
+                                        )
+                                    }
+                                    item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
 
-                                items(filteredCategories, key = { it.name }) { cat ->
-                                    val isLocked = lockedCategories.contains(cat.name)
-                                    VerticalCategoryCard(
-                                        name = cat.name,
-                                        count = cat.count,
-                                        icon = if (isLocked) Icons.Rounded.Lock else Icons.Rounded.FolderOpen,
-                                        locked = isLocked,
-                                        highlight = false,
-                                        onClick = {
-                                            if (isLocked && !unlockedTempCategories.contains(cat.name)) {
+                                    items(filteredCategories, key = { it.name }) { cat ->
+                                        val isLocked = lockedCategories.contains(cat.name)
+                                        val isLastOpened = lastFocusedCategory?.equals(cat.name, ignoreCase = true) == true
+                                        VerticalCategoryCard(
+                                            name = cat.name,
+                                            count = cat.count,
+                                            icon = if (isLocked) Icons.Rounded.Lock else Icons.Rounded.FolderOpen,
+                                            locked = isLocked,
+                                            highlight = false,
+                                            selected = isLastOpened,
+                                            onClick = {
+                                                lastFocusedCategory = cat.name
+                                                if (isLocked && !unlockedTempCategories.contains(cat.name)) {
+                                                    pinActionCategory = cat.name
+                                                    pinActionMode = "OPEN_LOCKED"
+                                                    pinActionIsPortrait = true
+                                                } else {
+                                                    openedCategory = cat.name
+                                                }
+                                            },
+                                            onLongClick = {
+                                                lastFocusedCategory = cat.name
                                                 pinActionCategory = cat.name
-                                                pinActionMode = "OPEN_LOCKED"
+                                                pinActionMode = "TOGGLE_LOCK"
                                                 pinActionIsPortrait = true
-                                            } else {
-                                                openedCategory = cat.name
                                             }
-                                        },
-                                        onLongClick = {
-                                            pinActionCategory = cat.name
-                                            pinActionMode = "TOGGLE_LOCK"
-                                            pinActionIsPortrait = true
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
-                            }
-                            GlossyScrollPositionPill(
-                                listState = catListState,
-                                totalItemsCount = filteredCategories.size + 4,
-                                modifier = Modifier.align(Alignment.CenterEnd)
-                            )
+                                GlossyScrollPositionPill(
+                                    listState = catListState,
+                                    totalItemsCount = filteredCategories.size + 4,
+                                    modifier = Modifier.align(Alignment.CenterEnd)
+                                )
                             }
                         }
                     } else {
@@ -337,8 +387,7 @@ fun BrowseScreen(
                                         detectVerticalDragGestures(
                                             onDragEnd = {
                                                 if (totalDrag > 70f) {
-                                                    openedCategory = null
-                                                    channelSearchQuery = ""
+                                                    returnToCategoryListKeepingPosition()
                                                 }
                                                 totalDrag = 0f
                                             }
@@ -346,7 +395,7 @@ fun BrowseScreen(
                                             if (dragAmount > 0f) totalDrag += dragAmount
                                         }
                                     }
-                                    .clickable { openedCategory = null; channelSearchQuery = "" }
+                                    .clickable { returnToCategoryListKeepingPosition() }
                                     .padding(vertical = 7.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -379,32 +428,32 @@ fun BrowseScreen(
                             if (mediaType == MediaType.LIVE) {
                                 val liveListState = rememberLazyListState()
                                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                                LazyColumn(
-                                    state = liveListState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(bottom = 20.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    items(channels, key = { it.id }) { ch ->
-                                        val active = activeChannel?.id == ch.id
-                                        ChannelListRow(
-                                            ch = ch,
-                                            active = active,
-                                            isTvMode = isTvMode,
-                                            onClick = { onLaunchPlayer(ch, channels, false) },
-                                            onLongClick = { onLongPressChannel(ch) },
-                                            onToggleFav = {
-                                                onToggleFavorite(ch)
-                                                refreshTrigger++
-                                            }
-                                        )
+                                    LazyColumn(
+                                        state = liveListState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(bottom = 20.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        items(channels, key = { it.id }) { ch ->
+                                            val active = activeChannel?.id == ch.id
+                                            ChannelListRow(
+                                                ch = ch,
+                                                active = active,
+                                                isTvMode = isTvMode,
+                                                onClick = { onLaunchPlayer(ch, channels, false) },
+                                                onLongClick = { onLongPressChannel(ch) },
+                                                onToggleFav = {
+                                                    onToggleFavorite(ch)
+                                                    refreshTrigger++
+                                                }
+                                            )
+                                        }
                                     }
-                                }
-                                GlossyScrollPositionPill(
-                                    listState = liveListState,
-                                    totalItemsCount = channels.size,
-                                    modifier = Modifier.align(Alignment.CenterEnd)
-                                )
+                                    GlossyScrollPositionPill(
+                                        listState = liveListState,
+                                        totalItemsCount = channels.size,
+                                        modifier = Modifier.align(Alignment.CenterEnd)
+                                    )
                                 }
                             } else {
                                 PosterGrid(
@@ -661,16 +710,27 @@ private fun VerticalCategoryCard(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     locked: Boolean,
     highlight: Boolean,
+    selected: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
     val c = LocalYlowColors.current
+    val bgColor = when {
+        highlight -> c.accentContainer
+        selected -> c.surfaceElevated
+        else -> c.surface
+    }
+    val borderColor = when {
+        highlight -> c.accent.copy(alpha = 0.5f)
+        selected -> c.accent.copy(alpha = 0.65f)
+        else -> c.glassBorder
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(if (highlight) c.accentContainer else c.surface)
-            .border(1.dp, if (highlight) c.accent.copy(alpha = 0.5f) else c.glassBorder, RoundedCornerShape(14.dp))
+            .background(bgColor)
+            .border(1.dp, borderColor, RoundedCornerShape(14.dp))
             .glossyPressPill(14f)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 13.dp),
@@ -686,16 +746,16 @@ private fun VerticalCategoryCard(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (highlight || locked) c.accent else c.surfaceElevated),
+                    .background(if (highlight || locked || selected) c.accent else c.surfaceElevated),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = if (highlight || locked) c.onAccent else c.textPrimary, modifier = Modifier.size(18.dp))
+                Icon(icon, contentDescription = null, tint = if (highlight || locked || selected) c.onAccent else c.textPrimary, modifier = Modifier.size(18.dp))
             }
             Text(
                 text = name,
-                color = c.textPrimary,
+                color = if (selected) c.accent else c.textPrimary,
                 fontSize = 14.sp,
-                fontWeight = if (highlight) FontWeight.Bold else FontWeight.SemiBold,
+                fontWeight = if (highlight || selected) FontWeight.Bold else FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

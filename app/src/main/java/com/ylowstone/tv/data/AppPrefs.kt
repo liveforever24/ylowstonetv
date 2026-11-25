@@ -25,11 +25,15 @@ class AppPrefs(context: Context) {
             hasSelectedMode = prefs.getBoolean("has_selected_mode", false),
             deviceMode = runCatching { DeviceMode.valueOf(prefs.getString("device_mode", "SMARTPHONE")!!) }.getOrDefault(DeviceMode.SMARTPHONE),
             themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "SYSTEM")!!) }.getOrDefault(ThemeMode.SYSTEM),
+            accentPreset = AccentPreset.fromKey(prefs.getString("accent_preset", AccentPreset.PIXEL_FOG.key)),
+            bufferProfile = runCatching { BufferProfile.valueOf(prefs.getString("buffer_profile", "BALANCED")!!) }.getOrDefault(BufferProfile.BALANCED),
+            preferredSubtitleLang = prefs.getString("preferred_subtitle_lang", "id") ?: "id",
+            autoSubtitleEnabled = prefs.getBoolean("auto_subtitle_enabled", true),
             appIcon = AppIconOption.fromKey(prefs.getString("app_icon", "obsidian")),
             language = resolvedLang,
             favoriteViewMode = runCatching { FavoriteViewMode.valueOf(prefs.getString("favorite_view_mode", "GRID")!!) }.getOrDefault(FavoriteViewMode.GRID),
             showPlayerGestures = prefs.getBoolean("show_gestures", true),
-            streamFormat = runCatching { StreamFormat.valueOf(prefs.getString("stream_format", "HLS")!!) }.getOrDefault(StreamFormat.HLS),
+            streamFormat = runCatching { StreamFormat.valueOf(prefs.getString("stream_format", "AUTO")!!) }.getOrDefault(StreamFormat.AUTO),
             pinCode = prefs.getString("pin_code", "1234") ?: "1234",
             use24HourClock = prefs.getBoolean("use_24h", true),
             preferExternalPlayer = prefs.getBoolean("prefer_external", false)
@@ -42,6 +46,10 @@ class AppPrefs(context: Context) {
             .putBoolean("has_selected_mode", s.hasSelectedMode)
             .putString("device_mode", s.deviceMode.name)
             .putString("theme_mode", s.themeMode.name)
+            .putString("accent_preset", s.accentPreset.key)
+            .putString("buffer_profile", s.bufferProfile.name)
+            .putString("preferred_subtitle_lang", s.preferredSubtitleLang)
+            .putBoolean("auto_subtitle_enabled", s.autoSubtitleEnabled)
             .putString("app_icon", s.appIcon.key)
             .putString("language", s.language.name)
             .putString("favorite_view_mode", s.favoriteViewMode.name)
@@ -53,7 +61,6 @@ class AppPrefs(context: Context) {
             .apply()
     }
 
-    // ---- Vercel Admin Auth Session ----
     fun isAdminLoggedIn(): Boolean = prefs.getBoolean("admin_logged_in", false)
 
     fun getAdminPin(): String = prefs.getString("admin_pin_token", "") ?: ""
@@ -84,7 +91,6 @@ class AppPrefs(context: Context) {
             .apply()
     }
 
-    // ---- Category PIN Locks ----
     fun getLockedCategories(playlistId: Long): Set<String> {
         return prefs.getStringSet("locked_cats_$playlistId", emptySet())?.toSet() ?: emptySet()
     }

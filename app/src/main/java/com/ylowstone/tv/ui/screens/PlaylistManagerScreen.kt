@@ -92,7 +92,6 @@ fun PlaylistManagerScreen(
                 .fillMaxSize()
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-            // Minimalist clean top header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -212,14 +211,6 @@ fun PlaylistManagerScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Box(modifier = Modifier.fillMaxWidth()) {
-                                IconButton(
-                                    onClick = { onRefreshPlaylist(profile) },
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .size(28.dp)
-                                ) {
-                                    Icon(Icons.Rounded.Refresh, contentDescription = strings.refresh, tint = c.accent, modifier = Modifier.size(18.dp))
-                                }
                                 Box(
                                     modifier = Modifier
                                         .size(56.dp)
@@ -267,7 +258,6 @@ fun PlaylistManagerScreen(
                         }
                     }
 
-                    // Add Playlist tile
                     item {
                         Column(
                             modifier = Modifier
@@ -307,7 +297,6 @@ fun PlaylistManagerScreen(
             }
         }
 
-        // Loading overlay
         if (isLoading) {
             Box(
                 modifier = Modifier
@@ -336,7 +325,6 @@ fun PlaylistManagerScreen(
         }
     }
 
-    // Long-press action menu dialog (Admin playlists hide Edit & Show Link for credential privacy!)
     actionTarget?.let { target ->
         val isAdminProtected = adminPlaylistIds.contains(target.id)
         AlertDialog(
@@ -382,7 +370,6 @@ fun PlaylistManagerScreen(
         )
     }
 
-    // Show & Copy Playlist Link dialog (with password reveal toggle)
     inspectLinkTarget?.let { target ->
         var reveal by remember { mutableStateOf(false) }
         val displayLink = if (reveal) target.buildShareableLink(streamFormat) else target.buildMaskedLink(streamFormat)
@@ -437,7 +424,6 @@ fun PlaylistManagerScreen(
         )
     }
 
-    // Add / Edit Playlist Dialog (3 Core Loaders)
     if (showEditor) {
         PlaylistEditorDialog(
             existing = editingProfile,
@@ -516,7 +502,6 @@ private fun PlaylistEditorDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 3 Core Loader Pills
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)

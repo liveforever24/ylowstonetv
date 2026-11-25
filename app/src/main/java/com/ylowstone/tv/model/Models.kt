@@ -3,72 +3,119 @@ package com.ylowstone.tv.model
 import androidx.annotation.DrawableRes
 import com.ylowstone.tv.R
 
-enum class DeviceMode { SMARTPHONE, TV }
-enum class ThemeMode { SYSTEM, LIGHT, AMOLED }
-enum class AppLanguage { ID, EN }
-enum class FavoriteViewMode { GRID, LIST }
+enum class DeviceMode {
+    SMARTPHONE,
+    TV
+}
 
-enum class AppIconOption(
-    val key: String,
-    val label: String,
-    val aliasClassName: String,
-    @DrawableRes val previewRes: Int
-) {
-    OBSIDIAN("obsidian", "Obsidian", "com.ylowstone.tv.IconObsidian", R.drawable.icon_prev_obsidian),
-    CRIMSON("crimson", "Crimson", "com.ylowstone.tv.IconCrimson", R.drawable.icon_prev_crimson),
-    IVORY_NOIR("ivory_noir", "Ivory Noir", "com.ylowstone.tv.IconIvoryNoir", R.drawable.icon_prev_ivory_noir),
-    COBALT("cobalt", "Cobalt", "com.ylowstone.tv.IconCobalt", R.drawable.icon_prev_cobalt),
-    PEARL_AZURE("pearl_azure", "Pearl Azure", "com.ylowstone.tv.IconPearlAzure", R.drawable.icon_prev_pearl_azure),
-    MIDNIGHT("midnight", "Midnight", "com.ylowstone.tv.IconMidnight", R.drawable.icon_prev_midnight),
-    SUNSET("sunset", "Sunset", "com.ylowstone.tv.IconSunset", R.drawable.icon_prev_sunset),
-    SLATE_BLUE("slate_blue", "Slate Blue", "com.ylowstone.tv.IconSlateBlue", R.drawable.icon_prev_slate_blue),
-    NEBULA("nebula", "Nebula", "com.ylowstone.tv.IconNebula", R.drawable.icon_prev_nebula),
-    SOLAR_GOLD("solar_gold", "Solar Gold", "com.ylowstone.tv.IconSolarGold", R.drawable.icon_prev_solar_gold),
-    PEARL_MINT("pearl_mint", "Pearl Mint", "com.ylowstone.tv.IconPearlMint", R.drawable.icon_prev_pearl_mint),
-    EMERALD("emerald", "Emerald", "com.ylowstone.tv.IconEmerald", R.drawable.icon_prev_emerald);
+enum class ThemeMode {
+    SYSTEM,
+    LIGHT,
+    AMOLED
+}
+
+enum class AccentPreset(val key: String, val label: String) {
+    PIXEL_FOG("pixel_fog", "Pixel Fog"),
+    OBSIDIAN_CRIMSON("obsidian_crimson", "Obsidian Crimson"),
+    HYDROGEN_CYAN("hydrogen_cyan", "Hydrogen Cyan"),
+    EMERALD_STUDIO("emerald_studio", "Emerald Studio");
 
     companion object {
-        fun fromKey(k: String?): AppIconOption = entries.firstOrNull { it.key == k } ?: OBSIDIAN
+        fun fromKey(key: String?): AccentPreset =
+            entries.firstOrNull { it.key == key } ?: PIXEL_FOG
     }
 }
 
-enum class PlaylistType { XTREAM, M3U, DIRECT }
-enum class MediaType { LIVE, MOVIE, SERIES }
+enum class BufferProfile(val label: String) {
+    LOW_LATENCY("Cepat (Live)"),
+    BALANCED("Seimbang"),
+    ANTI_BUFFER("Anti-Buffering")
+}
+
+enum class FavoriteViewMode {
+    GRID,
+    LIST
+}
+
+enum class PlaylistType {
+    XTREAM,
+    M3U,
+    DIRECT
+}
+
 enum class StreamFormat(val ext: String, val label: String) {
+    AUTO("m3u8", "Otomatis (Ikuti Playlist)"),
     HLS("m3u8", "HLS (.m3u8)"),
     TS("ts", "MPEG-TS (.ts)")
 }
 
-enum class PlayerMode { NONE, SPLIT, FULLSCREEN, FLOATING }
-
-enum class StreamHealthState { ACTIVE, DELAY, DEAD }
-
-data class StreamHealthResult(
-    val state: StreamHealthState,
-    val latencyMs: Long,
-    val httpCode: Int = 0,
-    val detail: String = ""
-)
-
-val DEFAULT_WATCH_GROUPS: List<String> = listOf(
-    "Sports",
-    "Event Pertandingan",
-    "Daftar Tontonan"
-)
-
-private val ADULT_CONTENT_REGEX = Regex(
-    pattern = """(?i)(\b(adults?|porn\w*|xxx|xxl|nsfw|erotic\w*|sex|sexy|jav|bokep|hentai|playboy|dorcel|redlight|brazzers|xvideos|xhamster|penthouse|softcore|hardcore|onlyfans|camgirls?|naughty|milf|fetish|dewasa|stripclub|vivid|bangbros|hustler|private\s+tv|blue\s+hustler|vod\s+porn|for\s+adults)\b|(?:^|[\s\[\(\-_\|/])(?:18\+|\+18)(?:$|[\s\]\)\-_\|/]))"""
-)
-
-fun isAdultCategoryOrTitle(category: String, name: String = ""): Boolean {
-    return ADULT_CONTENT_REGEX.containsMatchIn("$category $name")
+enum class MediaType {
+    LIVE,
+    MOVIE,
+    SERIES
 }
+
+enum class PlayerMode {
+    NONE,
+    SPLIT,
+    FLOATING,
+    FULLSCREEN
+}
+
+enum class AppLanguage(val code: String) {
+    ID("id"),
+    EN("en")
+}
+
+enum class AppIconOption(
+    val key: String,
+    val label: String,
+    val aliasActivity: String,
+    @DrawableRes val previewRes: Int
+) {
+    OBSIDIAN("obsidian", "Obsidian", "com.ylowstone.tv.IconObsidian", R.drawable.icon_preview_obsidian),
+    CYAN("cyan", "Cyan", "com.ylowstone.tv.IconCyan", R.drawable.icon_preview_cyan),
+    EMERALD("emerald", "Emerald", "com.ylowstone.tv.IconEmerald", R.drawable.icon_preview_emerald),
+    AMBER("amber", "Amber", "com.ylowstone.tv.IconAmber", R.drawable.icon_preview_amber),
+    VIOLET("violet", "Violet", "com.ylowstone.tv.IconViolet", R.drawable.icon_preview_violet),
+    ROSE("rose", "Rose", "com.ylowstone.tv.IconRose", R.drawable.icon_preview_rose),
+    COBALT("cobalt", "Cobalt", "com.ylowstone.tv.IconCobalt", R.drawable.icon_preview_cobalt),
+    CRIMSON("crimson", "Crimson", "com.ylowstone.tv.IconCrimson", R.drawable.icon_preview_crimson),
+    TEAL("teal", "Teal", "com.ylowstone.tv.IconTeal", R.drawable.icon_preview_teal),
+    GOLD("gold", "Gold", "com.ylowstone.tv.IconGold", R.drawable.icon_preview_gold),
+    ICE("ice", "Ice", "com.ylowstone.tv.IconIce", R.drawable.icon_preview_ice),
+    PLASMA("plasma", "Plasma", "com.ylowstone.tv.IconPlasma", R.drawable.icon_preview_plasma);
+
+    companion object {
+        fun fromKey(key: String?): AppIconOption =
+            entries.firstOrNull { it.key == key } ?: OBSIDIAN
+    }
+}
+
+data class AppSettings(
+    val hasSeenWelcome: Boolean = false,
+    val hasSelectedMode: Boolean = false,
+    val deviceMode: DeviceMode = DeviceMode.SMARTPHONE,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val accentPreset: AccentPreset = AccentPreset.PIXEL_FOG,
+    val bufferProfile: BufferProfile = BufferProfile.BALANCED,
+    val preferredSubtitleLang: String = "id",
+    val autoSubtitleEnabled: Boolean = true,
+    val appIcon: AppIconOption = AppIconOption.OBSIDIAN,
+    val language: AppLanguage = AppLanguage.ID,
+    val favoriteViewMode: FavoriteViewMode = FavoriteViewMode.GRID,
+    val showPlayerGestures: Boolean = true,
+    val streamFormat: StreamFormat = StreamFormat.AUTO,
+    val pinCode: String = "1234",
+    val use24HourClock: Boolean = true,
+    val preferExternalPlayer: Boolean = false
+)
 
 data class PlaylistProfile(
     val id: Long = 0L,
     val name: String,
     val type: PlaylistType,
-    val url: String = "",
+    val url: String,
     val username: String = "",
     val password: String = "",
     val userAgent: String = "",
@@ -78,67 +125,51 @@ data class PlaylistProfile(
     val colorIndex: Int = 0,
     val lastUpdated: Long = 0L
 ) {
+    fun buildShareableLink(format: StreamFormat): String {
+        val cleanBase = url.trim().trimEnd('/')
+        return when (type) {
+            PlaylistType.XTREAM -> {
+                val u = username.trim()
+                val p = password.trim()
+                val ext = if (format == StreamFormat.AUTO) "m3u8" else format.ext
+                "$cleanBase/get.php?username=$u&password=$p&type=m3u_plus&output=$ext"
+            }
+            PlaylistType.M3U, PlaylistType.DIRECT -> cleanBase
+        }
+    }
+
+    fun buildMaskedLink(format: StreamFormat): String {
+        val cleanBase = url.trim().trimEnd('/')
+        return when (type) {
+            PlaylistType.XTREAM -> {
+                val ext = if (format == StreamFormat.AUTO) "m3u8" else format.ext
+                "$cleanBase/get.php?username=***&password=***&type=m3u_plus&output=$ext"
+            }
+            PlaylistType.M3U, PlaylistType.DIRECT -> cleanBase
+        }
+    }
+
+    fun matchesLiveCategoryFilter(categoryName: String): Boolean {
+        if (isAdultCategoryOrTitle(categoryName)) return false
+        if (liveCategories.isEmpty()) return true
+        return liveCategories.any { it.equals(categoryName.trim(), ignoreCase = true) }
+    }
+
     fun matchesCategoryFilter(categoryName: String, mediaType: MediaType): Boolean {
-        val rules = when (mediaType) {
+        if (isAdultCategoryOrTitle(categoryName)) return false
+        val allowList = when (mediaType) {
             MediaType.LIVE -> liveCategories
             MediaType.MOVIE -> movieCategories
             MediaType.SERIES -> seriesCategories
         }
-        if (rules.isEmpty()) return true
-        val cat = categoryName.trim().lowercase()
-        if (cat.isEmpty()) return false
-        for (rule in rules) {
-            val r = rule.trim().lowercase()
-            if (r.isEmpty()) continue
-            if (cat == r) return true
-            if (cat.length > r.length && cat.startsWith(r)) {
-                val afterChar = cat[r.length]
-                if (!afterChar.isLetterOrDigit()) return true
-            }
-            var idx = cat.indexOf(r)
-            while (idx >= 0) {
-                val leftOk = idx == 0 || !cat[idx - 1].isLetter()
-                val rightIdx = idx + r.length
-                val rightOk = rightIdx >= cat.length || !cat[rightIdx].isLetter()
-                if (leftOk && rightOk && idx == 0) return true
-                if (leftOk && rightOk && (r == "vip" || r.length > 2)) return true
-                idx = cat.indexOf(r, idx + 1)
-            }
-        }
-        return false
-    }
-
-    fun matchesLiveCategoryFilter(categoryName: String): Boolean =
-        matchesCategoryFilter(categoryName, MediaType.LIVE)
-
-    fun buildShareableLink(format: StreamFormat = StreamFormat.HLS): String {
-        return when (type) {
-            PlaylistType.XTREAM -> {
-                val base = url.trim().trimEnd('/')
-                val out = if (format == StreamFormat.HLS) "m3u8" else "ts"
-                "$base/get.php?username=$username&password=$password&type=m3u_plus&output=$out"
-            }
-            PlaylistType.M3U -> url.trim()
-            PlaylistType.DIRECT -> url.trim()
-        }
-    }
-
-    fun buildMaskedLink(format: StreamFormat = StreamFormat.HLS): String {
-        return when (type) {
-            PlaylistType.XTREAM -> {
-                val base = url.trim().trimEnd('/')
-                val out = if (format == StreamFormat.HLS) "m3u8" else "ts"
-                val maskedPass = if (password.isEmpty()) "" else "•".repeat(password.length.coerceAtMost(10))
-                "$base/get.php?username=$username&password=$maskedPass&type=m3u_plus&output=$out"
-            }
-            else -> url.trim()
-        }
+        if (allowList.isEmpty()) return true
+        return allowList.any { it.equals(categoryName.trim(), ignoreCase = true) }
     }
 }
 
 data class ChannelItem(
     val id: Long = 0L,
-    val playlistId: Long,
+    val playlistId: Long = 0L,
     val streamId: String = "",
     val name: String,
     val category: String,
@@ -148,19 +179,17 @@ data class ChannelItem(
     val containerExtension: String = "",
     val rating: String = "",
     val isFavorite: Boolean = false,
-    val lastWatchedAt: Long = 0L
+    val lastWatched: Long = 0L
 ) {
     fun isAdultContent(): Boolean = isAdultCategoryOrTitle(category, name)
 }
 
 data class TaggedChannel(
     val channel: ChannelItem,
-    val playlistName: String,
-    val positionMs: Long = 0L,
-    val durationMs: Long = 0L
+    val playlistName: String
 )
 
-data class CategoryInfo(
+data class CategoryCount(
     val name: String,
     val count: Int
 )
@@ -172,21 +201,6 @@ data class EpisodeItem(
     val title: String,
     val streamUrl: String,
     val plot: String = ""
-)
-
-data class AppSettings(
-    val hasSeenWelcome: Boolean = false,
-    val hasSelectedMode: Boolean = false,
-    val deviceMode: DeviceMode = DeviceMode.SMARTPHONE,
-    val themeMode: ThemeMode = ThemeMode.AMOLED,
-    val appIcon: AppIconOption = AppIconOption.OBSIDIAN,
-    val language: AppLanguage = AppLanguage.ID,
-    val favoriteViewMode: FavoriteViewMode = FavoriteViewMode.GRID,
-    val showPlayerGestures: Boolean = true,
-    val streamFormat: StreamFormat = StreamFormat.HLS,
-    val pinCode: String = "1234",
-    val use24HourClock: Boolean = true,
-    val preferExternalPlayer: Boolean = false
 )
 
 data class UpdateInfo(
@@ -202,3 +216,16 @@ data class AdminAuthResult(
     val role: String,
     val playlists: List<PlaylistProfile>
 )
+
+private val ADULT_KEYWORD_REGEX = Regex(
+    pattern = """\b(xxx|porn|nsfw|adult|erotic|sex|hentai|cam4|chaturbate|stripchat|onlyfans|brazzers|xvideos|xnxx|pornhub|redtube|youporn|18\+|21\+|plus\s*18|dewasa|bokep)\b""",
+    options = setOf(RegexOption.IGNORE_CASE)
+)
+
+fun isAdultCategoryOrTitle(vararg texts: String?): Boolean {
+    for (t in texts) {
+        if (t.isNullOrBlank()) continue
+        if (ADULT_KEYWORD_REGEX.containsMatchIn(t)) return true
+    }
+    return false
+}
