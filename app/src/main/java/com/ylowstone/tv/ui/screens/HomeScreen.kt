@@ -6,7 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +17,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -38,15 +38,12 @@ import com.ylowstone.tv.ui.theme.LocalYlowColors
 @Composable
 fun HomeScreen(
     activePlaylist: PlaylistProfile,
-    allPlaylists: List<PlaylistProfile>,
     counts: Map<MediaType, Int>,
     favourites: List<TaggedChannel>,
     history: List<TaggedChannel>,
     favoriteViewMode: FavoriteViewMode,
     strings: AppStrings,
     isTvMode: Boolean,
-    onSwitchPlaylist: (PlaylistProfile) -> Unit,
-    onOpenPlaylistManager: () -> Unit,
     onOpenSection: (MediaType) -> Unit,
     onOpenSearch: () -> Unit,
     onChangeFavoriteViewMode: (FavoriteViewMode) -> Unit,
@@ -55,6 +52,7 @@ fun HomeScreen(
 ) {
     val c = LocalYlowColors.current
     var historyExpanded by rememberSaveable { mutableStateOf(false) }
+    var favouritesExpanded by rememberSaveable { mutableStateOf(false) }
 
     val favColumns = if (isTvMode) 3 else 2
     val favGridRows = remember(favourites, favColumns) { favourites.chunked(favColumns) }
@@ -64,10 +62,10 @@ fun HomeScreen(
             .fillMaxSize()
             .background(c.bg)
             .statusBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ---- Top Header: Logo Banner YlowstoneTV • + Tombol Cari & Profil ----
+        // ---- Top Header: Logo Banner YlowstoneTV • + Nama Playlist Aktif | Cari & Profil ----
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -89,7 +87,7 @@ fun HomeScreen(
                             painter = painterResource(id = R.drawable.ylowstone_wordmark),
                             contentDescription = "YlowstoneTV",
                             contentScale = ContentScale.FillHeight,
-                            modifier = Modifier.height(24.dp)
+                            modifier = Modifier.height(25.dp)
                         )
                     }
                     Spacer(Modifier.height(5.dp))
@@ -141,8 +139,9 @@ fun HomeScreen(
             }
         }
 
-        // ---- Section 1: 3 Kotak Besar Utama (TV, FILM, SERI) ----
+        // ---- Section 1: 3 Kotak Besar Utama (TV, FILM, SERI) — Elemen Paling Mencolok di Beranda ----
         item {
+            Spacer(Modifier.height(2.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -177,151 +176,19 @@ fun HomeScreen(
             }
         }
 
-        // ---- Section 2: Playlist Tersimpan ----
+        // ---- Section 2: Riwayat Tontonan (Bisa Show & Hide) ----
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionHeaderRow(
-                    title = strings.myPlaylists,
-                    actionLabel = strings.managePlaylists,
-                    onAction = onOpenPlaylistManager
-                )
-
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(allPlaylists, key = { it.id }) { pl ->
-                        val active = pl.id == activePlaylist.id
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(if (active) c.accentContainer else c.surface)
-                                .border(
-                                    width = if (active) 1.5.dp else 1.dp,
-                                    color = if (active) c.accent else c.glassBorder,
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                                .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
-                                .glossyPressPill(16f)
-                                .clickable { onSwitchPlaylist(pl) }
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(30.dp)
-                                    .clip(CircleShape)
-                                    .background(if (active) c.accent else c.surfaceElevated),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = pl.name.take(2).uppercase(),
-                                    color = if (active) c.onAccent else c.textPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = pl.name,
-                                    color = if (active) c.accent else c.textPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1
-                                )
-                                Text(pl.type.name, color = c.textSecondary, fontSize = 10.sp)
-                            }
-                        }
-                    }
-
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(c.surface)
-                                .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
-                                .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
-                                .glossyPressPill(16f)
-                                .clickable(onClick = onOpenPlaylistManager)
-                                .padding(horizontal = 14.dp, vertical = 13.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Rounded.Add, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
-                            Text(strings.addPlaylist, color = c.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            }
-        }
-
-        // ---- Section 3: Riwayat Tontonan (Bisa Dibuka & Ditutup) ----
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(c.surface)
-                    .border(
-                        width = 1.dp,
-                        color = if (historyExpanded) c.accent.copy(alpha = 0.55f) else c.glassBorder,
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                    .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
-                    .clickable { historyExpanded = !historyExpanded }
-                    .padding(horizontal = 14.dp, vertical = 13.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        Icons.Rounded.History,
-                        contentDescription = null,
-                        tint = if (historyExpanded) c.accent else c.textSecondary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = strings.watchHistory,
-                        color = c.textPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (history.isNotEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(c.surfaceElevated)
-                                .padding(horizontal = 7.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = history.size.toString(),
-                                color = c.textSecondary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = if (historyExpanded) strings.closeWatchHistory else strings.openWatchHistory,
-                        color = c.accent,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Icon(
-                        imageVector = if (historyExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                        contentDescription = null,
-                        tint = c.accent,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
+            CollapsibleSectionBar(
+                icon = Icons.Rounded.History,
+                title = strings.watchHistory,
+                count = history.size,
+                expanded = historyExpanded,
+                expandLabel = strings.openWatchHistory,
+                collapseLabel = strings.closeWatchHistory,
+                accentWhenCollapsed = false,
+                isTvMode = isTvMode,
+                onToggle = { historyExpanded = !historyExpanded }
+            )
         }
 
         if (historyExpanded) {
@@ -403,146 +270,234 @@ fun HomeScreen(
             }
         }
 
-        // ---- Section 4: Saluran Favorit (Langsung Kotak / Daftar, Tanpa Geser Horizontal) ----
+        // ---- Section 3: Saluran Favorit (Bisa Show & Hide + Kotak / Daftar) ----
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
-                    Text(strings.favouriteChannels, color = c.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    if (favourites.isNotEmpty()) {
-                        Text("(${favourites.size})", color = c.textSecondary, fontSize = 13.sp)
+            CollapsibleSectionBar(
+                icon = Icons.Rounded.Favorite,
+                title = strings.favouriteChannels,
+                count = favourites.size,
+                expanded = favouritesExpanded,
+                expandLabel = strings.openFavourites,
+                collapseLabel = strings.closeFavourites,
+                accentWhenCollapsed = true,
+                isTvMode = isTvMode,
+                onToggle = { favouritesExpanded = !favouritesExpanded }
+            )
+        }
+
+        if (favouritesExpanded) {
+            if (favourites.isEmpty()) {
+                item { EmptyHintCard(Icons.Rounded.FavoriteBorder, strings.noFavouritesYet) }
+            } else {
+                // Switch cepat Kotak / Daftar (tersinkron otomatis dengan Pengaturan)
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(c.surface)
+                                .border(1.dp, c.glassBorder, RoundedCornerShape(10.dp))
+                                .padding(3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            FavoriteModeToggleChip(
+                                icon = Icons.Rounded.GridView,
+                                label = strings.viewModeGrid,
+                                selected = favoriteViewMode == FavoriteViewMode.GRID,
+                                onClick = { onChangeFavoriteViewMode(FavoriteViewMode.GRID) }
+                            )
+                            FavoriteModeToggleChip(
+                                icon = Icons.Rounded.ViewList,
+                                label = strings.viewModeList,
+                                selected = favoriteViewMode == FavoriteViewMode.LIST,
+                                onClick = { onChangeFavoriteViewMode(FavoriteViewMode.LIST) }
+                            )
+                        }
                     }
                 }
 
-                // Switch cepat Kotak / Daftar (tersinkron otomatis dengan Pengaturan)
-                Row(
+                if (favoriteViewMode == FavoriteViewMode.GRID) {
+                    items(favGridRows, key = { row -> "fav_grid_${row.first().channel.id}" }) { rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            rowItems.forEach { tagged ->
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(c.surface)
+                                        .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
+                                        .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
+                                        .glossyPressPill(16f)
+                                        .clickable { onPlayTaggedChannel(tagged, favourites) }
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        ChannelLogoBox(tagged.channel.logoUrl, 40.dp, corner = 10.dp)
+                                        Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
+                                    }
+                                    Text(
+                                        text = tagged.channel.name,
+                                        color = c.textPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        lineHeight = 16.sp
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(c.accentContainer)
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = tagged.playlistName,
+                                            color = c.accent,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                            repeat(favColumns - rowItems.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                } else {
+                    items(favourites, key = { "fav_list_${it.channel.id}" }) { tagged ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(c.surface)
+                                .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                                .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
+                                .glossyPressPill(14f)
+                                .clickable { onPlayTaggedChannel(tagged, favourites) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            ChannelLogoBox(tagged.channel.logoUrl, 36.dp, corner = 8.dp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = tagged.channel.name,
+                                    color = c.textPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = "${tagged.playlistName} • ${tagged.channel.category}",
+                                    color = c.textSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CollapsibleSectionBar(
+    icon: ImageVector,
+    title: String,
+    count: Int,
+    expanded: Boolean,
+    expandLabel: String,
+    collapseLabel: String,
+    accentWhenCollapsed: Boolean,
+    isTvMode: Boolean,
+    onToggle: () -> Unit
+) {
+    val c = LocalYlowColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(c.surface)
+            .border(
+                width = 1.dp,
+                color = if (expanded) c.accent.copy(alpha = 0.55f) else c.glassBorder,
+                shape = RoundedCornerShape(16.dp)
+            )
+            .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (expanded || accentWhenCollapsed) c.accent else c.textSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = title,
+                color = c.textPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+            if (count > 0) {
+                Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(c.surface)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(10.dp))
-                        .padding(3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(c.surfaceElevated)
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
                 ) {
-                    FavoriteModeToggleChip(
-                        icon = Icons.Rounded.GridView,
-                        label = strings.viewModeGrid,
-                        selected = favoriteViewMode == FavoriteViewMode.GRID,
-                        onClick = { onChangeFavoriteViewMode(FavoriteViewMode.GRID) }
-                    )
-                    FavoriteModeToggleChip(
-                        icon = Icons.Rounded.ViewList,
-                        label = strings.viewModeList,
-                        selected = favoriteViewMode == FavoriteViewMode.LIST,
-                        onClick = { onChangeFavoriteViewMode(FavoriteViewMode.LIST) }
+                    Text(
+                        text = count.toString(),
+                        color = c.textSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
         }
 
-        if (favourites.isEmpty()) {
-            item { EmptyHintCard(Icons.Rounded.FavoriteBorder, strings.noFavouritesYet) }
-        } else if (favoriteViewMode == FavoriteViewMode.GRID) {
-            items(favGridRows, key = { row -> "fav_grid_${row.first().channel.id}" }) { rowItems ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    rowItems.forEach { tagged ->
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(c.surface)
-                                .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
-                                .tvFocusBorder(isTvMode, RoundedCornerShape(16.dp))
-                                .glossyPressPill(16f)
-                                .clickable { onPlayTaggedChannel(tagged, favourites) }
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                ChannelLogoBox(tagged.channel.logoUrl, 40.dp, corner = 10.dp)
-                                Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
-                            }
-                            Text(
-                                text = tagged.channel.name,
-                                color = c.textPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                lineHeight = 16.sp
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(c.accentContainer)
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = tagged.playlistName,
-                                    color = c.accent,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                    repeat(favColumns - rowItems.size) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-        } else {
-            items(favourites, key = { "fav_list_${it.channel.id}" }) { tagged ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(c.surface)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                        .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
-                        .glossyPressPill(14f)
-                        .clickable { onPlayTaggedChannel(tagged, favourites) }
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    ChannelLogoBox(tagged.channel.logoUrl, 36.dp, corner = 8.dp)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = tagged.channel.name,
-                            color = c.textPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = "${tagged.playlistName} • ${tagged.channel.category}",
-                            color = c.textSecondary,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
-                }
-            }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = if (expanded) collapseLabel else expandLabel,
+                color = c.accent,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Icon(
+                imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                contentDescription = null,
+                tint = c.accent,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
@@ -580,25 +535,6 @@ private fun FavoriteModeToggleChip(
 }
 
 @Composable
-private fun SectionHeaderRow(title: String, actionLabel: String, onAction: () -> Unit) {
-    val c = LocalYlowColors.current
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(title, color = c.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Text(
-            text = actionLabel,
-            color = c.accent,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.clickable(onClick = onAction).padding(4.dp)
-        )
-    }
-}
-
-@Composable
 private fun MainCategoryHeroCard(
     title: String,
     count: Int,
@@ -609,55 +545,82 @@ private fun MainCategoryHeroCard(
     modifier: Modifier = Modifier
 ) {
     val c = LocalYlowColors.current
-    val bg = if (featured) c.accent else c.surface
     val fg = if (featured) c.onAccent else c.textPrimary
-    val subFg = if (featured) c.onAccent.copy(alpha = 0.80f) else c.textSecondary
+    val subFg = if (featured) c.onAccent.copy(alpha = 0.85f) else c.textSecondary
+    val cardHeight = if (isTvMode) 204.dp else 178.dp
+
+    val bgBrush = if (featured) {
+        Brush.verticalGradient(
+            colors = listOf(c.accent, c.accent.copy(alpha = 0.82f))
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(c.surfaceElevated, c.surface)
+        )
+    }
 
     Column(
         modifier = modifier
-            .height(114.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(bg)
-            .border(1.2.dp, if (featured) c.accent else c.glassBorder, RoundedCornerShape(20.dp))
-            .tvFocusBorder(isTvMode, RoundedCornerShape(20.dp))
-            .glossyPressPill(20f)
+            .height(cardHeight)
+            .clip(RoundedCornerShape(24.dp))
+            .background(bgBrush)
+            .border(
+                width = if (featured) 1.6.dp else 1.2.dp,
+                color = if (featured) c.accent else c.glassBorder,
+                shape = RoundedCornerShape(24.dp)
+            )
+            .tvFocusBorder(isTvMode, RoundedCornerShape(24.dp))
+            .glossyPressPill(24f)
             .clickable(onClick = onClick)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+            .padding(horizontal = 12.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
+        // Icon badge besar di atas-tengah
+        Box(
+            modifier = Modifier
+                .size(if (isTvMode) 64.dp else 56.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(if (featured) Color.Black.copy(alpha = 0.16f) else c.accentContainer),
+            contentAlignment = Alignment.Center
         ) {
             Icon(
-                icon,
+                imageVector = icon,
                 contentDescription = title,
                 tint = if (featured) fg else c.accent,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(if (isTvMode) 36.dp else 32.dp)
+            )
+        }
+
+        // Judul besar & jumlah item di bagian bawah
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = title,
+                color = fg,
+                fontSize = if (isTvMode) 22.sp else 18.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.8.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (featured) Color.Black.copy(alpha = 0.16f) else c.surfaceElevated)
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (featured) Color.Black.copy(alpha = 0.18f) else c.bg.copy(alpha = 0.55f))
+                    .padding(horizontal = 9.dp, vertical = 3.dp)
             ) {
                 Text(
                     text = formatCompactCount(count),
                     color = subFg,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
                 )
             }
         }
-        Text(
-            text = title,
-            color = fg,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 0.4.sp,
-            maxLines = 1
-        )
     }
 }
 

@@ -98,6 +98,7 @@ fun YlowstoneApp(
     var loadingMessage by remember { mutableStateOf("") }
 
     var showProfileDropdown by remember { mutableStateOf(false) }
+    var showBackToHomeDialog by remember { mutableStateOf(false) }
     var quickUpdateDialogInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var lastBackPressTime by remember { mutableLongStateOf(0L) }
 
@@ -498,6 +499,9 @@ fun YlowstoneApp(
 
     BackHandler(enabled = stage != AppStage.SPLASH) {
         when {
+            showBackToHomeDialog -> {
+                showBackToHomeDialog = false
+            }
             playerMode == PlayerMode.FULLSCREEN -> {
                 saveCurrentVodProgress(refreshHome = true)
                 playerMode = PlayerMode.FLOATING
@@ -521,13 +525,17 @@ fun YlowstoneApp(
             }
             stage == AppStage.SETTINGS -> stage = returnStageAfterSettings
             stage == AppStage.WORKSPACE -> {
-                if (activeTab != MainTab.HOME) {
-                    if (activeTab == MainTab.LIVE && activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
-                        playerMode = PlayerMode.FLOATING
+                when (activeTab) {
+                    MainTab.LIVE, MainTab.MOVIES, MainTab.SERIES -> {
+                        // Tetap stay di daftar channel/kategori saat ini, tampilkan konfirmasi Kembali Beranda
+                        showBackToHomeDialog = true
                     }
-                    activeTab = MainTab.HOME
-                } else {
-                    handleDoubleBackExit()
+                    MainTab.SEARCH -> {
+                        activeTab = MainTab.HOME
+                    }
+                    MainTab.HOME -> {
+                        handleDoubleBackExit()
+                    }
                 }
             }
             stage == AppStage.PLAYLISTS -> {
@@ -726,24 +734,12 @@ fun YlowstoneApp(
                                 when (currentTab) {
                                     MainTab.HOME -> HomeScreen(
                                         activePlaylist = pl,
-                                        allPlaylists = playlists,
                                         counts = activeCounts,
                                         favourites = homeFavourites,
                                         history = homeHistory,
                                         favoriteViewMode = settings.favoriteViewMode,
                                         strings = strings,
                                         isTvMode = isTvMode,
-                                        onSwitchPlaylist = { picked ->
-                                            val counts = repo.db.getCountsByMediaType(picked.id)
-                                            if (counts.values.sum() == 0) syncAndEnter(picked, null, enterAfter = true)
-                                            else openWorkspace(picked)
-                                        },
-                                        onOpenPlaylistManager = {
-                                            if (activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
-                                                playerMode = PlayerMode.FLOATING
-                                            }
-                                            stage = AppStage.PLAYLISTS
-                                        },
                                         onOpenSection = { type ->
                                             activeTab = when (type) {
                                                 MediaType.LIVE -> MainTab.LIVE
@@ -1009,6 +1005,48 @@ fun YlowstoneApp(
                     onTracksModified = { tracksVersion++ }
                 )
             }
+        }
+
+        // Konfirmasi Kembali Beranda saat menekan gestur kembali di TV / FILM / SERI
+        if (showBackToHomeDialog) {
+            val c = LocalYlowColors.current
+            AlertDialog(
+                onDismissRequest = { showBackToHomeDialog = false },
+                containerColor = c.surface,
+                title = {
+                    Text(
+                        text = strings.returnHomeTitle,
+                        color = c.textPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Text(
+                        text = strings.returnHomeBody,
+                        color = c.textSecondary,
+                        fontSize = 14.sp
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showBackToHomeDialog = false
+                            if (activeTab == MainTab.LIVE && activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
+                                playerMode = PlayerMode.FLOATING
+                            }
+                            activeTab = MainTab.HOME
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent)
+                    ) {
+                        Text(strings.yesBtn, color = c.onAccent, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showBackToHomeDialog = false }) {
+                        Text(strings.noBtn, color = c.textSecondary, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            )
         }
 
         // Quick Update Dialog
