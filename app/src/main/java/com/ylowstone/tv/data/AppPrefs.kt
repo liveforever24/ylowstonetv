@@ -24,8 +24,9 @@ class AppPrefs(context: Context) {
             hasSeenWelcome = prefs.getBoolean("has_seen_welcome", false),
             hasSelectedMode = prefs.getBoolean("has_selected_mode", false),
             deviceMode = runCatching { DeviceMode.valueOf(prefs.getString("device_mode", "SMARTPHONE")!!) }.getOrDefault(DeviceMode.SMARTPHONE),
-            themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "SYSTEM")!!) }.getOrDefault(ThemeMode.SYSTEM),
-            accentPreset = AccentPreset.fromKey(prefs.getString("accent_preset", "pixel_fog")),
+            themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "AMOLED")!!) }.getOrDefault(ThemeMode.AMOLED),
+            accentPreset = AccentPreset.fromKey(prefs.getString("accent_preset", "amber_sunstone")),
+            loadingAnimStyle = LoadingAnimStyle.fromKey(prefs.getString("loading_anim_style", "moto_boomerang")),
             appIcon = AppIconOption.fromKey(prefs.getString("app_icon", "obsidian")),
             language = resolvedLang,
             favoriteViewMode = runCatching { FavoriteViewMode.valueOf(prefs.getString("favorite_view_mode", "GRID")!!) }.getOrDefault(FavoriteViewMode.GRID),
@@ -47,6 +48,7 @@ class AppPrefs(context: Context) {
             .putString("device_mode", s.deviceMode.name)
             .putString("theme_mode", s.themeMode.name)
             .putString("accent_preset", s.accentPreset.key)
+            .putString("loading_anim_style", s.loadingAnimStyle.key)
             .putString("app_icon", s.appIcon.key)
             .putString("language", s.language.name)
             .putString("favorite_view_mode", s.favoriteViewMode.name)

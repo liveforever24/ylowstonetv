@@ -27,35 +27,35 @@ data class YlowColors(
     val accentContainer: Color
 )
 
-// Default Google Pixel "Fog" palette on Pure Black AMOLED
+// Default Ylowstone Signature: Pure Black AMOLED + Smoked Olive-Charcoal + Amber Sunstone
 val LocalYlowColors = staticCompositionLocalOf {
     YlowColors(
         isDark = true,
         bg = Color(0xFF000000),
-        surface = Color(0xFF141618),
-        surfaceElevated = Color(0xFF1D2125),
-        navBarBg = Color(0xFF121416),
-        glassBorder = Color(0xFF23282D),
-        textPrimary = Color(0xFFFFFFFF),
-        textSecondary = Color(0xFF9AA3AB),
-        accent = Color(0xFFB5C8D6),
-        onAccent = Color(0xFF0B1116),
-        accentContainer = Color(0xFF202B33)
+        surface = Color(0xFF121512),
+        surfaceElevated = Color(0xFF1A1E19),
+        navBarBg = Color(0xFF101210),
+        glassBorder = Color(0xFF272B24),
+        textPrimary = Color(0xFFF5F1E8),
+        textSecondary = Color(0xFFA0A59B),
+        accent = Color(0xFFE89D3C),
+        onAccent = Color(0xFF140D02),
+        accentContainer = Color(0xFF2B2110)
     )
 }
 
 fun accentSwatchColor(preset: AccentPreset): Color = when (preset) {
+    AccentPreset.AMBER_SUNSTONE -> Color(0xFFE89D3C)
     AccentPreset.PIXEL_FOG -> Color(0xFFB5C8D6)
     AccentPreset.OBSIDIAN_CRIMSON -> Color(0xFFFA2D48)
     AccentPreset.HYDROGEN_ICE -> Color(0xFF38BDF8)
     AccentPreset.EMERALD_STUDIO -> Color(0xFF10B981)
-    AccentPreset.AMBER_SUNSTONE -> Color(0xFFF59E0B)
 }
 
 @Composable
 fun YlowstoneTheme(
     themeMode: ThemeMode,
-    accentPreset: AccentPreset = AccentPreset.PIXEL_FOG,
+    accentPreset: AccentPreset = AccentPreset.AMBER_SUNSTONE,
     content: @Composable () -> Unit
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -67,32 +67,35 @@ fun YlowstoneTheme(
 
     val (accent, onAccent, accentContainer) = if (isDark) {
         when (accentPreset) {
+            AccentPreset.AMBER_SUNSTONE -> Triple(Color(0xFFE89D3C), Color(0xFF140D02), Color(0xFF2B2110))
             AccentPreset.PIXEL_FOG -> Triple(Color(0xFFB5C8D6), Color(0xFF0B1116), Color(0xFF202B33))
             AccentPreset.OBSIDIAN_CRIMSON -> Triple(Color(0xFFFA2D48), Color(0xFFFFFFFF), Color(0xFF36121A))
             AccentPreset.HYDROGEN_ICE -> Triple(Color(0xFF38BDF8), Color(0xFF07131C), Color(0xFF102A3A))
             AccentPreset.EMERALD_STUDIO -> Triple(Color(0xFF10B981), Color(0xFF041610), Color(0xFF0E2D22))
-            AccentPreset.AMBER_SUNSTONE -> Triple(Color(0xFFF59E0B), Color(0xFF1A1002), Color(0xFF332308))
         }
     } else {
         when (accentPreset) {
+            AccentPreset.AMBER_SUNSTONE -> Triple(Color(0xFFC97B16), Color(0xFFFFFFFF), Color(0xFFFEF3C7))
             AccentPreset.PIXEL_FOG -> Triple(Color(0xFF526A7A), Color(0xFFFFFFFF), Color(0xFFDCE5EC))
             AccentPreset.OBSIDIAN_CRIMSON -> Triple(Color(0xFFD91E3A), Color(0xFFFFFFFF), Color(0xFFFCE4E8))
             AccentPreset.HYDROGEN_ICE -> Triple(Color(0xFF0284C7), Color(0xFFFFFFFF), Color(0xFFE0F2FE))
             AccentPreset.EMERALD_STUDIO -> Triple(Color(0xFF059669), Color(0xFFFFFFFF), Color(0xFFD1FAE5))
-            AccentPreset.AMBER_SUNSTONE -> Triple(Color(0xFFD97706), Color(0xFFFFFFFF), Color(0xFFFEF3C7))
         }
     }
+
+    val isSignature = accentPreset == AccentPreset.AMBER_SUNSTONE
 
     val ylow = if (isDark) {
         YlowColors(
             isDark = true,
             bg = Color(0xFF000000),
-            surface = Color(0xFF141618),
-            surfaceElevated = Color(0xFF1D2125),
-            navBarBg = Color(0xFF121416),
-            glassBorder = Color(0xFF23282D),
-            textPrimary = Color(0xFFFFFFFF),
-            textSecondary = Color(0xFF9AA3AB),
+            // Sentuhan smoked olive-green super samar pada Ylowstone Signature (senada aura splash screen)
+            surface = if (isSignature) Color(0xFF121512) else Color(0xFF141618),
+            surfaceElevated = if (isSignature) Color(0xFF1A1E19) else Color(0xFF1D2125),
+            navBarBg = if (isSignature) Color(0xFF101210) else Color(0xFF121416),
+            glassBorder = if (isSignature) Color(0xFF272C24) else Color(0xFF23282D),
+            textPrimary = if (isSignature) Color(0xFFF6F2EA) else Color(0xFFFFFFFF),
+            textSecondary = if (isSignature) Color(0xFFA0A69B) else Color(0xFF9AA3AB),
             accent = accent,
             onAccent = onAccent,
             accentContainer = accentContainer
@@ -100,20 +103,19 @@ fun YlowstoneTheme(
     } else {
         YlowColors(
             isDark = false,
-            bg = Color(0xFFF5F7FA),
+            bg = Color(0xFFF5F6F4),
             surface = Color(0xFFFFFFFF),
-            surfaceElevated = Color(0xFFE8EDF2),
+            surfaceElevated = Color(0xFFEAECE8),
             navBarBg = Color(0xFFFFFFFF),
-            glassBorder = Color(0xFFD8DFE5),
-            textPrimary = Color(0xFF111417),
-            textSecondary = Color(0xFF5D6770),
+            glassBorder = Color(0xFFD8DDD6),
+            textPrimary = Color(0xFF121512),
+            textSecondary = Color(0xFF5D655E),
             accent = accent,
             onAccent = onAccent,
             accentContainer = accentContainer
         )
     }
 
-    // Refined minimalist geometric sans hierarchy
     val typography = Typography(
         headlineLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 26.sp, letterSpacing = (-0.5).sp),
         headlineMedium = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 21.sp, letterSpacing = (-0.4).sp),

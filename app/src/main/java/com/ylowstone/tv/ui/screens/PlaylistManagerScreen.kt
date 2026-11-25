@@ -38,7 +38,9 @@ import androidx.compose.ui.unit.sp
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.PlaylistProfile
 import com.ylowstone.tv.model.PlaylistType
+import com.ylowstone.tv.model.LoadingAnimStyle
 import com.ylowstone.tv.model.StreamFormat
+import com.ylowstone.tv.ui.components.BoomerangLoadingIndicator
 import com.ylowstone.tv.ui.components.ProfileYBadgeButton
 import com.ylowstone.tv.ui.components.YlowstoneLogoBadge
 import com.ylowstone.tv.ui.components.glossyPressPill
@@ -65,6 +67,7 @@ fun PlaylistManagerScreen(
     isTvMode: Boolean,
     isLoading: Boolean,
     loadingMessage: String,
+    loadingAnimStyle: LoadingAnimStyle = LoadingAnimStyle.MOTOROLA_BOOMERANG,
     onOpenPlaylist: (PlaylistProfile) -> Unit,
     onSavePlaylist: (PlaylistProfile, Uri?) -> Unit,
     onRefreshPlaylist: (PlaylistProfile) -> Unit,
@@ -318,7 +321,7 @@ fun PlaylistManagerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    CircularProgressIndicator(color = c.accent)
+                    BoomerangLoadingIndicator(style = loadingAnimStyle, size = 62.dp)
                     Text(
                         text = loadingMessage.ifBlank { strings.loadingPlaylist },
                         color = c.textPrimary,

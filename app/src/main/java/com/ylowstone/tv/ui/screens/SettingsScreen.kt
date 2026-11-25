@@ -35,6 +35,7 @@ import com.ylowstone.tv.BuildConfig
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.*
+import com.ylowstone.tv.ui.components.BoomerangLoadingIndicator
 import com.ylowstone.tv.ui.components.PinDialog
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import com.ylowstone.tv.ui.theme.accentSwatchColor
@@ -176,6 +177,28 @@ fun SettingsScreen(
                         }
                     }
                 }
+
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider(color = c.glassBorder)
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(strings.loadingAnimTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    BoomerangLoadingIndicator(style = settings.loadingAnimStyle, size = 34.dp)
+                }
+                Spacer(Modifier.height(8.dp))
+                SegmentedChoiceRow(
+                    options = listOf(
+                        LoadingAnimStyle.MOTOROLA_BOOMERANG to strings.loadingAnimMoto,
+                        LoadingAnimStyle.YLLOWSTONE_EMBER to strings.loadingAnimAmber,
+                        LoadingAnimStyle.AURORA_EMERALD to strings.loadingAnimAurora
+                    ),
+                    selected = settings.loadingAnimStyle,
+                    onSelect = { onUpdateSettings(settings.copy(loadingAnimStyle = it)) }
+                )
             }
 
             // 2. Tampilan Saluran Favorit di Beranda (Kotak / Daftar)

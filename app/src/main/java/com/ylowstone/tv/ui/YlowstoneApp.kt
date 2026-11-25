@@ -41,6 +41,7 @@ import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.data.SubtitleFetcher
 import com.ylowstone.tv.i18n.stringsFor
 import com.ylowstone.tv.model.*
+import com.ylowstone.tv.ui.components.BoomerangLoadingIndicator
 import com.ylowstone.tv.ui.components.ChannelLongPressDialog
 import com.ylowstone.tv.ui.components.MainTab
 import com.ylowstone.tv.ui.components.ProfileQuickDropdown
@@ -744,6 +745,7 @@ fun YlowstoneApp(
                         isTvMode = isTvMode,
                         isLoading = isLoading,
                         loadingMessage = loadingMessage,
+                        loadingAnimStyle = settings.loadingAnimStyle,
                         onOpenPlaylist = { profile ->
                             val counts = repo.db.getCountsByMediaType(profile.id)
                             if (counts.values.sum() == 0) syncAndEnter(profile, null, enterAfter = true)
@@ -1032,7 +1034,7 @@ fun YlowstoneApp(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        CircularProgressIndicator(color = c.accent, strokeWidth = 3.dp)
+                        BoomerangLoadingIndicator(style = settings.loadingAnimStyle, size = 64.dp)
                         Text(
                             text = loadingMessage.ifBlank { strings.loadingPlaylist },
                             color = c.textPrimary,

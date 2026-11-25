@@ -84,7 +84,7 @@ fun HomeScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(15.dp)
     ) {
-        // ---- Top Header: Logo Banner YlowstoneTV • + Nama Playlist Aktif | Cari & Profil ----
+        // ---- Top Header: Logo Banner YlowstoneTV • + Nama Playlist Aktif | Logo Y Polos Melayang (Tanpa Search) ----
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -131,68 +131,46 @@ fun HomeScreen(
                     }
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(c.surface)
-                            .border(1.dp, c.glassBorder, CircleShape)
-                            .tvFocusBorder(isTvMode, CircleShape)
-                            .clickable(onClick = onOpenSearch),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Rounded.Search,
-                            contentDescription = strings.search,
-                            tint = c.textPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    ProfileYBadgeButton(isTvMode = isTvMode, onClick = onOpenProfileMenu)
-                }
+                // v2.3.2: Ikon search dihapus; hanya huruf Y polos melayang persis splash screen
+                ProfileYBadgeButton(isTvMode = isTvMode, onClick = onOpenProfileMenu)
             }
         }
 
-        // ---- Section 1: Adaptive Bento Grid (Ponsel) vs Hero-Rail Horizontal (TV) ----
+        // ---- Section 1: Bento Asimetris (Kiri: TV Tinggi Penuh | Kanan: FILM Atas + SERI Bawah) ----
         item {
             Spacer(Modifier.height(2.dp))
             if (!isTvMode) {
-                // Ponsel: Bento Grid Asimetris (TV lebar penuh di atas, FILM & SERI berdampingan di bawah)
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    BentoWideLiveCard(
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Kiri: Kartu TV Tinggi (Dominan Splash Screen: Smoked Amber–Bronze + Olive Glow)
+                    BentoTallLiveCard(
                         title = strings.liveTv,
                         count = counts[MediaType.LIVE] ?: 0,
                         subtitle = strings.channelsCount,
-                        onClick = { onOpenSection(MediaType.LIVE) }
+                        onClick = { onOpenSection(MediaType.LIVE) },
+                        modifier = Modifier.weight(1f)
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+
+                    // Kanan: 2 Kartu Tumpuk (FILM di atas, SERI di bawah)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        MainCategoryHeroCard(
+                        BentoStackedMediaCard(
                             title = strings.movies,
                             count = counts[MediaType.MOVIE] ?: 0,
                             icon = Icons.Rounded.Movie,
-                            featured = false,
-                            isTvMode = false,
-                            compactHeight = true,
-                            onClick = { onOpenSection(MediaType.MOVIE) },
-                            modifier = Modifier.weight(1f)
+                            isOliveVariant = true,
+                            onClick = { onOpenSection(MediaType.MOVIE) }
                         )
-                        MainCategoryHeroCard(
+                        BentoStackedMediaCard(
                             title = strings.series,
                             count = counts[MediaType.SERIES] ?: 0,
                             icon = Icons.Rounded.Tv,
-                            featured = false,
-                            isTvMode = false,
-                            compactHeight = true,
-                            onClick = { onOpenSection(MediaType.SERIES) },
-                            modifier = Modifier.weight(1f)
+                            isOliveVariant = false,
+                            onClick = { onOpenSection(MediaType.SERIES) }
                         )
                     }
                 }
@@ -206,9 +184,8 @@ fun HomeScreen(
                         title = strings.liveTv,
                         count = counts[MediaType.LIVE] ?: 0,
                         icon = Icons.Rounded.LiveTv,
-                        featured = true,
+                        variant = 0,
                         isTvMode = true,
-                        compactHeight = false,
                         onClick = { onOpenSection(MediaType.LIVE) },
                         modifier = Modifier.weight(1f)
                     )
@@ -216,9 +193,8 @@ fun HomeScreen(
                         title = strings.movies,
                         count = counts[MediaType.MOVIE] ?: 0,
                         icon = Icons.Rounded.Movie,
-                        featured = false,
+                        variant = 1,
                         isTvMode = true,
-                        compactHeight = false,
                         onClick = { onOpenSection(MediaType.MOVIE) },
                         modifier = Modifier.weight(1f)
                     )
@@ -226,9 +202,8 @@ fun HomeScreen(
                         title = strings.series,
                         count = counts[MediaType.SERIES] ?: 0,
                         icon = Icons.Rounded.Tv,
-                        featured = false,
+                        variant = 2,
                         isTvMode = true,
-                        compactHeight = false,
                         onClick = { onOpenSection(MediaType.SERIES) },
                         modifier = Modifier.weight(1f)
                     )
@@ -607,79 +582,200 @@ fun HomeScreen(
     }
 }
 
+/**
+ * Kartu TV tinggi di sisi kiri (Ponsel Bento) — palet dominan Splash Screen:
+ * Smoked Amber-Bronze + sentuhan olive gelap samar + titik live merah khas wordmark YlowstoneTV.
+ */
 @Composable
-private fun BentoWideLiveCard(
+private fun BentoTallLiveCard(
     title: String,
     count: Int,
     subtitle: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val c = LocalYlowColors.current
-    val bgBrush = Brush.horizontalGradient(
-        colors = listOf(c.accent, c.accent.copy(alpha = 0.78f))
-    )
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(104.dp)
+    val bgBrush = if (c.isDark) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFF2B200E), // Smoked Amber Sunstone glow
+                Color(0xFF171811), // Subtle Smoked Olive mid-tone
+                Color(0xFF10110D)  // Deep Obsidian base
+            )
+        )
+    } else {
+        Brush.verticalGradient(colors = listOf(c.accent, c.accent.copy(alpha = 0.84f)))
+    }
+    val borderColor = if (c.isDark) c.accent.copy(alpha = 0.55f) else c.accent
+    val titleColor = if (c.isDark) Color(0xFFF6EFE2) else c.onAccent
+    val subColor = if (c.isDark) c.accent else c.onAccent.copy(alpha = 0.88f)
+
+    Column(
+        modifier = modifier
+            .height(232.dp)
             .clip(RoundedCornerShape(24.dp))
             .background(bgBrush)
-            .border(1.4.dp, c.accent, RoundedCornerShape(24.dp))
+            .border(1.4.dp, borderColor, RoundedCornerShape(24.dp))
             .glossyPressPill(24f)
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(16.dp),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
         ) {
             Box(
                 modifier = Modifier
                     .size(54.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(alpha = 0.16f)),
+                    .background(if (c.isDark) c.accent.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.15f))
+                    .border(1.dp, if (c.isDark) c.accent.copy(alpha = 0.40f) else Color.Transparent, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Rounded.LiveTv,
                     contentDescription = title,
-                    tint = c.onAccent,
+                    tint = if (c.isDark) c.accent else c.onAccent,
                     modifier = Modifier.size(30.dp)
                 )
             }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = title,
-                    color = c.onAccent,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 0.6.sp
-                )
+
+            // Live red dot accent matching YlowstoneTV • wordmark
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFEF4444))
+            )
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = title,
+                color = titleColor,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.6.sp
+            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (c.isDark) c.accent.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.16f))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
                 Text(
                     text = "${formatCompactCount(count)} $subtitle",
-                    color = c.onAccent.copy(alpha = 0.85f),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    style = LocalTextStyle.current.copy(fontFeatureSettings = "tnum")
+                    color = subColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    style = LocalTextStyle.current.copy(fontFeatureSettings = "tnum"),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.ArrowForward,
-                contentDescription = null,
-                tint = c.onAccent,
-                modifier = Modifier.size(20.dp)
+    }
+}
+
+/**
+ * Kartu tumpuk kanan (FILM & SERI) dengan campuran warna aura Splash Screen:
+ * - FILM (isOliveVariant = true): Smoked Olive-Green samar + Champagne Titanium
+ * - SERI (isOliveVariant = false): Warm Obsidian Charcoal + Amber Sand
+ */
+@Composable
+private fun BentoStackedMediaCard(
+    title: String,
+    count: Int,
+    icon: ImageVector,
+    isOliveVariant: Boolean,
+    onClick: () -> Unit
+) {
+    val c = LocalYlowColors.current
+    val bgBrush = if (c.isDark) {
+        if (isOliveVariant) {
+            Brush.linearGradient(
+                colors = listOf(Color(0xFF151E16), Color(0xFF0E120F)) // Smoked Olive-Green samar
+            )
+        } else {
+            Brush.linearGradient(
+                colors = listOf(Color(0xFF1E1A14), Color(0xFF101110)) // Warm Bronze-Charcoal
             )
         }
+    } else {
+        Brush.verticalGradient(colors = listOf(c.surfaceElevated, c.surface))
+    }
+
+    val accentTone = if (c.isDark) {
+        if (isOliveVariant) Color(0xFF8FB89A) else Color(0xFFE0B473)
+    } else {
+        c.accent
+    }
+    val borderCol = if (c.isDark) {
+        if (isOliveVariant) Color(0xFF28382B) else Color(0xFF332A1E)
+    } else {
+        c.glassBorder
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(110.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(bgBrush)
+            .border(1.2.dp, borderCol, RoundedCornerShape(22.dp))
+            .glossyPressPill(22f)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(accentTone.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = accentTone,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (c.isDark) Color.Black.copy(alpha = 0.35f) else c.bg.copy(alpha = 0.65f))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = formatCompactCount(count),
+                    color = accentTone,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    style = LocalTextStyle.current.copy(fontFeatureSettings = "tnum"),
+                    maxLines = 1
+                )
+            }
+        }
+
+        Text(
+            text = title,
+            color = c.textPrimary,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 0.5.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -832,60 +928,54 @@ private fun MainCategoryHeroCard(
     title: String,
     count: Int,
     icon: ImageVector,
-    featured: Boolean,
+    variant: Int,
     isTvMode: Boolean,
-    compactHeight: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val c = LocalYlowColors.current
-    val fg = if (featured) c.onAccent else c.textPrimary
-    val subFg = if (featured) c.onAccent.copy(alpha = 0.85f) else c.textSecondary
-    val cardHeight = when {
-        isTvMode -> 196.dp
-        compactHeight -> 136.dp
-        else -> 178.dp
-    }
-
-    val bgBrush = if (featured) {
-        Brush.verticalGradient(
-            colors = listOf(c.accent, c.accent.copy(alpha = 0.82f))
-        )
+    val bgBrush = if (c.isDark) {
+        when (variant) {
+            0 -> Brush.verticalGradient(listOf(Color(0xFF2B200E), Color(0xFF12120D)))
+            1 -> Brush.verticalGradient(listOf(Color(0xFF151E16), Color(0xFF0E120F)))
+            else -> Brush.verticalGradient(listOf(Color(0xFF1E1A14), Color(0xFF101110)))
+        }
     } else {
-        Brush.verticalGradient(
-            colors = listOf(c.surfaceElevated, c.surface)
-        )
+        Brush.verticalGradient(listOf(c.surfaceElevated, c.surface))
     }
+    val accentTone = if (c.isDark) {
+        when (variant) {
+            0 -> c.accent
+            1 -> Color(0xFF8FB89A)
+            else -> Color(0xFFE0B473)
+        }
+    } else c.accent
 
     Column(
         modifier = modifier
-            .height(cardHeight)
+            .height(196.dp)
             .clip(RoundedCornerShape(22.dp))
             .background(bgBrush)
-            .border(
-                width = if (featured) 1.6.dp else 1.2.dp,
-                color = if (featured) c.accent else c.glassBorder,
-                shape = RoundedCornerShape(22.dp)
-            )
+            .border(1.3.dp, accentTone.copy(alpha = 0.45f), RoundedCornerShape(22.dp))
             .tvFocusBorder(isTvMode, RoundedCornerShape(22.dp))
             .glossyPressPill(22f)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 14.dp),
+            .padding(horizontal = 14.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .size(if (isTvMode) 60.dp else 46.dp)
-                .clip(RoundedCornerShape(15.dp))
-                .background(if (featured) Color.Black.copy(alpha = 0.16f) else c.accentContainer),
+                .size(60.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(accentTone.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                tint = if (featured) fg else c.accent,
-                modifier = Modifier.size(if (isTvMode) 34.dp else 26.dp)
+                tint = accentTone,
+                modifier = Modifier.size(34.dp)
             )
         }
 
@@ -895,8 +985,8 @@ private fun MainCategoryHeroCard(
         ) {
             Text(
                 text = title,
-                color = fg,
-                fontSize = if (isTvMode) 22.sp else 17.sp,
+                color = c.textPrimary,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 0.6.sp,
                 maxLines = 1,
@@ -905,12 +995,12 @@ private fun MainCategoryHeroCard(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(9.dp))
-                    .background(if (featured) Color.Black.copy(alpha = 0.18f) else c.bg.copy(alpha = 0.55f))
-                    .padding(horizontal = 9.dp, vertical = 2.dp)
+                    .background(Color.Black.copy(alpha = 0.35f))
+                    .padding(horizontal = 9.dp, vertical = 3.dp)
             ) {
                 Text(
                     text = formatCompactCount(count),
-                    color = subFg,
+                    color = accentTone,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     style = LocalTextStyle.current.copy(fontFeatureSettings = "tnum"),

@@ -9,14 +9,24 @@ enum class AppLanguage { ID, EN }
 enum class FavoriteViewMode { GRID, LIST }
 
 enum class AccentPreset(val key: String, val label: String) {
+    AMBER_SUNSTONE("amber_sunstone", "Ylowstone Signature"),
     PIXEL_FOG("pixel_fog", "Pixel Fog"),
     OBSIDIAN_CRIMSON("obsidian_crimson", "Obsidian Crimson"),
     HYDROGEN_ICE("hydrogen_ice", "Hydrogen Ice"),
-    EMERALD_STUDIO("emerald_studio", "Emerald Studio"),
-    AMBER_SUNSTONE("amber_sunstone", "Amber Sunstone");
+    EMERALD_STUDIO("emerald_studio", "Emerald Studio");
 
     companion object {
-        fun fromKey(k: String?): AccentPreset = entries.firstOrNull { it.key == k } ?: PIXEL_FOG
+        fun fromKey(k: String?): AccentPreset = entries.firstOrNull { it.key == k } ?: AMBER_SUNSTONE
+    }
+}
+
+enum class LoadingAnimStyle(val key: String) {
+    MOTOROLA_BOOMERANG("moto_boomerang"),
+    YLLOWSTONE_EMBER("ylowstone_ember"),
+    AURORA_EMERALD("aurora_emerald");
+
+    companion object {
+        fun fromKey(k: String?): LoadingAnimStyle = entries.firstOrNull { it.key == k } ?: MOTOROLA_BOOMERANG
     }
 }
 
@@ -209,7 +219,8 @@ data class AppSettings(
     val hasSelectedMode: Boolean = false,
     val deviceMode: DeviceMode = DeviceMode.SMARTPHONE,
     val themeMode: ThemeMode = ThemeMode.AMOLED,
-    val accentPreset: AccentPreset = AccentPreset.PIXEL_FOG,
+    val accentPreset: AccentPreset = AccentPreset.AMBER_SUNSTONE,
+    val loadingAnimStyle: LoadingAnimStyle = LoadingAnimStyle.MOTOROLA_BOOMERANG,
     val appIcon: AppIconOption = AppIconOption.OBSIDIAN,
     val language: AppLanguage = AppLanguage.ID,
     val favoriteViewMode: FavoriteViewMode = FavoriteViewMode.GRID,

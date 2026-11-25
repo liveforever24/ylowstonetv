@@ -374,22 +374,20 @@ fun ProfileYBadgeButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val c = LocalYlowColors.current
     Box(
         modifier = modifier
-            .size(38.dp)
+            .size(40.dp)
             .clip(CircleShape)
-            .border(1.5.dp, c.glassBorder, CircleShape)
             .tvFocusBorder(isTvMode, CircleShape)
-            .glossyPressPill(19f)
+            .glossyPressPill(20f)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Image(
-            painter = painterResource(id = R.drawable.profile_y_badge),
+            painter = painterResource(id = R.drawable.ylowstone_y_emblem),
             contentDescription = "Menu",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.size(32.dp)
         )
     }
 }
@@ -428,10 +426,10 @@ fun ProfileQuickDropdown(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Image(
-                painter = painterResource(id = R.drawable.profile_y_badge),
+                painter = painterResource(id = R.drawable.ylowstone_y_emblem),
                 contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(34.dp).clip(CircleShape)
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(32.dp)
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
