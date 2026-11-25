@@ -44,13 +44,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.sin
+import kotlin.math.tanh
 
 /**
  * Splash Screen V4 — Ember Spotlight Curtain
- * Non-skippable, dilengkapi audio intro sintetis halus 1,0 detik.
+ * Non-skippable, dilengkapi audio intro sintetis elegan 1,0 detik (auto-normalized).
  */
 @Composable
 fun SplashOverlayScreen(onFinished: () -> Unit) {
@@ -92,7 +94,7 @@ fun SplashOverlayScreen(onFinished: () -> Unit) {
     )
 
     LaunchedEffect(Unit) {
-        // 0. Audio intro lembut & elegan tepat 1,0 detik
+        // 0. Audio intro hangat & jernih tepat 1,0 detik
         launch(Dispatchers.IO) {
             val track = createEmberIntroAudioTrack()
             if (track != null) {
@@ -234,31 +236,43 @@ private fun createEmberIntroAudioTrack(): AudioTrack? = runCatching {
     val sampleRate = 44100
     val durationSec = 1.0
     val numSamples = (sampleRate * durationSec).toInt()
-    val pcm = ShortArray(numSamples)
+    val raw = DoubleArray(numSamples)
 
-    // Warm cinematic Dmaj9 ember swell — halus, elegan, selesai bersih di 1,0 detik
-    val freqs  = doubleArrayOf(146.83, 220.00, 293.66, 369.99, 440.00, 659.25)
-    val amps   = doubleArrayOf(0.28,   0.22,   0.18,   0.15,   0.11,   0.06)
-    val decays = doubleArrayOf(2.4,    2.8,    3.2,    3.8,    4.4,    5.5)
+    // Warm cinematic Dmaj9 chime — jernih di speaker HP, halus, selesai bersih di 1,0 detik
+    val freqs  = doubleArrayOf(220.00, 293.66, 369.99, 440.00, 554.37, 659.25, 880.00)
+    val amps   = doubleArrayOf(0.26,   0.30,   0.26,   0.28,   0.20,   0.18,   0.12)
+    val decays = doubleArrayOf(1.6,    1.7,    1.9,    2.1,    2.5,    2.9,    3.6)
 
+    var maxAbs = 1e-6
     for (i in 0 until numSamples) {
         val t = i.toDouble() / sampleRate
-        val attack  = if (t < 0.18) 0.5 * (1.0 - cos(PI * t / 0.18)) else 1.0
-        val release = if (t > 0.82) 0.5 * (1.0 + cos(PI * (t - 0.82) / 0.18)) else 1.0
+        val attack  = if (t < 0.08) 0.5 * (1.0 - cos(PI * t / 0.08)) else 1.0
+        val release = if (t > 0.72) 0.5 * (1.0 + cos(PI * (t - 0.72) / 0.28)) else 1.0
 
         var sample = 0.0
         for (k in freqs.indices) {
             sample += amps[k] * exp(-decays[k] * t) * sin(2.0 * PI * freqs[k] * t)
         }
-        val normalized = (sample * attack * release * 0.28).coerceIn(-1.0, 1.0)
-        pcm[i] = (normalized * Short.MAX_VALUE).toInt().toShort()
+        // Soft analog warmth agar terasa penuh tapi tidak pecah
+        val shaped = tanh(sample * 1.35) * attack * release
+        raw[i] = shaped
+        val a = abs(shaped)
+        if (a > maxAbs) maxAbs = a
+    }
+
+    // Normalisasi otomatis ke 92% volume maksimal
+    val pcm = ShortArray(numSamples)
+    val scale = 0.92 / maxAbs
+    for (i in 0 until numSamples) {
+        val v = (raw[i] * scale).coerceIn(-1.0, 1.0)
+        pcm[i] = (v * Short.MAX_VALUE).toInt().toShort()
     }
 
     val track = AudioTrack.Builder()
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .build()
         )
         .setAudioFormat(
@@ -273,5 +287,6 @@ private fun createEmberIntroAudioTrack(): AudioTrack? = runCatching {
         .build()
 
     track.write(pcm, 0, pcm.size)
+    track.setVolume(1.0f)
     track
 }.getOrNull()
