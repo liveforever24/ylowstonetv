@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main ]
     tags: [ 'v*' ]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - '**.md'
   workflow_dispatch:
 
 permissions:
@@ -52,8 +56,9 @@ jobs:
           body: |
             ## YlowstoneTV v${{ env.APP_VERSION }} (by ylowstone)
             - **APK Size:** ${{ env.APK_SIZE }} (R8 code minification & resource shrinking)
-            - **Splash Screen V4 (Ember Spotlight Curtain):** Animasi pembuka native hitam AMOLED murni dengan efek tirai simetris dan audio intro kustom
-            - **Beranda Baru Lebih Ringkas:** Header logo banner YlowstoneTV, 3 kartu utama (TV, Film, Seri) tanpa navbar bawah, dan tombol pencarian cepat di pojok atas
-            - **Riwayat & Favorit Lebih Rapi:** Riwayat tontonan dapat dibuka/ditutup agar layar tidak penuh, serta tampilan saluran favorit model Kotak atau Daftar yang dapat diatur di Pengaturan
-            - **Filter Privasi Beranda:** Menyembunyikan seluruh riwayat tontonan, lanjutkan menonton, dan konten dewasa agar tidak pernah muncul di Beranda
+            - **Ylowstone Signature Bento Home:** Palet warna senada *splash screen* (AMOLED + Smoked Olive & Amber Sunstone), tata letak Bento asimetris (TV kiri tinggi, Film & Seri kanan tumpuk), dan logo `Y` polos melayang tanpa tombol *search*
+            - **Animasi Loading Bumerang (3 Gaya):** Indikator memuat/sync 60fps *native* ala Motorola Edge 60 Fusion (*Bumerang Moto*, *Bumerang Amber*, *Bumerang Aurora*) yang bisa dipilih di Pengaturan
+            - **Menu Tekan Lama 3-in-1 & Kategori Tontonan:** Salin link (preview tersamar), cek status stream (*Aktif / Delay / Mati*), dan kurasi grup tontonan (*Sports*, *Event Pertandingan*, *Daftar Tontonan*) dengan tombol *Show/Hide* di Beranda
+            - **Split-Screen Player & Floating/PiP Minimalis:** Pemutar setengah layar responsif (Ponsel & Android TV) plus jendela mengambang/PiP ringkas 3 kontrol (**Layar Penuh**, **Play/Pause**, **Tutup X**)
+            - **Navigasi & Streaming Lebih Halus:** *Sync* murni 1 playlist aktif, *Back* berjenjang tanpa *pop-up* (posisi scroll kategori tetap nempel), Auto-Subtitle Film/Seri, *Buffer Profile*, dan *Auto-Reconnect* Live TV
           files: dist/*.apk
