@@ -38,7 +38,6 @@ import com.ylowstone.tv.data.ActiveSubtitleSession
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.stringsFor
 import com.ylowstone.tv.model.*
-import com.ylowstone.tv.ui.components.FotMobBottomNavbar
 import com.ylowstone.tv.ui.components.MainTab
 import com.ylowstone.tv.ui.components.ProfileQuickDropdown
 import com.ylowstone.tv.ui.screens.*
@@ -114,7 +113,7 @@ fun YlowstoneApp(
     var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
 
     val sharedPlayer = remember {
-        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.2.8")
+        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.3.0")
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dsFactory))
             .build()
@@ -151,6 +150,7 @@ fun YlowstoneApp(
 
     fun saveCurrentVodProgress(refreshHome: Boolean = false) {
         val cur = activeChannel ?: return
+        if (cur.isAdultContent()) return
         if (cur.mediaType == MediaType.MOVIE || cur.mediaType == MediaType.SERIES) {
             val pos = sharedPlayer.currentPosition.coerceAtLeast(0L)
             val dur = sharedPlayer.duration.coerceAtLeast(0L)
@@ -170,9 +170,10 @@ fun YlowstoneApp(
         else String.format(java.util.Locale.US, "%02d:%02d", m, s)
     }
 
-    // Periodic watch progress saver for Movies & Series (every 3s while playing, plus immediately on pause)
+    // Periodic watch progress saver for general Movies & Series
     LaunchedEffect(activeChannel?.streamUrl, isPlaying) {
         val cur = activeChannel ?: return@LaunchedEffect
+        if (cur.isAdultContent()) return@LaunchedEffect
         val isVod = cur.mediaType == MediaType.MOVIE || cur.mediaType == MediaType.SERIES
         if (!isVod) return@LaunchedEffect
         if (!isPlaying) {
@@ -195,13 +196,15 @@ fun YlowstoneApp(
         }
         activeChannel = ch
         activeQueue = queue.ifEmpty { listOf(ch) }
-        val plName = playlists.firstOrNull { it.id == ch.playlistId }?.name ?: activePlaylist?.name ?: "YlowstoneTV"
-        repo.db.recordWatchHistory(ch, plName)
-        homeDataVersion++
+        if (!ch.isAdultContent()) {
+            val plName = playlists.firstOrNull { it.id == ch.playlistId }?.name ?: activePlaylist?.name ?: "YlowstoneTV"
+            repo.db.recordWatchHistory(ch, plName)
+            homeDataVersion++
+        }
 
         if (!sameStream) {
             val isVod = ch.mediaType == MediaType.MOVIE || ch.mediaType == MediaType.SERIES
-            val resumeMs = if (isVod) {
+            val resumeMs = if (isVod && !ch.isAdultContent()) {
                 val saved = repo.db.getWatchProgress(ch.streamUrl)
                 if (saved != null && saved.first > 5_000L && (saved.second <= 0L || saved.first < (saved.second * 95L) / 100L)) {
                     saved.first
@@ -349,7 +352,6 @@ fun YlowstoneApp(
         }
     }
 
-    // Apply server playlists from Vercel & auto-sync primary playlist
     fun applyAdminPlaylists(remotePlaylists: List<PlaylistProfile>, pin: String) {
         prefs.setAdminSession(true, pin)
         prefs.setPassedLoginGate(true)
@@ -375,7 +377,6 @@ fun YlowstoneApp(
             savedProfiles.add(toSave.copy(id = savedId))
         }
 
-        // Remove stale old admin playlists that were deleted from Vercel
         for (oldId in oldAdminIds) {
             if (!newAdminIds.contains(oldId)) {
                 repo.db.deletePlaylist(oldId)
@@ -709,14 +710,18 @@ fun YlowstoneApp(
                     if (pl == null) {
                         stage = AppStage.PLAYLISTS
                     } else {
-                        Column(modifier = Modifier.fillMaxSize()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .navigationBarsPadding()
+                        ) {
                             AnimatedContent(
                                 targetState = activeTab,
                                 transitionSpec = {
-                                    fadeIn(tween(260)) togetherWith fadeOut(tween(200))
+                                    fadeIn(tween(240)) togetherWith fadeOut(tween(180))
                                 },
                                 label = "mainTabTransition",
-                                modifier = Modifier.weight(1f).fillMaxWidth()
+                                modifier = Modifier.fillMaxSize()
                             ) { currentTab ->
                                 when (currentTab) {
                                     MainTab.HOME -> HomeScreen(
@@ -725,6 +730,7 @@ fun YlowstoneApp(
                                         counts = activeCounts,
                                         favourites = homeFavourites,
                                         history = homeHistory,
+                                        favoriteViewMode = settings.favoriteViewMode,
                                         strings = strings,
                                         isTvMode = isTvMode,
                                         onSwitchPlaylist = { picked ->
@@ -744,6 +750,14 @@ fun YlowstoneApp(
                                                 MediaType.MOVIE -> MainTab.MOVIES
                                                 MediaType.SERIES -> MainTab.SERIES
                                             }
+                                        },
+                                        onOpenSearch = {
+                                            activeTab = MainTab.SEARCH
+                                        },
+                                        onChangeFavoriteViewMode = { mode ->
+                                            val updated = settings.copy(favoriteViewMode = mode)
+                                            settings = updated
+                                            prefs.saveSettings(updated)
                                         },
                                         onPlayTaggedChannel = { tagged, list ->
                                             launchPlayer(tagged.channel, list.map { it.channel }, isTvMode)
@@ -867,24 +881,12 @@ fun YlowstoneApp(
                                     )
                                 }
                             }
-
-                            FotMobBottomNavbar(
-                                selectedTab = activeTab,
-                                strings = strings,
-                                isTvMode = isTvMode,
-                                onSelectTab = { nextTab ->
-                                    if (activeTab == MainTab.LIVE && nextTab != MainTab.LIVE && activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
-                                        playerMode = PlayerMode.FLOATING
-                                    }
-                                    activeTab = nextTab
-                                }
-                            )
                         }
                     }
                 }
             }
 
-            // Global Sync / Indexing Overlay (when syncing right after Admin Login or from Home)
+            // Global Sync / Indexing Overlay
             if (isLoading && stage != AppStage.PLAYLISTS) {
                 val c = LocalYlowColors.current
                 Box(
@@ -959,7 +961,7 @@ fun YlowstoneApp(
                 )
             }
 
-            // Pure YouTube PiP Floating Mini-Player
+            // Floating Mini-Player
             if (playerMode == PlayerMode.FLOATING && activeChannel != null && stage != AppStage.SPLASH) {
                 DraggableFloatingPlayer(
                     exoPlayer = sharedPlayer,
@@ -976,7 +978,7 @@ fun YlowstoneApp(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
-                        .padding(end = 14.dp, bottom = 74.dp)
+                        .padding(end = 14.dp, bottom = 18.dp)
                 )
             }
 

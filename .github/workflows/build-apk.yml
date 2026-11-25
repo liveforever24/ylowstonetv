@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -51,8 +51,9 @@ jobs:
           name: YlowstoneTV v${{ env.APP_VERSION }}
           body: |
             ## YlowstoneTV v${{ env.APP_VERSION }} (by ylowstone)
-            - **APK Size:** ${{ env.APK_SIZE }} (R8 code minification, resource shrinking & locale optimization — 100% full features & aesthetics intact)
-            - Removed Welcome & Quick Guide replay option from Settings (now shown strictly on fresh install or after Clear Data)
-            - Vercel Admin Login (fixed `YlowstoneTV` username + 4-digit PIN), remote playlist sync & protected credentials
-            - FotMob-inspired flat navigation bar, Google Pixel Fog theme (System / Light / Dark AMOLED), drag-only seekbar & 12 3D App Icons
+            - **APK Size:** ${{ env.APK_SIZE }} (R8 code minification & resource shrinking)
+            - **Splash Screen V4 (Ember Spotlight Curtain):** Animasi pembuka native hitam AMOLED murni dengan efek tirai simetris dan audio intro kustom
+            - **Beranda Baru Lebih Ringkas:** Header logo banner YlowstoneTV, 3 kartu utama (TV, Film, Seri) tanpa navbar bawah, dan tombol pencarian cepat di pojok atas
+            - **Riwayat & Favorit Lebih Rapi:** Riwayat tontonan dapat dibuka/ditutup agar layar tidak penuh, serta tampilan saluran favorit model Kotak atau Daftar yang dapat diatur di Pengaturan
+            - **Filter Privasi Beranda:** Menyembunyikan seluruh riwayat tontonan, lanjutkan menonton, dan konten dewasa agar tidak pernah muncul di Beranda
           files: dist/*.apk

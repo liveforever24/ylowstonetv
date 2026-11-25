@@ -64,12 +64,15 @@ fun SettingsScreen(
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var updateStatusMsg by remember { mutableStateOf("") }
 
-
-
     val themeLabel = when (settings.themeMode) {
         ThemeMode.SYSTEM -> strings.themeSystem
         ThemeMode.LIGHT -> strings.themeLight
         ThemeMode.AMOLED -> strings.themeAmoled
+    }
+
+    val favLayoutLabel = when (settings.favoriteViewMode) {
+        FavoriteViewMode.GRID -> strings.viewModeGrid
+        FavoriteViewMode.LIST -> strings.viewModeList
     }
 
     Column(
@@ -78,7 +81,7 @@ fun SettingsScreen(
             .background(c.bg)
             .systemBarsPadding()
     ) {
-        // ---- FotMob Flat Top Header ----
+        // ---- Top Header ----
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -99,7 +102,7 @@ fun SettingsScreen(
         }
         HorizontalDivider(color = c.glassBorder, thickness = 0.6.dp)
 
-        // ---- FotMob Pure Flat Scrollable Settings List (AMOLED Pure Black / Light White!) ----
+        // ---- Scrollable Settings List ----
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -107,326 +110,328 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 32.dp)
         ) {
-
-
-            // 1. Theme (Strictly System / Light / Dark AMOLED with Google Pixel Fog palette!)
-            run {
-                FotMobSettingsRow(
-                    icon = Icons.Rounded.Contrast,
-                    title = strings.appearanceTheme,
-                    subtitle = themeLabel,
-                    expanded = expandedSection == "THEME",
-                    onClick = { expandedSection = if (expandedSection == "THEME") "" else "THEME" }
-                ) {
-                    SegmentedChoiceRow(
-                        options = listOf(
-                            ThemeMode.SYSTEM to strings.themeSystem,
-                            ThemeMode.LIGHT to strings.themeLight,
-                            ThemeMode.AMOLED to strings.themeAmoled
-                        ),
-                        selected = settings.themeMode,
-                        onSelect = { onUpdateSettings(settings.copy(themeMode = it)) }
-                    )
-                }
+            // 1. Theme
+            YlowSettingsRow(
+                icon = Icons.Rounded.Contrast,
+                title = strings.appearanceTheme,
+                subtitle = themeLabel,
+                expanded = expandedSection == "THEME",
+                onClick = { expandedSection = if (expandedSection == "THEME") "" else "THEME" }
+            ) {
+                SegmentedChoiceRow(
+                    options = listOf(
+                        ThemeMode.SYSTEM to strings.themeSystem,
+                        ThemeMode.LIGHT to strings.themeLight,
+                        ThemeMode.AMOLED to strings.themeAmoled
+                    ),
+                    selected = settings.themeMode,
+                    onSelect = { onUpdateSettings(settings.copy(themeMode = it)) }
+                )
             }
 
-            // 2. Device Mode (Phone / Android TV)
-            run {
-                FotMobSettingsRow(
-                    icon = Icons.Rounded.Devices,
-                    title = strings.deviceMode,
-                    subtitle = if (settings.deviceMode == DeviceMode.TV) strings.androidTv else strings.smartphone,
-                    expanded = expandedSection == "DEVICE",
-                    onClick = { expandedSection = if (expandedSection == "DEVICE") "" else "DEVICE" }
-                ) {
-                    SegmentedChoiceRow(
-                        options = listOf(DeviceMode.SMARTPHONE to strings.smartphone, DeviceMode.TV to strings.androidTv),
-                        selected = settings.deviceMode,
-                        onSelect = { onUpdateSettings(settings.copy(deviceMode = it, hasSelectedMode = true)) }
-                    )
-                }
+            // 2. Tampilan Saluran Favorit di Beranda (Kotak / Daftar)
+            YlowSettingsRow(
+                icon = Icons.Rounded.DashboardCustomize,
+                title = strings.favoriteLayoutTitle,
+                subtitle = favLayoutLabel,
+                expanded = expandedSection == "FAV_LAYOUT",
+                onClick = { expandedSection = if (expandedSection == "FAV_LAYOUT") "" else "FAV_LAYOUT" }
+            ) {
+                SegmentedChoiceRow(
+                    options = listOf(
+                        FavoriteViewMode.GRID to strings.viewModeGrid,
+                        FavoriteViewMode.LIST to strings.viewModeList
+                    ),
+                    selected = settings.favoriteViewMode,
+                    onSelect = { onUpdateSettings(settings.copy(favoriteViewMode = it)) }
+                )
             }
 
-            // 3. 12 Switchable 3D App Icons
-            run {
-                FotMobSettingsRow(
-                    icon = Icons.Rounded.Apps,
-                    title = strings.appIconTitle,
-                    subtitle = settings.appIcon.label,
-                    expanded = expandedSection == "ICONS",
-                    onClick = { expandedSection = if (expandedSection == "ICONS") "" else "ICONS" }
-                ) {
-                    Text(strings.appIconDesc, color = c.textSecondary, fontSize = 12.sp)
-                    Spacer(Modifier.height(10.dp))
-                    val rows = AppIconOption.entries.chunked(4)
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        rows.forEach { rowIcons ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                rowIcons.forEach { iconOpt ->
-                                    val selected = settings.appIcon == iconOpt
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(if (selected) c.accentContainer else c.surface)
-                                            .border(
-                                                width = if (selected) 1.8.dp else 1.dp,
-                                                color = if (selected) c.accent else c.glassBorder,
-                                                shape = RoundedCornerShape(14.dp)
-                                            )
-                                            .clickable {
-                                                if (!selected) {
-                                                    onUpdateSettings(settings.copy(appIcon = iconOpt))
-                                                    Toast.makeText(context, strings.iconSwitchedToast, Toast.LENGTH_SHORT).show()
-                                                    AppIconManager.applyIcon(context, iconOpt)
-                                                }
-                                            }
-                                            .padding(vertical = 8.dp, horizontal = 4.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(5.dp)
-                                    ) {
-                                        Image(
-                                            painter = painterResource(id = iconOpt.previewRes),
-                                            contentDescription = iconOpt.label,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.size(44.dp).clip(CircleShape)
-                                        )
-                                        Text(
-                                            text = iconOpt.label,
-                                            color = if (selected) c.accent else c.textSecondary,
-                                            fontSize = 9.sp,
-                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            // 3. Device Mode (Phone / TV)
+            YlowSettingsRow(
+                icon = Icons.Rounded.Devices,
+                title = strings.deviceMode,
+                subtitle = if (settings.deviceMode == DeviceMode.TV) strings.androidTv else strings.smartphone,
+                expanded = expandedSection == "DEVICE",
+                onClick = { expandedSection = if (expandedSection == "DEVICE") "" else "DEVICE" }
+            ) {
+                SegmentedChoiceRow(
+                    options = listOf(DeviceMode.SMARTPHONE to strings.smartphone, DeviceMode.TV to strings.androidTv),
+                    selected = settings.deviceMode,
+                    onSelect = { onUpdateSettings(settings.copy(deviceMode = it, hasSelectedMode = true)) }
+                )
             }
 
-            // 4. Category PIN Management (4-digit PIN + Reset PIN + Locked Categories!)
-            run {
-                FotMobSettingsRow(
-                    icon = Icons.Rounded.Lock,
-                    title = strings.privacyStorageSection,
-                    subtitle = "${strings.parentalPin} (${lockedCategories.size})",
-                    expanded = expandedSection == "PIN",
-                    onClick = { expandedSection = if (expandedSection == "PIN") "" else "PIN" }
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        Button(
-                            onClick = { showChangePin = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1.3f)
-                        ) {
-                            Icon(Icons.Rounded.Pin, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(strings.setOrChangePin, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
-                        OutlinedButton(
-                            onClick = { showResetPinConfirm = true },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(0.9f)
-                        ) {
-                            Icon(Icons.Rounded.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(strings.resetPinBtn, fontSize = 11.sp, maxLines = 1)
-                        }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-                    Text(strings.lockedCategoriesTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(6.dp))
-
-                    if (lockedCategories.isEmpty()) {
-                        Text(strings.noLockedCategories, color = c.textSecondary.copy(alpha = 0.7f), fontSize = 12.sp)
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            lockedCategories.sorted().forEach { catName ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(c.surface)
-                                        .border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
-                                        .padding(horizontal = 12.dp, vertical = 9.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(Icons.Rounded.Lock, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
-                                        Text(catName, color = c.textPrimary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                    TextButton(
-                                        onClick = { unlockTargetCat = catName },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(strings.unlockCategory, color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedButton(
-                        onClick = {
-                            context.imageLoader.memoryCache?.clear()
-                            Toast.makeText(context, strings.cacheCleared, Toast.LENGTH_SHORT).show()
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Rounded.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(strings.clearCache, fontSize = 12.sp)
-                    }
-                }
-            }
-
-            // 5. Playback & Streaming
-            run {
-                FotMobSettingsRow(
-                    icon = Icons.Rounded.PlayCircleOutline,
-                    title = strings.playbackSection,
-                    subtitle = settings.streamFormat.label,
-                    expanded = expandedSection == "PLAYBACK",
-                    onClick = { expandedSection = if (expandedSection == "PLAYBACK") "" else "PLAYBACK" }
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(strings.playerGestures, color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            Text(strings.playerGesturesDesc, color = c.textSecondary, fontSize = 11.sp)
-                        }
-                        Switch(
-                            checked = settings.showPlayerGestures,
-                            onCheckedChange = { onUpdateSettings(settings.copy(showPlayerGestures = it)) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = c.onAccent,
-                                checkedTrackColor = c.accent
-                            )
-                        )
-                    }
-                    HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(strings.preferExternalTitle, color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            Text(strings.preferExternalDesc, color = c.textSecondary, fontSize = 11.sp)
-                        }
-                        Switch(
-                            checked = settings.preferExternalPlayer,
-                            onCheckedChange = { onUpdateSettings(settings.copy(preferExternalPlayer = it)) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = c.onAccent,
-                                checkedTrackColor = c.accent
-                            )
-                        )
-                    }
-                    HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
-                    Text(strings.streamFormatTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(6.dp))
-                    SegmentedChoiceRow(
-                        options = listOf(StreamFormat.HLS to StreamFormat.HLS.label, StreamFormat.TS to StreamFormat.TS.label),
-                        selected = settings.streamFormat,
-                        onSelect = { onUpdateSettings(settings.copy(streamFormat = it)) }
-                    )
-                }
-            }
-
-            // 6. Language
-            run {
-                FotMobSettingsRow(
-                    icon = Icons.Rounded.Language,
-                    title = strings.appLanguage,
-                    subtitle = if (settings.language == AppLanguage.ID) "Bahasa Indonesia" else "English (US)",
-                    expanded = expandedSection == "LANGUAGE",
-                    onClick = { expandedSection = if (expandedSection == "LANGUAGE") "" else "LANGUAGE" }
-                ) {
-                    SegmentedChoiceRow(
-                        options = listOf(AppLanguage.ID to "Bahasa Indonesia", AppLanguage.EN to "English (US)"),
-                        selected = settings.language,
-                        onSelect = { onUpdateSettings(settings.copy(language = it)) }
-                    )
-                }
-            }
-
-            // 7. Check Updates
-            run {
-                FotMobSettingsRow(
-                    icon = Icons.Rounded.SystemUpdate,
-                    title = strings.checkUpdates,
-                    subtitle = "v${BuildConfig.VERSION_NAME}",
-                    expanded = expandedSection == "UPDATE",
-                    onClick = { expandedSection = if (expandedSection == "UPDATE") "" else "UPDATE" }
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("${strings.currentVersion}: v${BuildConfig.VERSION_NAME}", color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            if (updateStatusMsg.isNotEmpty()) {
-                                Text(updateStatusMsg, color = c.accent, fontSize = 11.sp)
-                            }
-                        }
-                        Button(
-                            enabled = !checkingUpdate,
-                            onClick = {
-                                checkingUpdate = true
-                                updateStatusMsg = strings.checkingUpdate
-                                scope.launch {
-                                    val res = repo.checkGitHubUpdate()
-                                    checkingUpdate = false
-                                    res.onSuccess { info ->
-                                        updateInfo = info
-                                        updateStatusMsg = if (info.hasUpdate) "${strings.updateAvailable}: v${info.latestVersion}" else strings.upToDate
-                                    }.onFailure { err ->
-                                        updateStatusMsg = "Error: ${err.message}"
-                                    }
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(strings.checkUpdates, color = c.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    updateInfo?.takeIf { it.hasUpdate }?.let { info ->
-                        Spacer(Modifier.height(10.dp))
-                        Button(
-                            onClick = {
-                                val url = info.apkDownloadUrl.ifBlank { info.htmlUrl }
-                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+            // 4. 12 Switchable 3D App Icons
+            YlowSettingsRow(
+                icon = Icons.Rounded.Apps,
+                title = strings.appIconTitle,
+                subtitle = settings.appIcon.label,
+                expanded = expandedSection == "ICONS",
+                onClick = { expandedSection = if (expandedSection == "ICONS") "" else "ICONS" }
+            ) {
+                Text(strings.appIconDesc, color = c.textSecondary, fontSize = 12.sp)
+                Spacer(Modifier.height(10.dp))
+                val rows = AppIconOption.entries.chunked(4)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    rows.forEach { rowIcons ->
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Icon(Icons.Rounded.CloudDownload, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("${strings.downloadUpdateBrowser} (v${info.latestVersion})", color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            rowIcons.forEach { iconOpt ->
+                                val selected = settings.appIcon == iconOpt
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(if (selected) c.accentContainer else c.surface)
+                                        .border(
+                                            width = if (selected) 1.8.dp else 1.dp,
+                                            color = if (selected) c.accent else c.glassBorder,
+                                            shape = RoundedCornerShape(14.dp)
+                                        )
+                                        .clickable {
+                                            if (!selected) {
+                                                onUpdateSettings(settings.copy(appIcon = iconOpt))
+                                                Toast.makeText(context, strings.iconSwitchedToast, Toast.LENGTH_SHORT).show()
+                                                AppIconManager.applyIcon(context, iconOpt)
+                                            }
+                                        }
+                                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = iconOpt.previewRes),
+                                        contentDescription = iconOpt.label,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(44.dp).clip(CircleShape)
+                                    )
+                                    Text(
+                                        text = iconOpt.label,
+                                        color = if (selected) c.accent else c.textSecondary,
+                                        fontSize = 9.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                         }
+                    }
+                }
+            }
+
+            // 5. Category PIN Management
+            YlowSettingsRow(
+                icon = Icons.Rounded.Lock,
+                title = strings.privacyStorageSection,
+                subtitle = "${strings.parentalPin} (${lockedCategories.size})",
+                expanded = expandedSection == "PIN",
+                onClick = { expandedSection = if (expandedSection == "PIN") "" else "PIN" }
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { showChangePin = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1.3f)
+                    ) {
+                        Icon(Icons.Rounded.Pin, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(strings.setOrChangePin, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                    OutlinedButton(
+                        onClick = { showResetPinConfirm = true },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(0.9f)
+                    ) {
+                        Icon(Icons.Rounded.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(strings.resetPinBtn, fontSize = 11.sp, maxLines = 1)
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Text(strings.lockedCategoriesTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+
+                if (lockedCategories.isEmpty()) {
+                    Text(strings.noLockedCategories, color = c.textSecondary.copy(alpha = 0.7f), fontSize = 12.sp)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        lockedCategories.sorted().forEach { catName ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(c.surface)
+                                    .border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Rounded.Lock, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
+                                    Text(catName, color = c.textPrimary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                TextButton(
+                                    onClick = { unlockTargetCat = catName },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(strings.unlockCategory, color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = {
+                        context.imageLoader.memoryCache?.clear()
+                        Toast.makeText(context, strings.cacheCleared, Toast.LENGTH_SHORT).show()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Rounded.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(strings.clearCache, fontSize = 12.sp)
+                }
+            }
+
+            // 6. Playback & Streaming
+            YlowSettingsRow(
+                icon = Icons.Rounded.PlayCircleOutline,
+                title = strings.playbackSection,
+                subtitle = settings.streamFormat.label,
+                expanded = expandedSection == "PLAYBACK",
+                onClick = { expandedSection = if (expandedSection == "PLAYBACK") "" else "PLAYBACK" }
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(strings.playerGestures, color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(strings.playerGesturesDesc, color = c.textSecondary, fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = settings.showPlayerGestures,
+                        onCheckedChange = { onUpdateSettings(settings.copy(showPlayerGestures = it)) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = c.onAccent,
+                            checkedTrackColor = c.accent
+                        )
+                    )
+                }
+                HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(strings.preferExternalTitle, color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(strings.preferExternalDesc, color = c.textSecondary, fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = settings.preferExternalPlayer,
+                        onCheckedChange = { onUpdateSettings(settings.copy(preferExternalPlayer = it)) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = c.onAccent,
+                            checkedTrackColor = c.accent
+                        )
+                    )
+                }
+                HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
+                Text(strings.streamFormatTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                SegmentedChoiceRow(
+                    options = listOf(StreamFormat.HLS to StreamFormat.HLS.label, StreamFormat.TS to StreamFormat.TS.label),
+                    selected = settings.streamFormat,
+                    onSelect = { onUpdateSettings(settings.copy(streamFormat = it)) }
+                )
+            }
+
+            // 7. Language
+            YlowSettingsRow(
+                icon = Icons.Rounded.Language,
+                title = strings.appLanguage,
+                subtitle = if (settings.language == AppLanguage.ID) "Bahasa Indonesia" else "English (US)",
+                expanded = expandedSection == "LANGUAGE",
+                onClick = { expandedSection = if (expandedSection == "LANGUAGE") "" else "LANGUAGE" }
+            ) {
+                SegmentedChoiceRow(
+                    options = listOf(AppLanguage.ID to "Bahasa Indonesia", AppLanguage.EN to "English (US)"),
+                    selected = settings.language,
+                    onSelect = { onUpdateSettings(settings.copy(language = it)) }
+                )
+            }
+
+            // 8. Check Updates
+            YlowSettingsRow(
+                icon = Icons.Rounded.SystemUpdate,
+                title = strings.checkUpdates,
+                subtitle = "v${BuildConfig.VERSION_NAME}",
+                expanded = expandedSection == "UPDATE",
+                onClick = { expandedSection = if (expandedSection == "UPDATE") "" else "UPDATE" }
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("${strings.currentVersion}: v${BuildConfig.VERSION_NAME}", color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        if (updateStatusMsg.isNotEmpty()) {
+                            Text(updateStatusMsg, color = c.accent, fontSize = 11.sp)
+                        }
+                    }
+                    Button(
+                        enabled = !checkingUpdate,
+                        onClick = {
+                            checkingUpdate = true
+                            updateStatusMsg = strings.checkingUpdate
+                            scope.launch {
+                                val res = repo.checkGitHubUpdate()
+                                checkingUpdate = false
+                                res.onSuccess { info ->
+                                    updateInfo = info
+                                    updateStatusMsg = if (info.hasUpdate) "${strings.updateAvailable}: v${info.latestVersion}" else strings.upToDate
+                                }.onFailure { err ->
+                                    updateStatusMsg = "Error: ${err.message}"
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(strings.checkUpdates, color = c.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                updateInfo?.takeIf { it.hasUpdate }?.let { info ->
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = {
+                            val url = info.apkDownloadUrl.ifBlank { info.htmlUrl }
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Rounded.CloudDownload, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("${strings.downloadUpdateBrowser} (v${info.latestVersion})", color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
                 }
             }
@@ -534,7 +539,7 @@ private fun FooterLinkText(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun FotMobSettingsRow(
+private fun YlowSettingsRow(
     icon: ImageVector,
     title: String,
     subtitle: String,

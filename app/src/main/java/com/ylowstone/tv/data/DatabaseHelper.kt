@@ -368,13 +368,15 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         val list = mutableListOf<ChannelItem>()
         readableDatabase.rawQuery(sql, args.toTypedArray()).use { c ->
             while (c.moveToNext()) {
-                list.add(readChannel(c))
+                val ch = readChannel(c)
+                if (specialFilter == "HIST" && ch.isAdultContent()) continue
+                list.add(ch)
             }
         }
         return list
     }
 
-    // ---- Cross-Playlist Home & Search Queries (Respecting PIN-locked categories!) ----
+    // ---- Cross-Playlist Home & Search Queries (Respecting PIN locks & Adult privacy filter) ----
     fun getAllFavoritesAcrossPlaylists(
         lockedByPlaylist: Map<Long, Set<String>>,
         limit: Int = 80
@@ -388,10 +390,11 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             ORDER BY c.last_watched DESC, c.id DESC
             LIMIT ?
         """.trimIndent()
-        readableDatabase.rawQuery(sql, arrayOf((limit * 2).toString())).use { c ->
+        readableDatabase.rawQuery(sql, arrayOf((limit * 4).toString())).use { c ->
             while (c.moveToNext() && list.size < limit) {
                 val ch = readChannel(c)
                 val plName = c.getString(12) ?: ""
+                if (ch.isAdultContent()) continue
                 val locked = lockedByPlaylist[ch.playlistId]
                 if (locked != null && locked.contains(ch.category)) continue
                 list.add(TaggedChannel(ch, plName))
@@ -406,7 +409,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         positionMs: Long = -1L,
         durationMs: Long = -1L
     ) {
-        if (ch.streamUrl.isBlank()) return
+        // Jangan pernah menyimpan riwayat / lanjutkan menonton untuk konten dewasa
+        if (ch.streamUrl.isBlank() || ch.isAdultContent()) return
         val db = writableDatabase
         val now = System.currentTimeMillis()
         var finalPos = if (positionMs >= 0L) positionMs else 0L
@@ -483,19 +487,22 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             ORDER BY h.last_watched DESC
             LIMIT ?
         """.trimIndent()
-        readableDatabase.rawQuery(sql, arrayOf((limit * 2).toString())).use { c ->
+        readableDatabase.rawQuery(sql, arrayOf((limit * 4).toString())).use { c ->
             while (c.moveToNext() && list.size < limit) {
                 val streamUrl = c.getString(0) ?: continue
                 val plId = c.getLong(1)
                 val plName = c.getString(2) ?: ""
+                val chName = c.getString(5) ?: ""
                 val category = c.getString(6) ?: ""
+                // Pagar privasi: sembunyikan seluruh kategori / judul dewasa dari Beranda
+                if (isAdultCategoryOrTitle(category, chName)) continue
                 val locked = lockedByPlaylist[plId]
                 if (locked != null && locked.contains(category)) continue
                 val ch = ChannelItem(
                     id = c.getLong(3),
                     playlistId = plId,
                     streamId = c.getString(4) ?: "",
-                    name = c.getString(5) ?: "",
+                    name = chName,
                     category = category,
                     logoUrl = c.getString(7) ?: "",
                     streamUrl = streamUrl,

@@ -6,6 +6,7 @@ import com.ylowstone.tv.R
 enum class DeviceMode { SMARTPHONE, TV }
 enum class ThemeMode { SYSTEM, LIGHT, AMOLED }
 enum class AppLanguage { ID, EN }
+enum class FavoriteViewMode { GRID, LIST }
 
 enum class AppIconOption(
     val key: String,
@@ -39,6 +40,14 @@ enum class StreamFormat(val ext: String, val label: String) {
 }
 
 enum class PlayerMode { NONE, FULLSCREEN, FLOATING }
+
+private val ADULT_CONTENT_REGEX = Regex(
+    pattern = """(?i)(\b(adults?|porn\w*|xxx|xxl|nsfw|erotic\w*|sex|sexy|jav|bokep|hentai|playboy|dorcel|redlight|brazzers|xvideos|xhamster|penthouse|softcore|hardcore|onlyfans|camgirls?|naughty|milf|fetish|dewasa|stripclub|vivid|bangbros|hustler|private\s+tv|blue\s+hustler|vod\s+porn|for\s+adults)\b|(?:^|[\s\[\(\-_\|/])(?:18\+|\+18)(?:$|[\s\]\)\-_\|/]))"""
+)
+
+fun isAdultCategoryOrTitle(category: String, name: String = ""): Boolean {
+    return ADULT_CONTENT_REGEX.containsMatchIn("$category $name")
+}
 
 data class PlaylistProfile(
     val id: Long = 0L,
@@ -125,7 +134,9 @@ data class ChannelItem(
     val rating: String = "",
     val isFavorite: Boolean = false,
     val lastWatchedAt: Long = 0L
-)
+) {
+    fun isAdultContent(): Boolean = isAdultCategoryOrTitle(category, name)
+}
 
 data class TaggedChannel(
     val channel: ChannelItem,
@@ -155,6 +166,7 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.AMOLED,
     val appIcon: AppIconOption = AppIconOption.OBSIDIAN,
     val language: AppLanguage = AppLanguage.ID,
+    val favoriteViewMode: FavoriteViewMode = FavoriteViewMode.GRID,
     val showPlayerGestures: Boolean = true,
     val streamFormat: StreamFormat = StreamFormat.HLS,
     val pinCode: String = "1234",

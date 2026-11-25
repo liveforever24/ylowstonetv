@@ -27,6 +27,7 @@ class AppPrefs(context: Context) {
             themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", "SYSTEM")!!) }.getOrDefault(ThemeMode.SYSTEM),
             appIcon = AppIconOption.fromKey(prefs.getString("app_icon", "obsidian")),
             language = resolvedLang,
+            favoriteViewMode = runCatching { FavoriteViewMode.valueOf(prefs.getString("favorite_view_mode", "GRID")!!) }.getOrDefault(FavoriteViewMode.GRID),
             showPlayerGestures = prefs.getBoolean("show_gestures", true),
             streamFormat = runCatching { StreamFormat.valueOf(prefs.getString("stream_format", "HLS")!!) }.getOrDefault(StreamFormat.HLS),
             pinCode = prefs.getString("pin_code", "1234") ?: "1234",
@@ -43,6 +44,7 @@ class AppPrefs(context: Context) {
             .putString("theme_mode", s.themeMode.name)
             .putString("app_icon", s.appIcon.key)
             .putString("language", s.language.name)
+            .putString("favorite_view_mode", s.favoriteViewMode.name)
             .putBoolean("show_gestures", s.showPlayerGestures)
             .putString("stream_format", s.streamFormat.name)
             .putString("pin_code", s.pinCode)
