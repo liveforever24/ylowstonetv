@@ -42,9 +42,10 @@ sealed class StabilizerState {
 }
 
 /**
- * Pengendali stabilitas playback universal v1.2 untuk YlowstoneTV.
+ * Pengendali stabilitas playback universal v1.3 untuk YlowstoneTV.
  * Mendukung satu pintu masuk untuk Xtream Codes, URL M3U/M3U8, file lokal,
- * direct .ts, VOD (.mp4/.mkv), DASH (.mpd), link tanpa ekstensi, dan video web.
+ * direct .ts, VOD (.mp4/.mkv), DASH (.mpd), link tanpa ekstensi, dan video web,
+ * lengkap dengan 2-way auto-swap (.m3u8 <-> .ts) anti-loop & cache format per channel.
  */
 class SmartReconnectController(
     private val appContext: Context,
@@ -67,6 +68,7 @@ class SmartReconnectController(
     private var currentProtocol: StreamProtocol = StreamProtocol.AUTO_DETECT
     private var attemptCount: Int = 0
     private var wasRecovering: Boolean = false
+    private var hasSwappedProtocolOnce: Boolean = false
 
     private var activeJob: Job? = null
     private var stabilityResetJob: Job? = null
@@ -75,6 +77,9 @@ class SmartReconnectController(
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_READY) {
+                currentSource?.let { src ->
+                    resolver.confirmWorkingProtocol(src, currentProtocol)
+                }
                 val recovered = wasRecovering
                 wasRecovering = false
                 _state.value = StabilizerState.Playing(
@@ -104,19 +109,34 @@ class SmartReconnectController(
                 return
             }
 
-            // 2. Manifest HLS ditolak -> otomatis fallback ke MPEG-TS untuk Xtream & Direct .m3u8
-            if (source.isLive && currentProtocol == StreamProtocol.HLS_M3U8 && isHlsUnsupportedError(error)) {
-                val newlyMarked = resolver.markHlsUnsupported(source)
-                if (newlyMarked) {
+            // 2. Fallback Live TV 2 arah (.m3u8 <-> .ts), maksimal 1x swap per sesi error (anti-loop)
+            if (source.isLive &&
+                !hasSwappedProtocolOnce &&
+                (currentProtocol == StreamProtocol.HLS_M3U8 || currentProtocol == StreamProtocol.MPEG_TS) &&
+                isProtocolSwapError(error)
+            ) {
+                val swappedProtocol = resolver.swapLiveProtocol(source, currentProtocol)
+                if (swappedProtocol != null) {
+                    hasSwappedProtocolOnce = true
                     wasRecovering = true
+                    val swapReason = when (swappedProtocol) {
+                        StreamProtocol.MPEG_TS -> "Beralih ke mode TS"
+                        StreamProtocol.HLS_M3U8 -> "Beralih ke mode HLS"
+                        else -> "Beralih format aliran"
+                    }
                     launchReconnect(
                         source = source,
-                        delayMs = 300L,
+                        delayMs = PROTOCOL_SWAP_DELAY_MS,
                         countAsAttempt = false,
-                        reason = "Beralih ke mode TS"
+                        reason = swapReason
                     )
                     return
                 }
+            }
+
+            // Jika percobaan swap gagal tanpa pernah READY, bersihkan override agar tidak meracuni cache
+            if (hasSwappedProtocolOnce) {
+                resolver.clearPendingSwap(source)
             }
 
             // 3. Gangguan jaringan atau token redirect kedaluwarsa -> backoff + jitter natural
@@ -167,10 +187,12 @@ class SmartReconnectController(
     ) {
         activeJob?.cancel()
         stabilityResetJob?.cancel()
+        resolver.clearPendingSwap(source)
         currentSource = source
         currentUserAgent = customUserAgent
         attemptCount = 0
         wasRecovering = false
+        hasSwappedProtocolOnce = false
 
         val effectiveDebounce = debounceMs ?: if (source.isLive) ZAPPING_DEBOUNCE_MS else 0L
 
@@ -256,9 +278,11 @@ class SmartReconnectController(
     fun stopStream() {
         activeJob?.cancel()
         stabilityResetJob?.cancel()
+        currentSource?.let { resolver.clearPendingSwap(it) }
         currentSource = null
         attemptCount = 0
         wasRecovering = false
+        hasSwappedProtocolOnce = false
         scope.launch {
             streamMutex.withLock {
                 connectionGuard.releaseActiveStreamCleanly(player, cooldownMs = 0L)
@@ -326,6 +350,7 @@ class SmartReconnectController(
         stabilityResetJob = scope.launch {
             delay(STABLE_PLAYBACK_RESET_MS)
             attemptCount = 0
+            hasSwappedProtocolOnce = false
         }
     }
 
@@ -354,16 +379,18 @@ class SmartReconnectController(
     }
 
     @OptIn(UnstableApi::class)
-    private fun isHlsUnsupportedError(error: PlaybackException): Boolean {
+    private fun isProtocolSwapError(error: PlaybackException): Boolean {
         val code = error.errorCode
         if (code == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ||
             code == PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED ||
-            code == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED
+            code == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+            code == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+            code == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND
         ) {
             return true
         }
         val httpCause = error.cause as? HttpDataSource.InvalidResponseCodeException
-        return httpCause?.responseCode in listOf(404, 415)
+        return httpCause?.responseCode in SWAP_HTTP_STATUS_CODES
     }
 
     @OptIn(UnstableApi::class)
@@ -382,8 +409,10 @@ class SmartReconnectController(
 
     companion object {
         private const val ZAPPING_DEBOUNCE_MS = 400L
+        private const val PROTOCOL_SWAP_DELAY_MS = 300L
         private const val NETWORK_HANDOFF_DELAY_MS = 1_200L
         private const val STABLE_PLAYBACK_RESET_MS = 10_000L
         private const val JITTER_MS = 300L
+        private val SWAP_HTTP_STATUS_CODES = setOf(400, 403, 404, 405, 415, 500, 502, 503)
     }
 }

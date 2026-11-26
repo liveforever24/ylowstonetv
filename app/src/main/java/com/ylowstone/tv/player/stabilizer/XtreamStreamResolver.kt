@@ -22,14 +22,23 @@ data class ResolvedStream(
 )
 
 /**
- * Resolver universal v1.2 untuk semua tipe aliran YlowstoneTV:
+ * Resolver universal v1.3 untuk semua tipe aliran YlowstoneTV:
  * Xtream Codes, URL M3U/M3U8, file lokal, .ts, .mp4/VOD, .mpd, link tanpa ekstensi,
  * serta tautan video web (melalui WebVideoStreamExtractor).
+ *
+ * Upgrade v1.3:
+ * - Mendukung fallback Live TV 2 arah (.m3u8 <-> .ts) untuk Xtream & DirectUrl M3U.
+ * - Menyimpan format yang terbukti berhasil per channel di cache sesi agar klik berikutnya
+ *   langsung memakai format yang cocok.
  */
 class XtreamStreamResolver(
     private val webVideoExtractor: WebVideoStreamExtractor = PassthroughWebVideoExtractor()
 ) {
-    private val tsFallbackKeys = ConcurrentHashMap.newKeySet<String>()
+    // Format yang sudah terbukti berhasil diputar (STATE_READY) per channel pada sesi ini
+    private val confirmedSessionProtocols = ConcurrentHashMap<String, StreamProtocol>()
+
+    // Override sementara saat mencoba swap 2 arah sebelum playback terkonfirmasi siap
+    private val pendingSwapProtocols = ConcurrentHashMap<String, StreamProtocol>()
 
     suspend fun resolve(source: YlowstoneStreamSource): ResolvedStream? {
         return when (source) {
@@ -58,9 +67,12 @@ class XtreamStreamResolver(
             )
         }
 
-        val fallbackKey = fallbackKeyFor(source)
-        val useTs = tsFallbackKeys.contains(fallbackKey)
-        return if (useTs) {
+        val key = fallbackKeyFor(source)
+        val effectiveProtocol = pendingSwapProtocols[key]
+            ?: confirmedSessionProtocols[key]
+            ?: StreamProtocol.HLS_M3U8
+
+        return if (effectiveProtocol == StreamProtocol.MPEG_TS) {
             ResolvedStream(
                 canonicalUrl = "$base/live/$user/$pass/$id.ts",
                 protocol = StreamProtocol.MPEG_TS,
@@ -79,15 +91,23 @@ class XtreamStreamResolver(
 
     private fun resolveDirectUrl(source: YlowstoneStreamSource.DirectUrl): ResolvedStream {
         val raw = source.rawUrl.trim()
-        val fallbackKey = fallbackKeyFor(source)
-        if (tsFallbackKeys.contains(fallbackKey) && raw.lowercase(Locale.ROOT).endsWith(".m3u8")) {
-            val tsUrl = raw.substring(0, raw.length - 5) + ".ts"
-            return ResolvedStream(
-                canonicalUrl = tsUrl,
-                protocol = StreamProtocol.MPEG_TS,
-                isLive = source.isLive,
-                headers = source.customHeaders
-            )
+        val key = fallbackKeyFor(source)
+        val preferred = if (source.isLive) {
+            pendingSwapProtocols[key] ?: confirmedSessionProtocols[key]
+        } else {
+            null
+        }
+
+        if (preferred == StreamProtocol.MPEG_TS || preferred == StreamProtocol.HLS_M3U8) {
+            val rewritten = rewriteLiveExtension(raw, preferred)
+            if (rewritten != null) {
+                return ResolvedStream(
+                    canonicalUrl = rewritten,
+                    protocol = preferred,
+                    isLive = source.isLive,
+                    headers = source.customHeaders
+                )
+            }
         }
 
         val protocol = detectProtocolFromUrl(raw, defaultIfUnknown = StreamProtocol.AUTO_DETECT)
@@ -133,12 +153,69 @@ class XtreamStreamResolver(
         )
     }
 
+    /**
+     * Memicu perpindahan format 2 arah (.m3u8 <-> .ts) untuk satu percobaan fallback.
+     * Mengembalikan protokol tujuan jika sumber mendukung swap, atau null jika tidak bisa di-swap.
+     */
+    fun swapLiveProtocol(
+        source: YlowstoneStreamSource,
+        failedProtocol: StreamProtocol
+    ): StreamProtocol? {
+        if (!source.isLive) return null
+        val targetProtocol = when (failedProtocol) {
+            StreamProtocol.HLS_M3U8 -> StreamProtocol.MPEG_TS
+            StreamProtocol.MPEG_TS -> StreamProtocol.HLS_M3U8
+            else -> return null
+        }
+
+        val supported = when (source) {
+            is YlowstoneStreamSource.Xtream -> true
+            is YlowstoneStreamSource.DirectUrl -> rewriteLiveExtension(source.rawUrl, targetProtocol) != null
+            else -> false
+        }
+        if (!supported) return null
+
+        val key = fallbackKeyFor(source)
+        pendingSwapProtocols[key] = targetProtocol
+        return targetProtocol
+    }
+
+    /**
+     * Menyimpan format yang terbukti sukses diputar ke cache sesi per channel.
+     */
+    fun confirmWorkingProtocol(source: YlowstoneStreamSource, protocol: StreamProtocol) {
+        if (!source.isLive) return
+        if (protocol != StreamProtocol.HLS_M3U8 && protocol != StreamProtocol.MPEG_TS) return
+
+        val cacheable = when (source) {
+            is YlowstoneStreamSource.Xtream -> true
+            is YlowstoneStreamSource.DirectUrl -> rewriteLiveExtension(source.rawUrl, protocol) != null
+            else -> false
+        }
+        if (!cacheable) return
+
+        val key = fallbackKeyFor(source)
+        confirmedSessionProtocols[key] = protocol
+        pendingSwapProtocols.remove(key)
+    }
+
+    fun clearPendingSwap(source: YlowstoneStreamSource) {
+        pendingSwapProtocols.remove(fallbackKeyFor(source))
+    }
+
+    /**
+     * Kompatibilitas API v1.2: menandai HLS tidak didukung dan mengarahkan ke MPEG-TS.
+     */
     fun markHlsUnsupported(source: YlowstoneStreamSource): Boolean {
-        return tsFallbackKeys.add(fallbackKeyFor(source))
+        val key = fallbackKeyFor(source)
+        pendingSwapProtocols.remove(key)
+        val previous = confirmedSessionProtocols.put(key, StreamProtocol.MPEG_TS)
+        return previous != StreamProtocol.MPEG_TS
     }
 
     fun clearSessionFallbacks() {
-        tsFallbackKeys.clear()
+        confirmedSessionProtocols.clear()
+        pendingSwapProtocols.clear()
     }
 
     @OptIn(UnstableApi::class)
@@ -186,6 +263,29 @@ class XtreamStreamResolver(
                     .build()
                 DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem)
             }
+        }
+    }
+
+    private fun rewriteLiveExtension(rawUrl: String, targetProtocol: StreamProtocol): String? {
+        val trimmed = rawUrl.trim()
+        if (trimmed.isEmpty()) return null
+        val suffixStart = trimmed.indexOfAny(charArrayOf('?', '#'))
+        val basePart = if (suffixStart >= 0) trimmed.substring(0, suffixStart) else trimmed
+        val suffixPart = if (suffixStart >= 0) trimmed.substring(suffixStart) else ""
+        val lowerBase = basePart.lowercase(Locale.ROOT)
+
+        return when (targetProtocol) {
+            StreamProtocol.MPEG_TS -> when {
+                lowerBase.endsWith(".m3u8") -> basePart.dropLast(5) + ".ts" + suffixPart
+                lowerBase.endsWith(".ts") -> trimmed
+                else -> null
+            }
+            StreamProtocol.HLS_M3U8 -> when {
+                lowerBase.endsWith(".ts") -> basePart.dropLast(3) + ".m3u8" + suffixPart
+                lowerBase.endsWith(".m3u8") -> trimmed
+                else -> null
+            }
+            else -> null
         }
     }
 
