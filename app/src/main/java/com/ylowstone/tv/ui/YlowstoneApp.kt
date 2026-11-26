@@ -121,7 +121,7 @@ fun YlowstoneApp(
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
     val sharedPlayer = remember(settings.bufferProfile) {
-        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.3.3")
+        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.4.0")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -575,9 +575,6 @@ fun YlowstoneApp(
     val homeHistory = remember(allLockedMap, homeDataVersion) {
         repo.db.getRecentHistoryAcrossPlaylists(allLockedMap, limit = 30)
     }
-    val homeWatchGroups = remember(allLockedMap, homeDataVersion) {
-        repo.db.getWatchGroupsAcrossPlaylists(allLockedMap)
-    }
 
     fun handleDoubleBackExit() {
         val now = System.currentTimeMillis()
@@ -855,7 +852,6 @@ fun YlowstoneApp(
                                         counts = activeCounts,
                                         favourites = homeFavourites,
                                         history = homeHistory,
-                                        watchGroups = homeWatchGroups,
                                         favoriteViewMode = settings.favoriteViewMode,
                                         strings = strings,
                                         isTvMode = isTvMode,
@@ -866,8 +862,11 @@ fun YlowstoneApp(
                                                 MediaType.SERIES -> MainTab.SERIES
                                             }
                                         },
-                                        onOpenSearch = {
-                                            activeTab = MainTab.SEARCH
+                                        onOpenPlaylists = {
+                                            if (activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
+                                                playerMode = PlayerMode.FLOATING
+                                            }
+                                            stage = AppStage.PLAYLISTS
                                         },
                                         onChangeFavoriteViewMode = { mode ->
                                             val updated = settings.copy(favoriteViewMode = mode)
@@ -879,11 +878,6 @@ fun YlowstoneApp(
                                         },
                                         onLongPressTaggedChannel = { tagged ->
                                             longPressTarget = tagged.channel to tagged.playlistName
-                                        },
-                                        onRemoveFromWatchGroup = { groupName, streamUrl ->
-                                            repo.db.removeFromWatchGroup(groupName, streamUrl)
-                                            homeDataVersion++
-                                            Toast.makeText(context, "${strings.removedFromGroup} $groupName", Toast.LENGTH_SHORT).show()
                                         },
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
@@ -1189,7 +1183,7 @@ fun YlowstoneApp(
             }
         }
 
-        // Menu Tekan Lama (Long-Press) 3-in-1
+        // Menu Tekan Lama (Long-Press) Ringkas v2.4.0 (Salin Link, Cek Status, Favorit)
         longPressTarget?.let { (ch, plName) ->
             ChannelLongPressDialog(
                 channel = ch,
@@ -1197,7 +1191,17 @@ fun YlowstoneApp(
                 repo = repo,
                 strings = strings,
                 onDismiss = { longPressTarget = null },
-                onWatchGroupsChanged = { homeDataVersion++ }
+                onToggleFavorite = { targetCh ->
+                    repo.db.toggleFavorite(targetCh.id, !targetCh.isFavorite)
+                    activeQueue = activeQueue.map {
+                        if (it.id == targetCh.id) it.copy(isFavorite = !targetCh.isFavorite) else it
+                    }
+                    if (activeChannel?.id == targetCh.id) {
+                        activeChannel = activeChannel?.copy(isFavorite = !targetCh.isFavorite)
+                    }
+                    longPressTarget = targetCh.copy(isFavorite = !targetCh.isFavorite) to plName
+                    homeDataVersion++
+                }
             )
         }
 

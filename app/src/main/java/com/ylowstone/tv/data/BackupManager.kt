@@ -7,18 +7,17 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Backup & Restore 1-File JSON untuk Pengaturan, Saluran Favorit, dan Kategori Tontonan (v2.3.3).
+ * Backup & Restore 1-File JSON untuk Pengaturan & Saluran Favorit (v2.4.0).
  */
 object BackupManager {
 
     fun exportToUri(context: Context, uri: Uri, prefs: AppPrefs, db: DatabaseHelper): Result<Int> = runCatching {
         val s = prefs.loadSettings()
         val favUrls = db.getAllFavoriteStreamUrls()
-        val groups = db.getWatchGroupsAcrossPlaylists(emptyMap())
 
         val root = JSONObject().apply {
             put("app", "YlowstoneTV")
-            put("version", "2.3.3")
+            put("version", "2.4.0")
             put("exportedAt", System.currentTimeMillis())
 
             put("settings", JSONObject().apply {
@@ -43,33 +42,13 @@ object BackupManager {
             val favArr = JSONArray()
             favUrls.forEach { favArr.put(it) }
             put("favoriteStreamUrls", favArr)
-
-            val grpArr = JSONArray()
-            groups.forEach { (gName, items) ->
-                items.forEach { tagged ->
-                    val ch = tagged.channel
-                    grpArr.put(JSONObject().apply {
-                        put("groupName", gName)
-                        put("playlistId", ch.playlistId)
-                        put("playlistName", tagged.playlistName)
-                        put("channelId", ch.id)
-                        put("streamId", ch.streamId)
-                        put("name", ch.name)
-                        put("category", ch.category)
-                        put("logoUrl", ch.logoUrl)
-                        put("streamUrl", ch.streamUrl)
-                        put("mediaType", ch.mediaType.name)
-                    })
-                }
-            }
-            put("watchGroups", grpArr)
         }
 
         context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { writer ->
             writer.write(root.toString(2))
         } ?: throw IllegalStateException("Gagal menulis file backup")
 
-        favUrls.size + groups.values.sumOf { it.size }
+        favUrls.size
     }
 
     fun importFromUri(context: Context, uri: Uri, prefs: AppPrefs, db: DatabaseHelper): Result<AppSettings> = runCatching {
@@ -109,27 +88,6 @@ object BackupManager {
                 if (u.isNotEmpty()) urls.add(u)
             }
             if (urls.isNotEmpty()) db.restoreFavoriteStreamUrls(urls)
-        }
-
-        val grpArr = root.optJSONArray("watchGroups")
-        if (grpArr != null) {
-            for (i in 0 until grpArr.length()) {
-                val g = grpArr.optJSONObject(i) ?: continue
-                val gName = g.optString("groupName", "").trim()
-                val streamUrl = g.optString("streamUrl", "").trim()
-                if (gName.isEmpty() || streamUrl.isEmpty()) continue
-                val ch = ChannelItem(
-                    id = g.optLong("channelId", 0L),
-                    playlistId = g.optLong("playlistId", 0L),
-                    streamId = g.optString("streamId", ""),
-                    name = g.optString("name", ""),
-                    category = g.optString("category", ""),
-                    logoUrl = g.optString("logoUrl", ""),
-                    streamUrl = streamUrl,
-                    mediaType = runCatching { MediaType.valueOf(g.optString("mediaType", "LIVE")) }.getOrDefault(MediaType.LIVE)
-                )
-                db.addToWatchGroup(gName, ch, g.optString("playlistName", "YlowstoneTV"))
-            }
         }
 
         restoredSettings

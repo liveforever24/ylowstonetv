@@ -49,12 +49,12 @@ private fun maskStreamUrlForPreview(url: String): String {
 }
 
 /**
- * Menu tekan lama (long-press) 3-in-1 untuk Live TV, Film, Seri, & Pencarian:
+ * Menu tekan lama (long-press) ringkas v2.4.0 untuk Live TV, Film, Seri, & Pencarian:
  * 1. Salin Link Stream (preview tersamar, clipboard utuh)
  * 2. Cek Status Aktif / Delay / Mati
- * 3. Kelompokkan Kategori Tontonan (Sports, Event Pertandingan, Daftar Tontonan, atau grup kustom)
+ * 3. Tambah / Hapus Favorit
+ * (Fitur Kategori Tontonan / Watch Groups dihapus total sesuai desain v2.4.0)
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChannelLongPressDialog(
     channel: ChannelItem,
@@ -62,7 +62,7 @@ fun ChannelLongPressDialog(
     repo: IptvRepository,
     strings: AppStrings,
     onDismiss: () -> Unit,
-    onWatchGroupsChanged: () -> Unit
+    onToggleFavorite: (ChannelItem) -> Unit
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -70,10 +70,7 @@ fun ChannelLongPressDialog(
 
     var isChecking by remember(channel.streamUrl) { mutableStateOf(false) }
     var healthResult by remember(channel.streamUrl) { mutableStateOf<StreamHealthResult?>(null) }
-
-    var allGroups by remember(channel.streamUrl) { mutableStateOf(repo.db.getAllWatchGroupNames()) }
-    var memberGroups by remember(channel.streamUrl) { mutableStateOf(repo.db.getGroupsForStream(channel.streamUrl)) }
-    var customGroupInput by remember { mutableStateOf("") }
+    var isFav by remember(channel.id, channel.isFavorite) { mutableStateOf(channel.isFavorite) }
 
     fun runHealthCheck() {
         if (isChecking) return
@@ -83,24 +80,6 @@ fun ChannelLongPressDialog(
             healthResult = repo.checkStreamHealth(channel.streamUrl)
             isChecking = false
         }
-    }
-
-    fun toggleGroup(groupName: String) {
-        val clean = groupName.trim()
-        if (clean.isEmpty()) return
-        if (memberGroups.contains(clean)) {
-            repo.db.removeFromWatchGroup(clean, channel.streamUrl)
-            memberGroups = memberGroups - clean
-            Toast.makeText(context, "${strings.removedFromGroup} $clean", Toast.LENGTH_SHORT).show()
-        } else {
-            repo.db.addToWatchGroup(clean, channel, playlistName)
-            memberGroups = memberGroups + clean
-            if (!allGroups.contains(clean)) {
-                allGroups = allGroups + clean
-            }
-            Toast.makeText(context, "${strings.addedToGroup} $clean", Toast.LENGTH_SHORT).show()
-        }
-        onWatchGroupsChanged()
     }
 
     AlertDialog(
@@ -276,97 +255,56 @@ fun ChannelLongPressDialog(
                     }
                 }
 
-                // 3. Kelompokkan Kategori Tontonan
-                Column(
+                // 3. Tambah / Hapus Favorit
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
                         .background(c.surfaceElevated)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .border(
+                            width = 1.dp,
+                            color = if (isFav) c.accent.copy(alpha = 0.55f) else c.glassBorder,
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        .clickable {
+                            onToggleFavorite(channel.copy(isFavorite = isFav))
+                            isFav = !isFav
+                        }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isFav) c.accent.copy(alpha = 0.22f) else c.accentContainer),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Rounded.Bookmarks, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
+                        Icon(
+                            imageVector = if (isFav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            contentDescription = null,
+                            tint = c.accent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        val isIndo = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
                         Text(
-                            text = strings.groupToCategory,
+                            text = if (isFav) {
+                                if (isIndo) "Hapus dari Favorit" else "Remove from Favourites"
+                            } else {
+                                if (isIndo) "Simpan ke Favorit" else "Add to Favourites"
+                            },
                             color = c.textPrimary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold
                         )
-                    }
-
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        allGroups.forEach { grp ->
-                            val selected = memberGroups.contains(grp)
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (selected) c.accent else c.surface)
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (selected) c.accent else c.glassBorder,
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
-                                    .clickable { toggleGroup(grp) }
-                                    .padding(horizontal = 10.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (selected) Icons.Rounded.Check else Icons.Rounded.Add,
-                                    contentDescription = null,
-                                    tint = if (selected) c.onAccent else c.textSecondary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = grp,
-                                    color = if (selected) c.onAccent else c.textPrimary,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = customGroupInput,
-                            onValueChange = { customGroupInput = it },
-                            placeholder = { Text(strings.newGroupPlaceholder, fontSize = 11.sp) },
-                            singleLine = true,
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f)
+                        Text(
+                            text = strings.favouriteChannels,
+                            color = c.textSecondary,
+                            fontSize = 11.sp
                         )
-                        Button(
-                            onClick = {
-                                val trimmed = customGroupInput.trim()
-                                if (trimmed.isNotEmpty()) {
-                                    if (!memberGroups.contains(trimmed)) {
-                                        toggleGroup(trimmed)
-                                    }
-                                    customGroupInput = ""
-                                }
-                            },
-                            enabled = customGroupInput.isNotBlank(),
-                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
-                        ) {
-                            Text(strings.addGroupBtn, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
                     }
                 }
             }
