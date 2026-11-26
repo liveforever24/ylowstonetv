@@ -42,6 +42,13 @@ import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.data.SubtitleFetcher
 import com.ylowstone.tv.i18n.stringsFor
 import com.ylowstone.tv.model.*
+import com.ylowstone.tv.player.stabilizer.NetworkSwitchGuard
+import com.ylowstone.tv.player.stabilizer.SmartReconnectController
+import com.ylowstone.tv.player.stabilizer.StabilizerStatusPill
+import com.ylowstone.tv.player.stabilizer.StrictConnectionGuard
+import com.ylowstone.tv.player.stabilizer.XtreamCanonicalSource
+import com.ylowstone.tv.player.stabilizer.XtreamSessionMonitor
+import com.ylowstone.tv.player.stabilizer.XtreamStreamResolver
 import com.ylowstone.tv.ui.components.BoomerangLoadingIndicator
 import com.ylowstone.tv.ui.components.ChannelLongPressDialog
 import com.ylowstone.tv.ui.components.MainTab
@@ -121,8 +128,12 @@ fun YlowstoneApp(
     var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
-    val sharedPlayer = remember(settings.bufferProfile) {
-        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.4.2")
+    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.4.3") }
+    val streamResolver = remember { XtreamStreamResolver() }
+    val sessionMonitor = remember(connectionGuard) { XtreamSessionMonitor(connectionGuard) }
+
+    val sharedPlayer = remember(settings.bufferProfile, connectionGuard) {
+        val dsFactory = connectionGuard.createDataSourceFactory("YlowstoneTV/2.4.3")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -139,6 +150,17 @@ fun YlowstoneApp(
                     .build()
             }
     }
+
+    val reconnectController = remember(sharedPlayer) {
+        SmartReconnectController(
+            player = sharedPlayer,
+            scope = scope,
+            resolver = streamResolver,
+            connectionGuard = connectionGuard,
+            sessionMonitor = sessionMonitor
+        )
+    }
+    val stabilizerState by reconnectController.state.collectAsState()
 
     // Apply embedded subtitle language preference whenever setting changes
     LaunchedEffect(sharedPlayer, settings.autoSubtitleLang) {
@@ -224,6 +246,8 @@ fun YlowstoneApp(
                 tracksVersion++
             }
             override fun onPlayerError(error: PlaybackException) {
+                // Xtream Live ditangani penuh oleh SmartReconnectController agar tidak terjadi double-reconnect
+                if (reconnectController.isHandlingCurrentStream) return
                 val cur = activeChannel
                 if (cur != null && cur.mediaType == MediaType.LIVE && settings.autoReconnectLive && liveReconnectAttempts < 2) {
                     liveReconnectAttempts++
@@ -241,7 +265,17 @@ fun YlowstoneApp(
             }
         }
         sharedPlayer.addListener(listener)
+        reconnectController.attach()
+        val networkGuard = NetworkSwitchGuard(context) { netLabel ->
+            if (reconnectController.isHandlingCurrentStream) {
+                reconnectController.onNetworkSwitched(netLabel)
+            }
+        }
+        networkGuard.start()
         onDispose {
+            networkGuard.stop()
+            reconnectController.detach()
+            connectionGuard.shutdown()
             sharedPlayer.removeListener(listener)
             sharedPlayer.release()
         }
@@ -306,22 +340,48 @@ fun YlowstoneApp(
         }
 
         if (!sameStream) {
-            val isVod = ch.mediaType == MediaType.MOVIE || ch.mediaType == MediaType.SERIES
-            val resumeMs = if (isVod && !ch.isAdultContent()) {
-                val saved = repo.db.getWatchProgress(ch.streamUrl)
-                if (saved != null && saved.first > 5_000L && (saved.second <= 0L || saved.first < (saved.second * 95L) / 100L)) {
-                    saved.first
-                } else 0L
-            } else 0L
+            val plObj = playlists.firstOrNull { it.id == ch.playlistId } ?: activePlaylist
+            val useXtreamLiveStabilizer = ch.mediaType == MediaType.LIVE &&
+                plObj != null &&
+                plObj.type == PlaylistType.XTREAM &&
+                plObj.url.isNotBlank() &&
+                plObj.username.isNotBlank() &&
+                ch.streamId.isNotBlank()
 
-            if (resumeMs > 0L) {
-                sharedPlayer.setMediaItem(MediaItem.fromUri(ch.streamUrl), resumeMs)
-                Toast.makeText(context, "Melanjutkan dari ${formatResumeMs(resumeMs)}", Toast.LENGTH_SHORT).show()
+            if (useXtreamLiveStabilizer && plObj != null) {
+                if (settings.streamFormat == StreamFormat.TS) {
+                    streamResolver.markHlsUnsupported(ch.streamId)
+                }
+                reconnectController.playCanonical(
+                    source = XtreamCanonicalSource(
+                        hostUrl = plObj.url,
+                        username = plObj.username,
+                        password = plObj.password,
+                        streamId = ch.streamId,
+                        isLive = true
+                    ),
+                    customUserAgent = plObj.userAgent.ifBlank { null },
+                    channelLabel = ch.name
+                )
             } else {
-                sharedPlayer.setMediaItem(MediaItem.fromUri(ch.streamUrl))
+                reconnectController.cancelTrackingWithoutStopping()
+                val isVod = ch.mediaType == MediaType.MOVIE || ch.mediaType == MediaType.SERIES
+                val resumeMs = if (isVod && !ch.isAdultContent()) {
+                    val saved = repo.db.getWatchProgress(ch.streamUrl)
+                    if (saved != null && saved.first > 5_000L && (saved.second <= 0L || saved.first < (saved.second * 95L) / 100L)) {
+                        saved.first
+                    } else 0L
+                } else 0L
+
+                if (resumeMs > 0L) {
+                    sharedPlayer.setMediaItem(MediaItem.fromUri(ch.streamUrl), resumeMs)
+                    Toast.makeText(context, "Melanjutkan dari ${formatResumeMs(resumeMs)}", Toast.LENGTH_SHORT).show()
+                } else {
+                    sharedPlayer.setMediaItem(MediaItem.fromUri(ch.streamUrl))
+                }
+                sharedPlayer.prepare()
+                sharedPlayer.playWhenReady = true
             }
-            sharedPlayer.prepare()
-            sharedPlayer.playWhenReady = true
         } else if (!sharedPlayer.isPlaying) {
             sharedPlayer.play()
         }
@@ -337,6 +397,7 @@ fun YlowstoneApp(
 
     fun stopPlaybackCompletely() {
         saveCurrentVodProgress(refreshHome = true)
+        reconnectController.stopStream()
         sharedPlayer.stop()
         sharedPlayer.clearMediaItems()
         activeChannel = null
@@ -1226,6 +1287,18 @@ fun YlowstoneApp(
                     autoNextEpisode = settings.autoNextEpisode,
                     onSaveSeriesSubtitleOffset = { sKey, offMs -> prefs.saveSeriesSubtitleOffsetMs(sKey, offMs) },
                     onSaveSeriesIntroSeconds = { sKey, sec -> prefs.saveSeriesIntroSeconds(sKey, sec) }
+                )
+            }
+
+            // Pil Status XtreamStabilizer v1.1 (otomatis hilang 2.8 detik saat stream stabil)
+            if ((playerMode == PlayerMode.FULLSCREEN || playerMode == PlayerMode.SPLIT) && activeChannel != null) {
+                StabilizerStatusPill(
+                    state = stabilizerState,
+                    onRetryClick = { reconnectController.retryNow() },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 12.dp)
                 )
             }
         }
