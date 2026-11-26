@@ -1,8 +1,10 @@
 package com.ylowstone.tv.player.stabilizer
 
+import android.content.Context
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -21,10 +23,6 @@ import java.net.InetAddress
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-/**
- * Resolver DNS yang memprioritaskan IPv4 agar perangkat dual-stack tidak
- * berpindah-pindah antara IPv4 dan IPv6 di tengah sesi streaming.
- */
 class Ipv4FirstDns : Dns {
     override fun lookup(hostname: String): List<InetAddress> {
         val addresses = Dns.SYSTEM.lookup(hostname)
@@ -37,10 +35,6 @@ class Ipv4FirstDns : Dns {
     }
 }
 
-/**
- * CookieJar ringan dalam memori agar cookie sesi dari handshake/redirect
- * tetap konsisten antara API Xtream dan segmen media.
- */
 class InMemorySessionCookieJar : CookieJar {
     private val store = ConcurrentHashMap<String, MutableList<Cookie>>()
 
@@ -73,8 +67,8 @@ class InMemorySessionCookieJar : CookieJar {
 }
 
 /**
- * Mengelola identitas HTTP seragam (User-Agent, IPv4-First DNS, CookieJar)
- * serta pembersihan soket ketat untuk mencegah ghost connection pada akun 1-2 IP.
+ * Mengelola identitas HTTP seragam (IPv4-First DNS, CookieJar, User-Agent, dan header kustom M3U)
+ * serta mendukung sumber lokal (file:// / content://) dalam satu DataSource.Factory universal.
  */
 class StrictConnectionGuard(
     defaultUserAgent: String = DEFAULT_USER_AGENT
@@ -104,18 +98,17 @@ class StrictConnectionGuard(
         .addInterceptor { chain ->
             val req = chain.request()
             val updated = req.newBuilder()
-                .header("User-Agent", activeUserAgent)
-                .header("Accept", "*/*")
+                .apply {
+                    if (req.header("User-Agent").isNullOrBlank()) {
+                        header("User-Agent", activeUserAgent)
+                    }
+                    header("Accept", "*/*")
+                }
                 .build()
             chain.proceed(updated)
         }
         .build()
 
-    /**
-     * Client khusus metadata API (player_api.php) yang berbagi DNS IPv4-first,
-     * CookieJar, dan User-Agent identik dengan streamHttpClient agar server melihat
-     * satu identitas klien yang konsisten.
-     */
     val apiHttpClient: OkHttpClient = streamHttpClient.newBuilder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
@@ -127,16 +120,34 @@ class StrictConnectionGuard(
     }
 
     @OptIn(UnstableApi::class)
-    fun createDataSourceFactory(customUserAgent: String? = null): DataSource.Factory {
+    fun createDataSourceFactory(
+        customUserAgent: String? = null,
+        extraHeaders: Map<String, String> = emptyMap()
+    ): DataSource.Factory {
         updateUserAgent(customUserAgent)
         return OkHttpDataSource.Factory(streamHttpClient)
             .setUserAgent(activeUserAgent)
+            .apply {
+                if (extraHeaders.isNotEmpty()) {
+                    setDefaultRequestProperties(extraHeaders)
+                }
+            }
     }
 
     /**
-     * Konfigurasi buffer Media3 yang natural untuk Live TV agar tidak menarik
-     * segmen secara agresif namun tetap tahan fluktuasi jaringan ringan.
+     * Membungkus OkHttpDataSource di dalam DefaultDataSource agar URL HTTP/HTTPS
+     * maupun berkas lokal (file:// / content://) berjalan melalui satu jalur factory.
      */
+    @OptIn(UnstableApi::class)
+    fun createUniversalDataSourceFactory(
+        context: Context,
+        customUserAgent: String? = null,
+        extraHeaders: Map<String, String> = emptyMap()
+    ): DataSource.Factory {
+        val httpFactory = createDataSourceFactory(customUserAgent, extraHeaders)
+        return DefaultDataSource.Factory(context.applicationContext, httpFactory)
+    }
+
     @OptIn(UnstableApi::class)
     fun createNaturalLiveLoadControl(): LoadControl {
         return DefaultLoadControl.Builder()
@@ -151,8 +162,22 @@ class StrictConnectionGuard(
     }
 
     /**
-     * Memutus stream aktif secara bersih sebelum membuka channel baru atau reconnect.
+     * Buffer lebih lapang untuk VOD (Film/Seri/Video Web) agar fitur seeking
+     * dan Skip Intro MM:SS berjalan responsif.
      */
+    @OptIn(UnstableApi::class)
+    fun createVodSeekLoadControl(): LoadControl {
+        return DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 30_000,
+                /* maxBufferMs = */ 60_000,
+                /* bufferForPlaybackMs = */ 2_000,
+                /* bufferForPlaybackAfterRebufferMs = */ 4_000
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+    }
+
     suspend fun releaseActiveStreamCleanly(
         player: ExoPlayer,
         cooldownMs: Long = DEFAULT_SWITCH_COOLDOWN_MS

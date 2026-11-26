@@ -6,11 +6,6 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
 
-/**
- * Memantau perpindahan jaringan Android (misalnya WiFi <-> Seluler) agar
- * YlowstoneTV dapat memutus soket lama secara bersih sebelum menyambung ulang
- * di IP jaringan baru.
- */
 class NetworkSwitchGuard(
     context: Context,
     private val onNetworkSwitched: (networkLabel: String) -> Unit
@@ -30,7 +25,6 @@ class NetworkSwitchGuard(
             val previous = lastNetworkHandle
             lastNetworkHandle = handle
 
-            // Abaikan pendaftaran awal; picu hanya saat benar-benar berpindah jaringan.
             if (previous != null && previous != handle) {
                 onNetworkSwitched(resolveNetworkLabel(network))
             }

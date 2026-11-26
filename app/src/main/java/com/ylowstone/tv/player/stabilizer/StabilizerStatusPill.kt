@@ -36,9 +36,9 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 /**
- * Pil status kecil yang muncul sementara di atas overlay player YlowstoneTV.
- * Mengikuti tema dinamis MaterialTheme aktif secara otomatis dan menghilang
- * sendiri setelah 2.8 detik begitu channel berjalan stabil.
+ * Pil status sementara universal untuk seluruh tipe aliran YlowstoneTV
+ * (HLS, TS, VOD, DASH, WEB, AUTO). Otomatis mengikuti 5 tema dinamis dan
+ * menghilang sendiri setelah 2,8 detik saat aliran berjalan stabil.
  */
 @Composable
 fun StabilizerStatusPill(
@@ -77,29 +77,29 @@ fun StabilizerStatusPill(
             } else {
                 "Stream aktif · ${state.protocol.shortLabel}"
             }
-            Quadruple(Color(0xFF4CAF50), text, false, false)
+            PillVisualSpec(Color(0xFF4CAF50), text, false, false)
         }
         is StabilizerState.SwitchingChannel -> {
-            val text = state.channelLabel?.let { "Memuat $it..." } ?: "Memuat channel..."
-            Quadruple(colorScheme.primary, text, true, false)
+            val text = state.channelLabel?.let { "Memuat $it..." } ?: "Memuat aliran..."
+            PillVisualSpec(colorScheme.primary, text, true, false)
         }
         is StabilizerState.SwitchingNetwork -> {
-            Quadruple(Color(0xFFFFB300), "Pindah ke ${state.networkLabel}...", true, false)
+            PillVisualSpec(Color(0xFFFFB300), "Pindah ke ${state.networkLabel}...", true, false)
         }
         is StabilizerState.Reconnecting -> {
             val text = "Menyambung ulang (${state.attempt}/${state.maxAttempts}) · ${state.reason}"
-            Quadruple(Color(0xFFFFB300), text, true, false)
+            PillVisualSpec(Color(0xFFFFB300), text, true, false)
         }
         is StabilizerState.QuotaExhausted -> {
             val text = "Kuota penuh (${state.activeConnections}/${state.maxConnections}) · Ketuk coba lagi"
-            Quadruple(Color(0xFFE53935), text, false, true)
+            PillVisualSpec(Color(0xFFE53935), text, false, true)
         }
         is StabilizerState.Failed -> {
             val text = "${state.message} · Ketuk coba lagi"
-            Quadruple(Color(0xFFE53935), text, false, true)
+            PillVisualSpec(Color(0xFFE53935), text, false, true)
         }
         is StabilizerState.Idle -> {
-            Quadruple(Color.Transparent, "", false, false)
+            PillVisualSpec(Color.Transparent, "", false, false)
         }
     }
 
@@ -152,9 +152,9 @@ fun StabilizerStatusPill(
     }
 }
 
-private data class Quadruple<A, B, C, D>(
-    val first: A,
-    val second: B,
-    val third: C,
-    val fourth: D
+private data class PillVisualSpec(
+    val dotColor: Color,
+    val label: String,
+    val showSpinner: Boolean,
+    val clickableRetry: Boolean
 )

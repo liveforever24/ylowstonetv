@@ -1,5 +1,6 @@
 package com.ylowstone.tv.player.stabilizer
 
+import android.content.Context
 import androidx.annotation.OptIn
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -7,6 +8,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 sealed class StabilizerState {
@@ -39,13 +42,12 @@ sealed class StabilizerState {
 }
 
 /**
- * Pengendali stabilitas playback Xtream Codes v1.1 untuk YlowstoneTV:
- * - Single-Stream Mutex (mustahil membuka 2 stream paralel)
- * - Zapping Debounce 400ms (pindah channel cepat tidak spam server)
- * - Clean Network Handoff saat Android berpindah Wi-Fi <-> Seluler
- * - Exponential Backoff + natural jitter + fresh 302 token dari URL kanonik
+ * Pengendali stabilitas playback universal v1.2 untuk YlowstoneTV.
+ * Mendukung satu pintu masuk untuk Xtream Codes, URL M3U/M3U8, file lokal,
+ * direct .ts, VOD (.mp4/.mkv), DASH (.mpd), link tanpa ekstensi, dan video web.
  */
 class SmartReconnectController(
+    private val appContext: Context,
     private val player: ExoPlayer,
     private val scope: CoroutineScope,
     private val resolver: XtreamStreamResolver,
@@ -58,9 +60,11 @@ class SmartReconnectController(
     private val _state = MutableStateFlow<StabilizerState>(StabilizerState.Idle)
     val state: StateFlow<StabilizerState> = _state.asStateFlow()
 
-    private var currentSource: XtreamCanonicalSource? = null
+    private var currentSource: YlowstoneStreamSource? = null
+    val isHandlingCurrentStream: Boolean
+        get() = currentSource != null
     private var currentUserAgent: String? = null
-    private var currentProtocol: StreamProtocol = StreamProtocol.HLS_M3U8
+    private var currentProtocol: StreamProtocol = StreamProtocol.AUTO_DETECT
     private var attemptCount: Int = 0
     private var wasRecovering: Boolean = false
 
@@ -86,7 +90,13 @@ class SmartReconnectController(
             val source = currentSource ?: return
             stabilityResetJob?.cancel()
 
-            // 1. HLS live window tertinggal -> lompat ke live edge tanpa menambah hitungan retry
+            // File lokal tidak perlu retry jaringan berulang
+            if (source is YlowstoneStreamSource.LocalMedia) {
+                _state.value = StabilizerState.Failed("Berkas lokal tidak dapat diputar")
+                return
+            }
+
+            // 1. HLS live window tertinggal -> lompat ke live edge
             if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                 wasRecovering = true
                 player.seekToDefaultPosition()
@@ -94,9 +104,9 @@ class SmartReconnectController(
                 return
             }
 
-            // 2. Server menolak manifest HLS (.m3u8) -> langsung fallback ke MPEG-TS (.ts)
+            // 2. Manifest HLS ditolak -> otomatis fallback ke MPEG-TS untuk Xtream & Direct .m3u8
             if (source.isLive && currentProtocol == StreamProtocol.HLS_M3U8 && isHlsUnsupportedError(error)) {
-                val newlyMarked = resolver.markHlsUnsupported(source.streamId)
+                val newlyMarked = resolver.markHlsUnsupported(source)
                 if (newlyMarked) {
                     wasRecovering = true
                     launchReconnect(
@@ -109,7 +119,7 @@ class SmartReconnectController(
                 }
             }
 
-            // 3. Error jaringan / token Load Balancer kedaluwarsa -> backoff + jitter natural
+            // 3. Gangguan jaringan atau token redirect kedaluwarsa -> backoff + jitter natural
             if (attemptCount < backoffScheduleMs.size) {
                 val baseDelay = backoffScheduleMs[attemptCount]
                 val jitter = Random.nextLong(-JITTER_MS, JITTER_MS + 1)
@@ -146,14 +156,14 @@ class SmartReconnectController(
     }
 
     /**
-     * Memutar channel dari URL kanonik dengan Zapping Debounce 400ms dan
-     * Single-Stream Mutex agar perpindahan cepat tidak memicu blokir server.
+     * Pintu masuk universal untuk memutar segala jenis sumber YlowstoneTV.
      */
-    fun playCanonical(
-        source: XtreamCanonicalSource,
+    fun play(
+        source: YlowstoneStreamSource,
         customUserAgent: String? = null,
         channelLabel: String? = null,
-        debounceMs: Long = ZAPPING_DEBOUNCE_MS
+        debounceMs: Long? = null,
+        startPositionMs: Long = 0L
     ) {
         activeJob?.cancel()
         stabilityResetJob?.cancel()
@@ -162,24 +172,68 @@ class SmartReconnectController(
         attemptCount = 0
         wasRecovering = false
 
+        val effectiveDebounce = debounceMs ?: if (source.isLive) ZAPPING_DEBOUNCE_MS else 0L
+
         activeJob = scope.launch {
-            if (debounceMs > 0L) {
+            if (effectiveDebounce > 0L) {
                 _state.value = StabilizerState.SwitchingChannel(channelLabel)
-                delay(debounceMs)
+                delay(effectiveDebounce)
+            } else if (!channelLabel.isNullOrBlank()) {
+                _state.value = StabilizerState.SwitchingChannel(channelLabel)
             }
             streamMutex.withLock {
                 connectionGuard.releaseActiveStreamCleanly(player)
-                prepareFromCanonical(source, customUserAgent)
+                prepareFromSource(source, customUserAgent, startPositionMs)
             }
         }
     }
 
     /**
-     * Dipanggil oleh NetworkSwitchGuard saat Android berpindah Wi-Fi <-> Seluler.
-     * Menutup soket lama bersih lalu menunggu 1.2 detik sebelum membuka sesi baru.
+     * Pintasan cepat untuk URL mentah (M3U remote, item file .m3u/.m3u8 lokal,
+     * aliran tunggal, VOD .mp4/.mkv, direct .ts, maupun tautan video web).
      */
+    fun playUrl(
+        rawUrl: String,
+        isLiveHint: Boolean? = null,
+        customUserAgent: String? = null,
+        customHeaders: Map<String, String> = emptyMap(),
+        channelLabel: String? = null,
+        startPositionMs: Long = 0L
+    ) {
+        val source = YlowstoneStreamSource.fromRawUrl(
+            rawUrl = rawUrl,
+            isLiveHint = isLiveHint,
+            customHeaders = customHeaders
+        )
+        play(
+            source = source,
+            customUserAgent = customUserAgent,
+            channelLabel = channelLabel,
+            startPositionMs = startPositionMs
+        )
+    }
+
+    /**
+     * Kompatibilitas dengan pemanggil v1.1 khusus Xtream Codes.
+     */
+    fun playCanonical(
+        source: XtreamCanonicalSource,
+        customUserAgent: String? = null,
+        channelLabel: String? = null,
+        debounceMs: Long = ZAPPING_DEBOUNCE_MS
+    ) {
+        play(
+            source = source,
+            customUserAgent = customUserAgent,
+            channelLabel = channelLabel,
+            debounceMs = debounceMs
+        )
+    }
+
     fun onNetworkSwitched(networkLabel: String) {
         val source = currentSource ?: return
+        if (source is YlowstoneStreamSource.LocalMedia) return
+
         activeJob?.cancel()
         stabilityResetJob?.cancel()
         wasRecovering = true
@@ -189,26 +243,14 @@ class SmartReconnectController(
             streamMutex.withLock {
                 connectionGuard.releaseActiveStreamCleanly(player, cooldownMs = 0L)
                 delay(NETWORK_HANDOFF_DELAY_MS)
-                prepareFromCanonical(source, currentUserAgent)
+                prepareFromSource(source, currentUserAgent)
             }
         }
     }
 
     fun retryNow() {
         val source = currentSource ?: return
-        playCanonical(source, currentUserAgent, debounceMs = 0L)
-    }
-
-    val isHandlingCurrentStream: Boolean
-        get() = currentSource != null
-
-    fun cancelTrackingWithoutStopping() {
-        activeJob?.cancel()
-        stabilityResetJob?.cancel()
-        currentSource = null
-        attemptCount = 0
-        wasRecovering = false
-        _state.value = StabilizerState.Idle
+        play(source, currentUserAgent, debounceMs = 0L)
     }
 
     fun stopStream() {
@@ -226,7 +268,7 @@ class SmartReconnectController(
     }
 
     private fun launchReconnect(
-        source: XtreamCanonicalSource,
+        source: YlowstoneStreamSource,
         delayMs: Long,
         countAsAttempt: Boolean,
         reason: String
@@ -243,23 +285,40 @@ class SmartReconnectController(
             streamMutex.withLock {
                 connectionGuard.releaseActiveStreamCleanly(player, cooldownMs = 0L)
                 delay(delayMs)
-                prepareFromCanonical(source, currentUserAgent)
+                prepareFromSource(source, currentUserAgent)
             }
         }
     }
 
     @OptIn(UnstableApi::class)
-    private fun prepareFromCanonical(
-        source: XtreamCanonicalSource,
-        customUserAgent: String?
+    private suspend fun prepareFromSource(
+        source: YlowstoneStreamSource,
+        customUserAgent: String?,
+        startPositionMs: Long = 0L
     ) {
         val resolved = resolver.resolve(source)
+        if (resolved == null) {
+            _state.value = StabilizerState.Failed("Tautan video web memerlukan ekstraktor aktif")
+            return
+        }
+
         currentProtocol = resolved.protocol
-        val factory = connectionGuard.createDataSourceFactory(customUserAgent)
+        val factory = connectionGuard.createUniversalDataSourceFactory(
+            context = appContext,
+            customUserAgent = customUserAgent,
+            extraHeaders = resolved.headers
+        )
         val mediaSource = resolver.buildMediaSource(resolved, factory)
-        player.setMediaSource(mediaSource)
-        player.prepare()
-        player.playWhenReady = true
+
+        withContext(Dispatchers.Main.immediate) {
+            if (startPositionMs > 0L && !resolved.isLive) {
+                player.setMediaSource(mediaSource, startPositionMs)
+            } else {
+                player.setMediaSource(mediaSource)
+            }
+            player.prepare()
+            player.playWhenReady = true
+        }
     }
 
     private fun scheduleAttemptReset() {
@@ -270,25 +329,27 @@ class SmartReconnectController(
         }
     }
 
-    private fun verifyQuotaAndFail(source: XtreamCanonicalSource, error: PlaybackException) {
+    private fun verifyQuotaAndFail(source: YlowstoneStreamSource, error: PlaybackException) {
         activeJob?.cancel()
         activeJob = scope.launch {
-            val status = sessionMonitor.fetchStatus(
-                hostUrl = source.normalizedHost,
-                username = source.username,
-                password = source.password,
-                forceRefresh = true
-            )
-            if (status != null && status.isQuotaFull) {
-                _state.value = StabilizerState.QuotaExhausted(
-                    activeConnections = status.activeConnections,
-                    maxConnections = status.maxConnections
+            if (source is YlowstoneStreamSource.Xtream) {
+                val status = sessionMonitor.fetchStatus(
+                    hostUrl = source.normalizedHost,
+                    username = source.username,
+                    password = source.password,
+                    forceRefresh = true
                 )
-            } else {
-                _state.value = StabilizerState.Failed(
-                    message = "Channel offline (${describeError(error)})"
-                )
+                if (status != null && status.isQuotaFull) {
+                    _state.value = StabilizerState.QuotaExhausted(
+                        activeConnections = status.activeConnections,
+                        maxConnections = status.maxConnections
+                    )
+                    return@launch
+                }
             }
+            _state.value = StabilizerState.Failed(
+                message = "Aliran offline (${describeError(error)})"
+            )
         }
     }
 

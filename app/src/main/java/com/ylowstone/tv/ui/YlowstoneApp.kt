@@ -46,7 +46,7 @@ import com.ylowstone.tv.player.stabilizer.NetworkSwitchGuard
 import com.ylowstone.tv.player.stabilizer.SmartReconnectController
 import com.ylowstone.tv.player.stabilizer.StabilizerStatusPill
 import com.ylowstone.tv.player.stabilizer.StrictConnectionGuard
-import com.ylowstone.tv.player.stabilizer.XtreamCanonicalSource
+import com.ylowstone.tv.player.stabilizer.YlowstoneStreamSource
 import com.ylowstone.tv.player.stabilizer.XtreamSessionMonitor
 import com.ylowstone.tv.player.stabilizer.XtreamStreamResolver
 import com.ylowstone.tv.ui.components.BoomerangLoadingIndicator
@@ -128,12 +128,12 @@ fun YlowstoneApp(
     var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
-    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.4.3") }
+    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.4.4") }
     val streamResolver = remember { XtreamStreamResolver() }
     val sessionMonitor = remember(connectionGuard) { XtreamSessionMonitor(connectionGuard) }
 
     val sharedPlayer = remember(settings.bufferProfile, connectionGuard) {
-        val dsFactory = connectionGuard.createDataSourceFactory("YlowstoneTV/2.4.3")
+        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.4.4")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -153,6 +153,7 @@ fun YlowstoneApp(
 
     val reconnectController = remember(sharedPlayer) {
         SmartReconnectController(
+            appContext = context.applicationContext,
             player = sharedPlayer,
             scope = scope,
             resolver = streamResolver,
@@ -341,46 +342,49 @@ fun YlowstoneApp(
 
         if (!sameStream) {
             val plObj = playlists.firstOrNull { it.id == ch.playlistId } ?: activePlaylist
-            val useXtreamLiveStabilizer = ch.mediaType == MediaType.LIVE &&
+            val isVod = ch.mediaType == MediaType.MOVIE || ch.mediaType == MediaType.SERIES
+            val resumeMs = if (isVod && !ch.isAdultContent()) {
+                val saved = repo.db.getWatchProgress(ch.streamUrl)
+                if (saved != null && saved.first > 5_000L && (saved.second <= 0L || saved.first < (saved.second * 95L) / 100L)) {
+                    saved.first
+                } else 0L
+            } else 0L
+
+            if (resumeMs > 0L) {
+                Toast.makeText(context, "Melanjutkan dari ${formatResumeMs(resumeMs)}", Toast.LENGTH_SHORT).show()
+            }
+
+            val useXtreamCanonical = ch.mediaType == MediaType.LIVE &&
                 plObj != null &&
                 plObj.type == PlaylistType.XTREAM &&
                 plObj.url.isNotBlank() &&
                 plObj.username.isNotBlank() &&
                 ch.streamId.isNotBlank()
 
-            if (useXtreamLiveStabilizer && plObj != null) {
+            if (useXtreamCanonical && plObj != null) {
+                val xtreamSrc = YlowstoneStreamSource.Xtream(
+                    hostUrl = plObj.url,
+                    username = plObj.username,
+                    password = plObj.password,
+                    streamId = ch.streamId,
+                    isLive = true
+                )
                 if (settings.streamFormat == StreamFormat.TS) {
-                    streamResolver.markHlsUnsupported(ch.streamId)
+                    streamResolver.markHlsUnsupported(xtreamSrc)
                 }
-                reconnectController.playCanonical(
-                    source = XtreamCanonicalSource(
-                        hostUrl = plObj.url,
-                        username = plObj.username,
-                        password = plObj.password,
-                        streamId = ch.streamId,
-                        isLive = true
-                    ),
+                reconnectController.play(
+                    source = xtreamSrc,
                     customUserAgent = plObj.userAgent.ifBlank { null },
                     channelLabel = ch.name
                 )
             } else {
-                reconnectController.cancelTrackingWithoutStopping()
-                val isVod = ch.mediaType == MediaType.MOVIE || ch.mediaType == MediaType.SERIES
-                val resumeMs = if (isVod && !ch.isAdultContent()) {
-                    val saved = repo.db.getWatchProgress(ch.streamUrl)
-                    if (saved != null && saved.first > 5_000L && (saved.second <= 0L || saved.first < (saved.second * 95L) / 100L)) {
-                        saved.first
-                    } else 0L
-                } else 0L
-
-                if (resumeMs > 0L) {
-                    sharedPlayer.setMediaItem(MediaItem.fromUri(ch.streamUrl), resumeMs)
-                    Toast.makeText(context, "Melanjutkan dari ${formatResumeMs(resumeMs)}", Toast.LENGTH_SHORT).show()
-                } else {
-                    sharedPlayer.setMediaItem(MediaItem.fromUri(ch.streamUrl))
-                }
-                sharedPlayer.prepare()
-                sharedPlayer.playWhenReady = true
+                reconnectController.playUrl(
+                    rawUrl = ch.streamUrl,
+                    isLiveHint = ch.mediaType == MediaType.LIVE,
+                    customUserAgent = plObj?.userAgent?.ifBlank { null },
+                    channelLabel = ch.name,
+                    startPositionMs = resumeMs
+                )
             }
         } else if (!sharedPlayer.isPlaying) {
             sharedPlayer.play()

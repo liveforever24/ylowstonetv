@@ -23,11 +23,6 @@ data class XtreamAccountStatus(
     fun formattedQuota(): String = "$activeConnections/$maxConnections"
 }
 
-/**
- * Memantau status akun dan jumlah koneksi aktif (active_cons / max_connections)
- * melalui player_api.php memakai apiHttpClient milik StrictConnectionGuard
- * agar User-Agent, DNS IPv4-first, dan CookieJar tetap 100% seragam.
- */
 class XtreamSessionMonitor(
     private val connectionGuard: StrictConnectionGuard
 ) {
