@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v2.4.0-0A0C0E?style=flat-square&logo=android&logoColor=E89D3C" alt="Release v2.4.0" />
+  <img src="https://img.shields.io/badge/Release-v2.4.1-0A0C0E?style=flat-square&logo=android&logoColor=E89D3C" alt="Release v2.4.1" />
   <img src="https://img.shields.io/badge/Platform-Android%2010%2B%20%7C%20Android%20TV-121512?style=flat-square" alt="Platform" />
   <img src="https://img.shields.io/badge/Stack-Kotlin%20%C2%B7%20Jetpack%20Compose-1A1E19?style=flat-square" alt="Kotlin Jetpack Compose" />
   <img src="https://img.shields.io/badge/Player-Media3%20ExoPlayer-2B2110?style=flat-square" alt="Media3 ExoPlayer" />
@@ -19,9 +19,9 @@
 
 YlowstoneTV is engineered around three strict constraints: **zero visual bloat**, **sub-second navigation across 175,000+ indexed entries**, and **full user control**. No ads, no tracking telemetry, no cramped bottom navigation bars—just an AMOLED-first interface anchored by deterministic SQLite indexing and a persistent Media3 ExoPlayer pipeline.
 
-## Core Capabilities (`v2.4.0`)
+## Core Capabilities (`v2.4.1`)
 
-- **Zero-Scroll Cinematic Home (Phone & Android TV):** Pure `#000000` AMOLED single-screen dashboard featuring 3 custom matte WebP cover artworks (*TV*, *Movies*, *Series*), genuine **InterDisplay** typography, ambient focus borders for TV D-Pad navigation, and dedicated full-screen panels for **History** and **Favourites**.
+- **Zero-Scroll Cinematic Home & Collapsing Scroll Headers (Phone & Android TV):** Pure `#000000` AMOLED single-screen dashboard featuring 3 custom matte WebP cover artworks (*TV*, *Movies*, *Series*) and genuine **InterDisplay** typography, paired with scroll-linked collapsing headers (cover scale + fade, sticky docked Champagne-Taupe Play button), borderless channel lists with active `#D4B88E` + red `• LIVE` indicators, and a floating mini-player bar across TV, Movies, Series, Playlists, History, and Favourites.
 - **Borderless 60fps Boomerang Loading Animations:** Hardware-accelerated Jetpack Compose `Canvas` morphing loaders (*Chroma Boomerang*, *Amber Boomerang*, *Aurora Boomerang*) floating cleanly over a dimmed backdrop with live preview inside Settings.
 - **Smart Series Playback (Skip Intro & Auto-Next Episode):** Floating *Skip Intro* pill during the opening minutes of an episode with *Off / Manual / Auto* modes and per-series duration memory, paired with a 15-second *Auto-Next Episode* countdown pill for seamless binge playback.
 - **Smart Subtitle Sync & Auto-Subtitle Pipeline:** Release-tag candidate scoring for automatic Indonesian/preferred-language subtitles, per-series sync offset memory across episodes, and a 1-tap *Quick Sync* button alongside an accidental-tap-proof drag-only seekbar.

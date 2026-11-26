@@ -40,7 +40,14 @@ import com.ylowstone.tv.model.PlaylistProfile
 import com.ylowstone.tv.model.PlaylistType
 import com.ylowstone.tv.model.LoadingAnimStyle
 import com.ylowstone.tv.model.StreamFormat
+import androidx.compose.foundation.lazy.items
+import com.ylowstone.tv.R
 import com.ylowstone.tv.ui.components.BoomerangLoadingIndicator
+import com.ylowstone.tv.ui.components.CinematicCollapsingListScreen
+import com.ylowstone.tv.ui.components.CinematicNoirTokens
+import com.ylowstone.tv.ui.components.QuickChipSpec
+import com.ylowstone.tv.ui.components.YlowInterDisplay
+import androidx.compose.ui.text.TextStyle
 import com.ylowstone.tv.ui.components.ProfileYBadgeButton
 import com.ylowstone.tv.ui.components.YlowstoneLogoBadge
 import com.ylowstone.tv.ui.components.glossyPressPill
@@ -84,222 +91,178 @@ fun PlaylistManagerScreen(
     var actionTarget by remember { mutableStateOf<PlaylistProfile?>(null) }
     var inspectLinkTarget by remember { mutableStateOf<PlaylistProfile?>(null) }
 
+    var searchQuery by remember { mutableStateOf("") }
+    var sortAz by remember { mutableStateOf(false) }
+    val isIndonesian = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
+    val filteredPlaylists = remember(playlists, searchQuery, sortAz) {
+        val q = searchQuery.trim()
+        val f = if (q.isEmpty()) playlists else playlists.filter { it.name.contains(q, ignoreCase = true) }
+        if (sortAz) f.sortedBy { it.name.lowercase() } else f
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(c.bg)
+            .background(CinematicNoirTokens.BgAmoled)
             .systemBarsPadding()
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-        ) {
-            // Minimalist clean top header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    YlowstoneLogoBadge(size = 40.dp)
-                    Column {
-                        Text("YlowstoneTV", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                        Text(strings.choosePlaylist, color = c.textSecondary, fontSize = 12.sp)
-                    }
+        CinematicCollapsingListScreen(
+            title = strings.choosePlaylist,
+            subtitleInfo = "ylowstone • ${filteredPlaylists.size} playlist",
+            coverRes = R.drawable.cover_yellowstone_tv,
+            headerGradientColor = CinematicNoirTokens.GradNeutral,
+            searchQuery = searchQuery,
+            onSearchQueryChange = { searchQuery = it },
+            searchPlaceholder = if (isIndonesian) "Cari di daftar putar..." else "Search in playlist...",
+            isTvMode = isTvMode,
+            sortLabel = if (isIndonesian) "Urut" else "Sort",
+            sortActive = sortAz,
+            onSortClick = { sortAz = !sortAz },
+            quickChips = buildList {
+                add(QuickChipSpec("add_pl", "+ ${strings.addPlaylist}", false) {
+                    editingProfile = null; showEditor = true
+                })
+                if (!isLoggedIn) {
+                    add(QuickChipSpec("admin_login", strings.adminMenuLogin, true) {
+                        onOpenLogin()
+                    })
                 }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (!isLoggedIn) {
-                        Row(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(c.accent.copy(alpha = 0.16f))
-                                .border(1.dp, c.accent.copy(alpha = 0.45f), CircleShape)
-                                .glossyPressPill(18f)
-                                .clickable(onClick = onOpenLogin)
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(Icons.Rounded.Login, contentDescription = null, tint = c.accent, modifier = Modifier.size(16.dp))
-                            Text(strings.adminMenuLogin, color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    ProfileYBadgeButton(
-                        isTvMode = isTvMode,
-                        onClick = onOpenSettings
-                    )
-                }
+            },
+            playButtonIcon = if (filteredPlaylists.isEmpty()) Icons.Rounded.Add else Icons.Rounded.PlayArrow,
+            onPlayAction = {
+                val first = filteredPlaylists.firstOrNull()
+                if (first != null) onOpenPlaylist(first)
+                else { editingProfile = null; showEditor = true }
+            },
+            topRightAction = {
+                ProfileYBadgeButton(isTvMode = isTvMode, onClick = onOpenSettings)
             }
-
-            Spacer(Modifier.height(18.dp))
-
-            if (playlists.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
+        ) {
+            if (filteredPlaylists.isEmpty()) {
+                item(key = "empty_pl") {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.padding(horizontal = 20.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 32.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(76.dp)
+                                .size(68.dp)
                                 .clip(CircleShape)
-                                .background(c.accent.copy(alpha = 0.14f)),
+                                .background(CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.16f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = c.accent, modifier = Modifier.size(38.dp))
+                            Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = CinematicNoirTokens.ChampagnePlay, modifier = Modifier.size(34.dp))
                         }
-                        Text(strings.noPlaylistYet, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text(strings.noPlaylistDesc, color = c.textSecondary, fontSize = 13.sp)
-                        Spacer(Modifier.height(6.dp))
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxWidth()
+                        Text(strings.noPlaylistYet, color = CinematicNoirTokens.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                        Text(strings.noPlaylistDesc, color = CinematicNoirTokens.TextSecondary, fontSize = 12.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Button(
+                            onClick = onOpenLogin,
+                            colors = ButtonDefaults.buttonColors(containerColor = CinematicNoirTokens.ChampagnePlay, contentColor = Color(0xFF14110D)),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth().height(46.dp)
                         ) {
-                            Button(
-                                onClick = onOpenLogin,
-                                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier.fillMaxWidth().height(48.dp)
-                            ) {
-                                Icon(Icons.Rounded.Login, contentDescription = null, tint = c.onAccent)
-                                Spacer(Modifier.width(8.dp))
-                                Text(strings.adminMenuLogin, color = c.onAccent, fontWeight = FontWeight.Bold)
-                            }
-                            OutlinedButton(
-                                onClick = { editingProfile = null; showEditor = true },
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier.fillMaxWidth().height(46.dp)
-                            ) {
-                                Icon(Icons.Rounded.Add, contentDescription = null, tint = c.textPrimary)
-                                Spacer(Modifier.width(8.dp))
-                                Text(strings.addPlaylist, color = c.textPrimary, fontWeight = FontWeight.SemiBold)
-                            }
+                            Icon(Icons.Rounded.Login, contentDescription = null, tint = Color(0xFF14110D))
+                            Spacer(Modifier.width(8.dp))
+                            Text(strings.adminMenuLogin, color = Color(0xFF14110D), fontWeight = FontWeight.Bold)
+                        }
+                        OutlinedButton(
+                            onClick = { editingProfile = null; showEditor = true },
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth().height(44.dp)
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, tint = CinematicNoirTokens.ChampagneHighlight)
+                            Spacer(Modifier.width(8.dp))
+                            Text(strings.addPlaylist, color = CinematicNoirTokens.TextPrimary, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
             } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = if (isTvMode) 170.dp else 150.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    items(playlists, key = { it.id }) { profile ->
-                        val tint = avatarColors[profile.colorIndex % avatarColors.size]
-                        Column(
+                items(filteredPlaylists, key = { it.id }) { profile ->
+                    val tint = avatarColors[profile.colorIndex % avatarColors.size]
+                    val typeLabel = when (profile.type) {
+                        PlaylistType.XTREAM -> strings.xtreamLoader
+                        PlaylistType.M3U -> strings.m3uLoader
+                        PlaylistType.DIRECT -> strings.directLoader
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .tvFocusBorder(isTvMode, RoundedCornerShape(10.dp))
+                            .combinedClickable(
+                                onClick = { onOpenPlaylist(profile) },
+                                onLongClick = { actionTarget = profile }
+                            )
+                            .padding(horizontal = 16.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(22.dp))
-                                .background(c.surface)
-                                .border(1.dp, c.glassBorder, RoundedCornerShape(22.dp))
-                                .tvFocusBorder(isTvMode, RoundedCornerShape(22.dp))
-                                .glossyPressPill(22f)
-                                .combinedClickable(
-                                    onClick = { onOpenPlaylist(profile) },
-                                    onLongClick = { actionTarget = profile }
-                                )
-                                .padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .size(46.dp)
+                                .clip(RoundedCornerShape(11.dp))
+                                .background(Brush.linearGradient(listOf(tint.copy(alpha = 0.85f), tint.copy(alpha = 0.42f))))
+                                .border(0.8.dp, CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.30f), RoundedCornerShape(11.dp)),
+                            contentAlignment = Alignment.Center
                         ) {
-                            // v2.3.1: Ikon refresh di kartu dihapus; aksi Perbarui murni di menu titik tiga (⋮)
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .align(Alignment.Center)
-                                        .clip(CircleShape)
-                                        .background(Brush.linearGradient(listOf(tint, tint.copy(alpha = 0.55f)))),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = profile.name.take(2).uppercase(),
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 18.sp
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { actionTarget = profile },
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .size(28.dp)
-                                ) {
-                                    Icon(Icons.Rounded.MoreVert, contentDescription = "Options", tint = c.textSecondary, modifier = Modifier.size(18.dp))
-                                }
-                            }
-                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = profile.name.take(2).uppercase(),
+                                style = TextStyle(
+                                    fontFamily = YlowInterDisplay,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = Color.White
+                                )
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = profile.name,
-                                color = c.textPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
+                                style = TextStyle(
+                                    fontFamily = YlowInterDisplay,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 15.sp,
+                                    color = CinematicNoirTokens.TextPrimary
+                                ),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Spacer(Modifier.height(4.dp))
                             Text(
-                                text = when (profile.type) {
-                                    PlaylistType.XTREAM -> strings.xtreamLoader
-                                    PlaylistType.M3U -> strings.m3uLoader
-                                    PlaylistType.DIRECT -> strings.directLoader
-                                },
-                                color = tint,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
+                                text = typeLabel,
+                                style = TextStyle(
+                                    fontFamily = YlowInterDisplay,
+                                    fontWeight = FontWeight.Normal,
+                                    fontSize = 11.sp,
+                                    color = CinematicNoirTokens.ChampagneAccent
+                                ),
+                                maxLines = 1
                             )
                         }
-                    }
-
-                    // Add Playlist tile
-                    item {
-                        Column(
-                            modifier = Modifier
-                                .height(136.dp)
-                                .clip(RoundedCornerShape(22.dp))
-                                .background(c.accent.copy(alpha = 0.10f))
-                                .border(1.dp, c.accent.copy(alpha = 0.4f), RoundedCornerShape(22.dp))
-                                .tvFocusBorder(isTvMode, RoundedCornerShape(22.dp))
-                                .glossyPressPill(22f)
-                                .clickable { editingProfile = null; showEditor = true }
-                                .padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                        IconButton(
+                            onClick = { actionTarget = profile },
+                            modifier = Modifier.size(34.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(c.accent),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Rounded.Add, contentDescription = strings.addPlaylist, tint = c.onAccent, modifier = Modifier.size(26.dp))
-                            }
-                            Spacer(Modifier.height(10.dp))
-                            Text(strings.addPlaylist, color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Icon(
+                                imageVector = Icons.Rounded.MoreVert,
+                                contentDescription = "Options",
+                                tint = CinematicNoirTokens.TextSecondary,
+                                modifier = Modifier.size(19.dp)
+                            )
                         }
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = strings.longPressHint,
-                    color = c.textSecondary,
-                    fontSize = 11.sp,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
+                item(key = "pl_hint") {
+                    Text(
+                        text = strings.longPressHint,
+                        color = CinematicNoirTokens.TextSecondary,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                }
             }
         }
 

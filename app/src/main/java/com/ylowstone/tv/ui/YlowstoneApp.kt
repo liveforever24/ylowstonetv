@@ -121,7 +121,7 @@ fun YlowstoneApp(
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
     val sharedPlayer = remember(settings.bufferProfile) {
-        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.4.0")
+        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.4.1")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -853,6 +853,8 @@ fun YlowstoneApp(
                                         favourites = homeFavourites,
                                         history = homeHistory,
                                         favoriteViewMode = settings.favoriteViewMode,
+                                        activeChannel = activeChannel,
+                                        isPlaying = isPlaying,
                                         strings = strings,
                                         isTvMode = isTvMode,
                                         onOpenSection = { type ->
@@ -879,6 +881,15 @@ fun YlowstoneApp(
                                         onLongPressTaggedChannel = { tagged ->
                                             longPressTarget = tagged.channel to tagged.playlistName
                                         },
+                                        onTogglePlayPause = {
+                                            if (sharedPlayer.isPlaying) sharedPlayer.pause() else sharedPlayer.play()
+                                        },
+                                        onOpenActivePlayer = {
+                                            if (activeChannel != null) {
+                                                playerMode = PlayerMode.SPLIT
+                                                isLandscapeFullscreen = false
+                                            }
+                                        },
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
                                             showProfileDropdown = true
@@ -891,11 +902,13 @@ fun YlowstoneApp(
                                         repo = repo,
                                         sharedPlayer = sharedPlayer,
                                         activeChannel = activeChannel,
+                                        isPlaying = isPlaying,
                                         playerMode = playerMode,
                                         lockedCategories = lockedCategories,
                                         pinCode = settings.pinCode,
                                         strings = strings,
                                         isTvMode = isTvMode,
+                                        onBackHome = { activeTab = MainTab.HOME },
                                         onToggleLockCategory = { cat ->
                                             val next = if (lockedCategories.contains(cat)) lockedCategories - cat else lockedCategories + cat
                                             lockedCategories = next
@@ -914,6 +927,15 @@ fun YlowstoneApp(
                                         onLongPressChannel = { ch ->
                                             longPressTarget = ch to pl.name
                                         },
+                                        onTogglePlayPause = {
+                                            if (sharedPlayer.isPlaying) sharedPlayer.pause() else sharedPlayer.play()
+                                        },
+                                        onOpenActivePlayer = {
+                                            if (activeChannel != null) {
+                                                playerMode = PlayerMode.SPLIT
+                                                isLandscapeFullscreen = false
+                                            }
+                                        },
                                         onFloatCurrent = { playerMode = PlayerMode.FLOATING },
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
@@ -927,11 +949,13 @@ fun YlowstoneApp(
                                         repo = repo,
                                         sharedPlayer = sharedPlayer,
                                         activeChannel = activeChannel,
+                                        isPlaying = isPlaying,
                                         playerMode = playerMode,
                                         lockedCategories = lockedCategories,
                                         pinCode = settings.pinCode,
                                         strings = strings,
                                         isTvMode = isTvMode,
+                                        onBackHome = { activeTab = MainTab.HOME },
                                         onToggleLockCategory = { cat ->
                                             val next = if (lockedCategories.contains(cat)) lockedCategories - cat else lockedCategories + cat
                                             lockedCategories = next
@@ -946,6 +970,15 @@ fun YlowstoneApp(
                                         onLaunchPlayer = { ch, list, landscape -> launchPlayer(ch, list, landscape) },
                                         onLongPressChannel = { ch ->
                                             longPressTarget = ch to pl.name
+                                        },
+                                        onTogglePlayPause = {
+                                            if (sharedPlayer.isPlaying) sharedPlayer.pause() else sharedPlayer.play()
+                                        },
+                                        onOpenActivePlayer = {
+                                            if (activeChannel != null) {
+                                                playerMode = PlayerMode.SPLIT
+                                                isLandscapeFullscreen = false
+                                            }
                                         },
                                         onFloatCurrent = { playerMode = PlayerMode.FLOATING },
                                         onOpenProfileMenu = {
@@ -960,11 +993,13 @@ fun YlowstoneApp(
                                         repo = repo,
                                         sharedPlayer = sharedPlayer,
                                         activeChannel = activeChannel,
+                                        isPlaying = isPlaying,
                                         playerMode = playerMode,
                                         lockedCategories = lockedCategories,
                                         pinCode = settings.pinCode,
                                         strings = strings,
                                         isTvMode = isTvMode,
+                                        onBackHome = { activeTab = MainTab.HOME },
                                         onToggleLockCategory = { cat ->
                                             val next = if (lockedCategories.contains(cat)) lockedCategories - cat else lockedCategories + cat
                                             lockedCategories = next
@@ -979,6 +1014,15 @@ fun YlowstoneApp(
                                         onLaunchPlayer = { ch, list, landscape -> launchPlayer(ch, list, landscape) },
                                         onLongPressChannel = { ch ->
                                             longPressTarget = ch to pl.name
+                                        },
+                                        onTogglePlayPause = {
+                                            if (sharedPlayer.isPlaying) sharedPlayer.pause() else sharedPlayer.play()
+                                        },
+                                        onOpenActivePlayer = {
+                                            if (activeChannel != null) {
+                                                playerMode = PlayerMode.SPLIT
+                                                isLandscapeFullscreen = false
+                                            }
                                         },
                                         onFloatCurrent = { playerMode = PlayerMode.FLOATING },
                                         onOpenProfileMenu = {

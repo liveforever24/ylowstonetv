@@ -14,15 +14,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,9 +32,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,14 +46,19 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.ylowstone.tv.R
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.*
-import com.ylowstone.tv.ui.components.ChannelLogoBox
+import com.ylowstone.tv.ui.components.BorderlessCategoryRow
+import com.ylowstone.tv.ui.components.BorderlessChannelRow
+import com.ylowstone.tv.ui.components.CinematicCollapsingListScreen
+import com.ylowstone.tv.ui.components.CinematicNoirTokens
+import com.ylowstone.tv.ui.components.GlossyGridScrollPositionPill
 import com.ylowstone.tv.ui.components.PinDialog
 import com.ylowstone.tv.ui.components.ProfileYBadgeButton
-import com.ylowstone.tv.ui.components.GlossyGridScrollPositionPill
-import com.ylowstone.tv.ui.components.GlossyScrollPositionPill
+import com.ylowstone.tv.ui.components.QuickChipSpec
+import com.ylowstone.tv.ui.components.YlowInterDisplay
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
@@ -72,16 +76,20 @@ fun BrowseScreen(
     repo: IptvRepository,
     sharedPlayer: ExoPlayer,
     activeChannel: ChannelItem?,
+    isPlaying: Boolean,
     playerMode: PlayerMode,
     lockedCategories: Set<String>,
     pinCode: String,
     strings: AppStrings,
     isTvMode: Boolean,
+    onBackHome: () -> Unit,
     onToggleLockCategory: (String) -> Unit,
     onToggleFavorite: (ChannelItem) -> Unit,
     onSelectChannelInline: (ChannelItem, List<ChannelItem>) -> Unit,
     onLaunchPlayer: (ChannelItem, List<ChannelItem>, Boolean) -> Unit,
     onLongPressChannel: (ChannelItem) -> Unit,
+    onTogglePlayPause: () -> Unit,
+    onOpenActivePlayer: () -> Unit,
     onFloatCurrent: () -> Unit,
     onOpenProfileMenu: () -> Unit
 ) {
@@ -92,8 +100,11 @@ fun BrowseScreen(
     var openedCategory by remember(playlist.id, mediaType) { mutableStateOf<String?>(null) }
     var landscapeCategory by remember(playlist.id, mediaType) { mutableStateOf("ALL") }
     var catFilterQuery by remember(playlist.id, mediaType) { mutableStateOf("") }
+    var catSortAz by remember(playlist.id, mediaType) { mutableStateOf(false) }
     var channelSearchQuery by remember(playlist.id, mediaType) { mutableStateOf("") }
     var debouncedChannelSearch by remember(playlist.id, mediaType) { mutableStateOf("") }
+    var channelSortAz by remember(playlist.id, mediaType) { mutableStateOf(false) }
+    var channelFavOnly by remember(playlist.id, mediaType) { mutableStateOf(false) }
     var unlockedTempCategories by remember(playlist.id) { mutableStateOf<Set<String>>(emptySet()) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
     val catListState = rememberLazyListState()
@@ -106,9 +117,10 @@ fun BrowseScreen(
     val categories = remember(playlist.id, mediaType, refreshTrigger) {
         repo.db.getCategories(playlist.id, mediaType)
     }
-    val filteredCategories = remember(categories, catFilterQuery) {
-        if (catFilterQuery.isBlank()) categories
+    val filteredCategories = remember(categories, catFilterQuery, catSortAz) {
+        val base = if (catFilterQuery.isBlank()) categories
         else categories.filter { it.name.contains(catFilterQuery.trim(), ignoreCase = true) }
+        if (catSortAz) base.sortedBy { it.name.lowercase() } else base
     }
     val allCount = remember(categories) { categories.sumOf { it.count } }
     val favCount = remember(playlist.id, mediaType, refreshTrigger) {
@@ -131,32 +143,48 @@ fun BrowseScreen(
         MediaType.MOVIE -> strings.movies
         MediaType.SERIES -> strings.series
     }
+    val sectionCoverRes = when (mediaType) {
+        MediaType.LIVE -> R.drawable.cover_yellowstone_tv
+        MediaType.MOVIE -> R.drawable.cover_yellowstone_film
+        MediaType.SERIES -> R.drawable.cover_yellowstone_seri
+    }
+    val sectionGradColor = when (mediaType) {
+        MediaType.LIVE -> CinematicNoirTokens.GradTv
+        MediaType.MOVIE -> CinematicNoirTokens.GradFilm
+        MediaType.SERIES -> CinematicNoirTokens.GradSeri
+    }
+    val isIndonesian = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
+    val sortLabel = if (isIndonesian) "Urut" else "Sort"
+    val favChipLabel = if (isIndonesian) "+ Favorit" else "+ Favourites"
+    val sortChipLabel = if (isIndonesian) "Urutkan" else "Sort A-Z"
+    val searchPlaylistHint = if (isIndonesian) "Cari di daftar putar..." else "Search in playlist..."
 
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(c.bg)
+            .background(CinematicNoirTokens.BgAmoled)
             .statusBarsPadding()
     ) {
         val isPortrait = maxWidth < 600.dp
         BackHandler(enabled = isPortrait && openedCategory != null && playerMode != PlayerMode.FULLSCREEN && playerMode != PlayerMode.SPLIT) {
             openedCategory = null
             channelSearchQuery = ""
+            channelFavOnly = false
         }
         val activeCatForQuery = if (isPortrait) (openedCategory ?: "ALL") else landscapeCategory
         val isActiveCatLocked = lockedCategories.contains(activeCatForQuery) && !unlockedTempCategories.contains(activeCatForQuery)
 
-        var channels by remember { mutableStateOf<List<ChannelItem>>(emptyList()) }
+        var rawChannels by remember { mutableStateOf<List<ChannelItem>>(emptyList()) }
         LaunchedEffect(playlist.id, mediaType, activeCatForQuery, debouncedChannelSearch, lockedCategories, unlockedTempCategories, refreshTrigger, isPortrait, openedCategory) {
             if (isPortrait && openedCategory == null && debouncedChannelSearch.isBlank()) {
-                channels = emptyList()
+                rawChannels = emptyList()
                 return@LaunchedEffect
             }
             if (isActiveCatLocked) {
-                channels = emptyList()
+                rawChannels = emptyList()
                 return@LaunchedEffect
             }
-            channels = withContext(Dispatchers.IO) {
+            rawChannels = withContext(Dispatchers.IO) {
                 repo.db.queryChannels(
                     playlistId = playlist.id,
                     mediaType = mediaType,
@@ -169,378 +197,279 @@ fun BrowseScreen(
             }
         }
 
+        val channels = remember(rawChannels, channelFavOnly, channelSortAz) {
+            val f = if (channelFavOnly) rawChannels.filter { it.isFavorite } else rawChannels
+            if (channelSortAz) f.sortedBy { it.name.lowercase() } else f
+        }
+
+        fun openMediaItem(item: ChannelItem, queue: List<ChannelItem>) {
+            if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM) {
+                activeSeries = item
+                loadingEpisodes = true
+                scope.launch {
+                    episodes = repo.fetchSeriesEpisodes(playlist, item.streamId)
+                    loadingEpisodes = false
+                }
+            } else {
+                if (mediaType != MediaType.LIVE) repo.db.markWatched(item.id)
+                onLaunchPlayer(item, queue, false)
+            }
+        }
+
         if (isPortrait) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp)
-            ) {
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f)
+            AnimatedContent(
+                targetState = openedCategory,
+                transitionSpec = {
+                    if (targetState != null) {
+                        (slideInVertically { it / 5 } + fadeIn()).togetherWith(fadeOut())
+                    } else {
+                        fadeIn().togetherWith(slideOutVertically { it / 5 } + fadeOut())
+                    }
+                },
+                label = "catToChannels",
+                modifier = Modifier.fillMaxSize()
+            ) { currentCat ->
+                if (currentCat == null) {
+                    // =================================================
+                    // PORTRAIT: DAFTAR KATEGORI (COLLAPSING HEADER + BORDERLESS)
+                    // =================================================
+                    CinematicCollapsingListScreen(
+                        title = "$sectionTitle • ${strings.categories}",
+                        subtitleInfo = "ylowstone • $allCount ${strings.channelsCount}",
+                        coverRes = sectionCoverRes,
+                        headerGradientColor = sectionGradColor,
+                        searchQuery = catFilterQuery,
+                        onSearchQueryChange = { catFilterQuery = it },
+                        searchPlaceholder = searchPlaylistHint,
+                        isTvMode = isTvMode,
+                        listState = catListState,
+                        showLiveMetaTag = mediaType == MediaType.LIVE,
+                        sortLabel = sortLabel,
+                        sortActive = catSortAz,
+                        onSortClick = { catSortAz = !catSortAz },
+                        quickChips = listOf(
+                            QuickChipSpec("all", strings.allChannels, false) { openedCategory = "ALL" },
+                            QuickChipSpec("fav", "${strings.favourites} ($favCount)", false) { openedCategory = "FAV" },
+                            QuickChipSpec("hist", "${strings.history} ($histCount)", false) { openedCategory = "HIST" }
+                        ),
+                        onPlayAction = { openedCategory = "ALL" },
+                        onBack = onBackHome,
+                        topRightAction = {
+                            ProfileYBadgeButton(isTvMode = isTvMode, onClick = onOpenProfileMenu)
+                        },
+                        activeMiniChannel = if (playerMode == PlayerMode.NONE || playerMode == PlayerMode.FLOATING) activeChannel else null,
+                        isMiniPlaying = isPlaying,
+                        onMiniTogglePlay = onTogglePlayPause,
+                        onMiniOpenPlayer = onOpenActivePlayer
                     ) {
-                        if (openedCategory != null) {
-                            IconButton(
-                                onClick = { openedCategory = null; channelSearchQuery = "" },
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(c.surface)
-                                    .border(1.dp, c.glassBorder, CircleShape)
-                            ) {
-                                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Back", tint = c.textPrimary)
-                            }
-                        }
-                        Column {
-                            Text(
-                                text = when (openedCategory) {
-                                    null -> "$sectionTitle • ${strings.categories}"
-                                    "ALL" -> strings.allChannels
-                                    "FAV" -> strings.favourites
-                                    "HIST" -> strings.history
-                                    else -> openedCategory!!
-                                },
-                                color = c.textPrimary,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                        item(key = "cat_all") {
+                            BorderlessCategoryRow(
+                                name = strings.allChannels,
+                                countText = "$allCount ${strings.channelsCount}",
+                                icon = Icons.Rounded.GridView,
+                                locked = false,
+                                highlight = true,
+                                isTvMode = isTvMode,
+                                onClick = { openedCategory = "ALL" },
+                                onLongClick = {}
                             )
-                            Text(
-                                text = if (openedCategory == null) strings.longPressPinHint else strings.longPressItemHint,
-                                color = c.textSecondary,
-                                fontSize = 11.sp
+                        }
+                        item(key = "cat_fav") {
+                            BorderlessCategoryRow(
+                                name = strings.favourites,
+                                countText = "$favCount ${strings.channelsCount}",
+                                icon = Icons.Rounded.Favorite,
+                                locked = false,
+                                highlight = false,
+                                isTvMode = isTvMode,
+                                onClick = { openedCategory = "FAV" },
+                                onLongClick = {}
+                            )
+                        }
+                        item(key = "cat_hist") {
+                            BorderlessCategoryRow(
+                                name = strings.history,
+                                countText = "$histCount ${strings.channelsCount}",
+                                icon = Icons.Rounded.History,
+                                locked = false,
+                                highlight = false,
+                                isTvMode = isTvMode,
+                                onClick = { openedCategory = "HIST" },
+                                onLongClick = {}
+                            )
+                        }
+                        item(key = "cat_divider") {
+                            HorizontalDivider(
+                                color = CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.16f),
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                            )
+                        }
+                        items(filteredCategories, key = { it.name }) { cat ->
+                            val isLocked = lockedCategories.contains(cat.name)
+                            BorderlessCategoryRow(
+                                name = cat.name,
+                                countText = "${cat.count} ${strings.channelsCount}",
+                                icon = if (isLocked) Icons.Rounded.Lock else Icons.Rounded.FolderOpen,
+                                locked = isLocked,
+                                highlight = false,
+                                isTvMode = isTvMode,
+                                onClick = {
+                                    if (isLocked && !unlockedTempCategories.contains(cat.name)) {
+                                        pinActionCategory = cat.name
+                                        pinActionMode = "OPEN_LOCKED"
+                                        pinActionIsPortrait = true
+                                    } else {
+                                        openedCategory = cat.name
+                                    }
+                                },
+                                onLongClick = {
+                                    pinActionCategory = cat.name
+                                    pinActionMode = "TOGGLE_LOCK"
+                                    pinActionIsPortrait = true
+                                }
                             )
                         }
                     }
-                    ProfileYBadgeButton(isTvMode = isTvMode, onClick = onOpenProfileMenu)
-                }
+                } else {
+                    // =================================================
+                    // PORTRAIT: DAFTAR CHANNEL / FILM / SERI (COLLAPSING HEADER + BORDERLESS)
+                    // =================================================
+                    val channelListState = rememberLazyListState()
+                    val openedTitle = when (currentCat) {
+                        "ALL" -> strings.allChannels
+                        "FAV" -> strings.favourites
+                        "HIST" -> strings.history
+                        else -> currentCat
+                    }
+                    val firstPlayable = channels.firstOrNull { !it.isProviderSeparator() }
 
-                Spacer(Modifier.height(10.dp))
-
-                AnimatedContent(
-                    targetState = openedCategory,
-                    transitionSpec = {
-                        if (targetState != null) {
-                            (slideInVertically { it / 4 } + fadeIn()).togetherWith(fadeOut())
-                        } else {
-                            fadeIn().togetherWith(slideOutVertically { it / 4 } + fadeOut())
-                        }
-                    },
-                    label = "catToChannels",
-                    modifier = Modifier.weight(1f).fillMaxWidth()
-                ) { currentCat ->
-                    if (currentCat == null) {
-                        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = catFilterQuery,
-                                onValueChange = { catFilterQuery = it },
-                                placeholder = { Text(strings.categories + "...", fontSize = 13.sp) },
-                                leadingIcon = { Icon(Icons.Rounded.FilterList, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                trailingIcon = {
-                                    if (catFilterQuery.isNotEmpty()) {
-                                        IconButton(onClick = { catFilterQuery = "" }) {
-                                            Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                },
-                                singleLine = true,
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                                LazyColumn(
-                                    state = catListState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(bottom = 20.dp),
-                                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                                ) {
-                                    item {
-                                        VerticalCategoryCard(
-                                            name = strings.allChannels,
-                                            count = allCount,
-                                            icon = Icons.Rounded.GridView,
-                                            locked = false,
-                                            highlight = true,
-                                            onClick = { openedCategory = "ALL" },
-                                            onLongClick = {}
-                                        )
-                                    }
-                                    item {
-                                        VerticalCategoryCard(
-                                            name = strings.favourites,
-                                            count = favCount,
-                                            icon = Icons.Rounded.Favorite,
-                                            locked = false,
-                                            highlight = false,
-                                            onClick = { openedCategory = "FAV" },
-                                            onLongClick = {}
-                                        )
-                                    }
-                                    item {
-                                        VerticalCategoryCard(
-                                            name = strings.history,
-                                            count = histCount,
-                                            icon = Icons.Rounded.History,
-                                            locked = false,
-                                            highlight = false,
-                                            onClick = { openedCategory = "HIST" },
-                                            onLongClick = {}
-                                        )
-                                    }
-                                    item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
-
-                                    items(filteredCategories, key = { it.name }) { cat ->
-                                        val isLocked = lockedCategories.contains(cat.name)
-                                        VerticalCategoryCard(
-                                            name = cat.name,
-                                            count = cat.count,
-                                            icon = if (isLocked) Icons.Rounded.Lock else Icons.Rounded.FolderOpen,
-                                            locked = isLocked,
-                                            highlight = false,
-                                            onClick = {
-                                                if (isLocked && !unlockedTempCategories.contains(cat.name)) {
-                                                    pinActionCategory = cat.name
-                                                    pinActionMode = "OPEN_LOCKED"
-                                                    pinActionIsPortrait = true
-                                                } else {
-                                                    openedCategory = cat.name
-                                                }
-                                            },
-                                            onLongClick = {
-                                                pinActionCategory = cat.name
-                                                pinActionMode = "TOGGLE_LOCK"
-                                                pinActionIsPortrait = true
-                                            }
-                                        )
-                                    }
-                                }
-                                GlossyScrollPositionPill(
-                                    listState = catListState,
-                                    totalItemsCount = filteredCategories.size + 4,
-                                    modifier = Modifier.align(Alignment.CenterEnd)
-                                )
-                            }
-                        }
-                    } else {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(c.surface)
-                                    .pointerInput(currentCat) {
-                                        var totalDrag = 0f
-                                        detectVerticalDragGestures(
-                                            onDragEnd = {
-                                                if (totalDrag > 70f) {
-                                                    openedCategory = null
-                                                    channelSearchQuery = ""
-                                                }
-                                                totalDrag = 0f
-                                            }
-                                        ) { _, dragAmount ->
-                                            if (dragAmount > 0f) totalDrag += dragAmount
-                                        }
-                                    }
-                                    .clickable { openedCategory = null; channelSearchQuery = "" }
-                                    .padding(vertical = 7.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(42.dp)
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(c.textSecondary.copy(alpha = 0.45f))
-                                )
-                            }
-
-                            OutlinedTextField(
-                                value = channelSearchQuery,
-                                onValueChange = { channelSearchQuery = it },
-                                placeholder = { Text(strings.searchChannelPlaceholder, fontSize = 13.sp) },
-                                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                trailingIcon = {
-                                    if (channelSearchQuery.isNotEmpty()) {
-                                        IconButton(onClick = { channelSearchQuery = "" }) {
-                                            Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                },
-                                singleLine = true,
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            if (mediaType == MediaType.LIVE && activeChannel != null && playerMode == PlayerMode.NONE) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(18.dp))
-                                        .background(c.surface)
-                                        .border(1.dp, c.glassBorder, RoundedCornerShape(18.dp))
-                                        .padding(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(16f / 9f)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(Color.Black)
-                                    ) {
-                                        AndroidView(
-                                            factory = { ctx ->
-                                                PlayerView(ctx).apply {
-                                                    player = sharedPlayer
-                                                    useController = false
-                                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                                }
-                                            },
-                                            update = { it.player = sharedPlayer },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(activeChannel.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text(activeChannel.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
-                                        }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            OutlinedButton(
-                                                onClick = onFloatCurrent,
-                                                shape = RoundedCornerShape(12.dp),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                            ) {
-                                                Icon(Icons.Rounded.PictureInPictureAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                                Text(strings.floatPlayer, fontSize = 11.sp)
-                                            }
-                                            Button(
-                                                onClick = { onLaunchPlayer(activeChannel, channels, true) },
-                                                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                                                shape = RoundedCornerShape(12.dp),
-                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                                            ) {
-                                                Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                                Text(strings.fullscreen, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
+                    CinematicCollapsingListScreen(
+                        title = openedTitle,
+                        subtitleInfo = "ylowstone • ${channels.size} ${strings.channelsCount}",
+                        coverRes = sectionCoverRes,
+                        headerGradientColor = sectionGradColor,
+                        searchQuery = channelSearchQuery,
+                        onSearchQueryChange = { channelSearchQuery = it },
+                        searchPlaceholder = searchPlaylistHint,
+                        isTvMode = isTvMode,
+                        listState = channelListState,
+                        showLiveMetaTag = mediaType == MediaType.LIVE,
+                        sortLabel = sortLabel,
+                        sortActive = channelSortAz,
+                        onSortClick = { channelSortAz = !channelSortAz },
+                        quickChips = buildList {
+                            add(QuickChipSpec("fav_filter", favChipLabel, channelFavOnly) { channelFavOnly = !channelFavOnly })
+                            add(QuickChipSpec("sort_az", sortChipLabel, channelSortAz) { channelSortAz = !channelSortAz })
                             if (mediaType == MediaType.LIVE) {
-                                val liveListState = rememberLazyListState()
-                                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                                    LazyColumn(
-                                        state = liveListState,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentPadding = PaddingValues(bottom = 20.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        items(channels, key = { it.id }) { ch ->
-                                            val active = activeChannel?.id == ch.id
-                                            ChannelListRow(
-                                                ch = ch,
-                                                active = active,
-                                                isTvMode = isTvMode,
-                                                onClick = {
-                                                    onLaunchPlayer(ch, channels, false)
-                                                },
-                                                onLongClick = { onLongPressChannel(ch) },
-                                                onToggleFav = {
-                                                    onToggleFavorite(ch)
-                                                    refreshTrigger++
-                                                }
-                                            )
-                                        }
-                                    }
-                                    GlossyScrollPositionPill(
-                                        listState = liveListState,
-                                        totalItemsCount = channels.size,
-                                        modifier = Modifier.align(Alignment.CenterEnd)
-                                    )
-                                }
-                            } else {
-                                PosterGrid(
-                                    channels = channels,
-                                    isTvMode = isTvMode,
-                                    onOpenItem = { item ->
-                                        if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM) {
-                                            activeSeries = item
-                                            loadingEpisodes = true
-                                            scope.launch {
-                                                episodes = repo.fetchSeriesEpisodes(playlist, item.streamId)
-                                                loadingEpisodes = false
-                                            }
-                                        } else {
-                                            repo.db.markWatched(item.id)
-                                            onLaunchPlayer(item, channels, false)
-                                        }
-                                    },
-                                    onLongPressItem = { item -> onLongPressChannel(item) },
-                                    onToggleFav = { item ->
-                                        onToggleFavorite(item)
-                                        refreshTrigger++
-                                    },
-                                    modifier = Modifier.weight(1f).fillMaxWidth()
-                                )
+                                add(QuickChipSpec("live_badge", "LIVE", true) {
+                                    firstPlayable?.let { openMediaItem(it, channels) }
+                                })
                             }
+                        },
+                        onPlayAction = {
+                            firstPlayable?.let { openMediaItem(it, channels) }
+                        },
+                        onBack = {
+                            openedCategory = null
+                            channelSearchQuery = ""
+                            channelFavOnly = false
+                        },
+                        topRightAction = {
+                            ProfileYBadgeButton(isTvMode = isTvMode, onClick = onOpenProfileMenu)
+                        },
+                        activeMiniChannel = if (playerMode == PlayerMode.NONE || playerMode == PlayerMode.FLOATING) activeChannel else null,
+                        isMiniPlaying = isPlaying,
+                        onMiniTogglePlay = onTogglePlayPause,
+                        onMiniOpenPlayer = onOpenActivePlayer
+                    ) {
+                        items(channels, key = { it.id }) { ch ->
+                            val isActive = activeChannel?.id == ch.id && activeChannel.streamUrl == ch.streamUrl
+                            BorderlessChannelRow(
+                                ch = ch,
+                                active = isActive,
+                                isTvMode = isTvMode,
+                                onClick = { openMediaItem(ch, channels) },
+                                onLongClick = { onLongPressChannel(ch) },
+                                onToggleFav = {
+                                    onToggleFavorite(ch)
+                                    refreshTrigger++
+                                }
+                            )
                         }
                     }
                 }
             }
         } else {
-            // Landscape / Android TV split-screen
+            // =================================================
+            // LANDSCAPE / ANDROID TV (AMOLED #000000 + CHAMPAGNE-TAUPE #B09878 + BORDERLESS)
+            // =================================================
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .background(CinematicNoirTokens.BgAmoled)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Kolom Kategori Kiri
                 Column(
                     modifier = Modifier
-                        .width(240.dp)
+                        .width(248.dp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(16.dp))
-                        .background(c.surface)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
+                        .background(Color(0xFF0A0908))
+                        .border(0.8.dp, CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
                         .padding(10.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF171513))
+                                .border(0.8.dp, CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.35f), CircleShape)
+                                .tvFocusBorder(isTvMode, CircleShape)
+                                .clickable(onClick = onBackHome),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.ArrowBack, contentDescription = "Back", tint = CinematicNoirTokens.TextPrimary, modifier = Modifier.size(16.dp))
+                        }
+                        Text(
+                            text = sectionTitle,
+                            style = TextStyle(
+                                fontFamily = YlowInterDisplay,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = Color.White
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
                     OutlinedTextField(
                         value = channelSearchQuery,
                         onValueChange = { channelSearchQuery = it },
-                        placeholder = { Text(strings.searchChannelPlaceholder, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        placeholder = { Text(searchPlaylistHint, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = CinematicNoirTokens.ChampagneAccent, modifier = Modifier.size(16.dp)) },
                         singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
-                        shape = RoundedCornerShape(12.dp),
+                        textStyle = TextStyle(fontFamily = YlowInterDisplay, fontSize = 12.sp, color = Color.White),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = CinematicNoirTokens.ChampagnePlay,
+                            unfocusedBorderColor = CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.35f),
+                            cursorColor = CinematicNoirTokens.ChampagnePlay
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(Modifier.height(6.dp))
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                    Spacer(Modifier.height(8.dp))
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
                         item { CategoryRowItem(strings.allChannels, allCount, landscapeCategory == "ALL", false, isTvMode, { landscapeCategory = "ALL" }, {}) }
                         item { CategoryRowItem(strings.favourites, favCount, landscapeCategory == "FAV", false, isTvMode, { landscapeCategory = "FAV" }, {}) }
                         item { CategoryRowItem(strings.history, histCount, landscapeCategory == "HIST", false, isTvMode, { landscapeCategory = "HIST" }, {}) }
-                        item { HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 4.dp)) }
+                        item { HorizontalDivider(color = CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.16f), modifier = Modifier.padding(vertical = 4.dp)) }
                         items(categories, key = { it.name }) { cat ->
                             val isLocked = lockedCategories.contains(cat.name)
                             CategoryRowItem(
@@ -569,19 +498,17 @@ fun BrowseScreen(
                 }
 
                 if (mediaType == MediaType.LIVE) {
+                    // Kolom Daftar Channel Borderless di Tengah
                     LazyColumn(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(c.surface)
-                            .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
-                            .padding(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                            .background(CinematicNoirTokens.BgAmoled),
+                        contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
                         items(channels, key = { it.id }) { ch ->
-                            val active = activeChannel?.id == ch.id
-                            ChannelListRow(
+                            val active = activeChannel?.id == ch.id && activeChannel.streamUrl == ch.streamUrl
+                            BorderlessChannelRow(
                                 ch = ch,
                                 active = active,
                                 isTvMode = isTvMode,
@@ -598,13 +525,14 @@ fun BrowseScreen(
                         }
                     }
 
+                    // Kolom Pratinjau Video Kanan
                     Column(
                         modifier = Modifier
                             .weight(0.95f)
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(16.dp))
-                            .background(c.surface)
-                            .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
+                            .background(Color(0xFF0A0908))
+                            .border(0.8.dp, CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -633,8 +561,8 @@ fun BrowseScreen(
                                 )
                             } else {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = Color.White.copy(alpha = 0.35f), modifier = Modifier.size(40.dp))
-                                    Text(strings.tapToWatch, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
+                                    Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.45f), modifier = Modifier.size(40.dp))
+                                    Text(strings.tapToWatch, color = CinematicNoirTokens.TextSecondary, fontSize = 12.sp)
                                 }
                             }
                         }
@@ -646,17 +574,33 @@ fun BrowseScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(ch.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(ch.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
+                                    Text(
+                                        text = ch.name,
+                                        style = TextStyle(
+                                            fontFamily = YlowInterDisplay,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = CinematicNoirTokens.ChampagneHighlight
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text("• LIVE", color = CinematicNoirTokens.LiveRed, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text(ch.category, color = CinematicNoirTokens.TextSecondary, fontSize = 11.sp, maxLines = 1)
+                                    }
                                 }
                                 Button(
                                     onClick = { onLaunchPlayer(ch, channels, true) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = CinematicNoirTokens.ChampagnePlay,
+                                        contentColor = Color(0xFF14110D)
+                                    ),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = Color(0xFF14110D), modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text(strings.fullscreen, color = c.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text(strings.fullscreen, color = Color(0xFF14110D), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -664,20 +608,9 @@ fun BrowseScreen(
                 } else {
                     PosterGrid(
                         channels = channels,
+                        activeChannel = activeChannel,
                         isTvMode = isTvMode,
-                        onOpenItem = { item ->
-                            if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM) {
-                                activeSeries = item
-                                loadingEpisodes = true
-                                scope.launch {
-                                    episodes = repo.fetchSeriesEpisodes(playlist, item.streamId)
-                                    loadingEpisodes = false
-                                }
-                            } else {
-                                repo.db.markWatched(item.id)
-                                onLaunchPlayer(item, channels, false)
-                            }
-                        },
+                        onOpenItem = { item -> openMediaItem(item, channels) },
                         onLongPressItem = { item -> onLongPressChannel(item) },
                         onToggleFav = { item ->
                             onToggleFavorite(item)
@@ -725,13 +658,13 @@ fun BrowseScreen(
             containerColor = c.surface,
             title = { Text(series.name, color = c.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
-                Box(modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 300.dp)) {
+                Box(modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 320.dp)) {
                     if (loadingEpisodes) {
-                        CircularProgressIndicator(color = c.accent, modifier = Modifier.align(Alignment.Center))
+                        CircularProgressIndicator(color = CinematicNoirTokens.ChampagnePlay, modifier = Modifier.align(Alignment.Center))
                     } else if (episodes.isEmpty()) {
                         Text(strings.noEpisodes, color = c.textSecondary, modifier = Modifier.align(Alignment.Center))
                     } else {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             items(episodes, key = { it.id }) { ep ->
                                 val epChannel = ChannelItem(
                                     id = ep.id.toLongOrNull() ?: 0L,
@@ -747,7 +680,6 @@ fun BrowseScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(c.surfaceElevated)
                                         .combinedClickable(
                                             onClick = {
                                                 activeSeries = null
@@ -768,17 +700,22 @@ fun BrowseScreen(
                                             },
                                             onLongClick = { onLongPressChannel(epChannel) }
                                         )
-                                        .padding(10.dp),
+                                        .padding(horizontal = 8.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text("S${ep.season} E${ep.episodeNum} • ${ep.title}", color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            text = "S${ep.season} E${ep.episodeNum} • ${ep.title}",
+                                            color = c.textPrimary,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
                                         if (ep.plot.isNotBlank()) {
                                             Text(ep.plot, color = c.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
-                                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = c.accent)
+                                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = CinematicNoirTokens.ChampagnePlay)
                                 }
                             }
                         }
@@ -787,7 +724,7 @@ fun BrowseScreen(
             },
             confirmButton = {
                 TextButton(onClick = { activeSeries = null }) {
-                    Text(strings.cancel, color = c.textSecondary)
+                    Text(strings.cancel, color = CinematicNoirTokens.ChampagneAccent)
                 }
             }
         )
@@ -796,155 +733,37 @@ fun BrowseScreen(
 
 @kotlin.OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun VerticalCategoryCard(
-    name: String,
-    count: Int,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    locked: Boolean,
-    highlight: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit
-) {
-    val c = LocalYlowColors.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (highlight) c.accentContainer else c.surface)
-            .border(1.dp, if (highlight) c.accent.copy(alpha = 0.5f) else c.glassBorder, RoundedCornerShape(14.dp))
-            .glossyPressPill(14f)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 14.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.weight(1f)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (highlight || locked) c.accent else c.surfaceElevated),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = null, tint = if (highlight || locked) c.onAccent else c.textPrimary, modifier = Modifier.size(18.dp))
-            }
-            Text(
-                text = name,
-                color = c.textPrimary,
-                fontSize = 14.sp,
-                fontWeight = if (highlight) FontWeight.Bold else FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(count.toString(), color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(18.dp))
-        }
-    }
-}
-
-@kotlin.OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun ChannelListRow(
-    ch: ChannelItem,
-    active: Boolean,
-    isTvMode: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onToggleFav: () -> Unit
-) {
-    val c = LocalYlowColors.current
-    if (ch.isProviderSeparator()) {
-        val cleanTitle = ch.name.trim().trim('#', '=', '-', ' ')
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(modifier = Modifier.width(3.dp).height(14.dp).clip(RoundedCornerShape(2.dp)).background(c.accent))
-            Text(
-                text = cleanTitle.ifBlank { ch.name },
-                color = c.textSecondary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        return
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (active) c.accentContainer else c.surface)
-            .border(1.dp, if (active) c.accent else c.glassBorder, RoundedCornerShape(14.dp))
-            .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
-            .glossyPressPill(14f)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        ChannelLogoBox(ch.logoUrl, 38.dp, corner = 10.dp)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                ch.name,
-                color = if (active) c.accent else c.textPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(ch.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        IconButton(onClick = onToggleFav, modifier = Modifier.size(32.dp)) {
-            Icon(
-                if (ch.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                contentDescription = "Fav",
-                tint = if (ch.isFavorite) c.accent else c.textSecondary,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-    }
-}
-
-@kotlin.OptIn(ExperimentalFoundationApi::class)
-@Composable
 private fun PosterGrid(
     channels: List<ChannelItem>,
+    activeChannel: ChannelItem?,
     isTvMode: Boolean,
     onOpenItem: (ChannelItem) -> Unit,
     onLongPressItem: (ChannelItem) -> Unit,
     onToggleFav: (ChannelItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val c = LocalYlowColors.current
     val context = LocalContext.current
     val gridState = rememberLazyGridState()
     Box(modifier = modifier) {
         LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Adaptive(minSize = 112.dp),
+            columns = GridCells.Adaptive(minSize = 116.dp),
             contentPadding = PaddingValues(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize()
         ) {
             items(channels, key = { it.id }) { item ->
+                val isActive = activeChannel?.id == item.id && activeChannel.streamUrl == item.streamUrl
                 Column(
                     modifier = Modifier
                         .clip(RoundedCornerShape(14.dp))
-                        .background(c.surface)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                        .background(Color(0xFF0E0D0C))
+                        .border(
+                            width = if (isActive) 1.4.dp else 0.7.dp,
+                            color = if (isActive) CinematicNoirTokens.ChampagnePlay else CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.20f),
+                            shape = RoundedCornerShape(14.dp)
+                        )
                         .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
                         .glossyPressPill(14f)
                         .combinedClickable(
@@ -955,8 +774,8 @@ private fun PosterGrid(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(146.dp)
-                            .background(c.surfaceElevated),
+                            .height(148.dp)
+                            .background(Color(0xFF151412)),
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
@@ -981,14 +800,14 @@ private fun PosterGrid(
                             Icon(
                                 if (item.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                                 contentDescription = "Fav",
-                                tint = if (item.isFavorite) c.accent else Color.White,
+                                tint = if (item.isFavorite) CinematicNoirTokens.ChampagnePlay else Color.White,
                                 modifier = Modifier.size(15.dp)
                             )
                         }
                     }
                     Text(
                         text = item.name,
-                        color = c.textPrimary,
+                        color = if (isActive) CinematicNoirTokens.ChampagneHighlight else CinematicNoirTokens.TextPrimary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 2,
@@ -1017,14 +836,16 @@ private fun CategoryRowItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val c = LocalYlowColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) c.accent else Color.Transparent)
-            .tvFocusBorder(isTvMode, RoundedCornerShape(12.dp))
-            .glossyPressPill(14f)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.22f) else Color.Transparent)
+            .then(
+                if (selected) Modifier.border(0.9.dp, CinematicNoirTokens.ChampagnePlay, RoundedCornerShape(10.dp))
+                else Modifier
+            )
+            .tvFocusBorder(isTvMode, RoundedCornerShape(10.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1036,21 +857,32 @@ private fun CategoryRowItem(
             modifier = Modifier.weight(1f)
         ) {
             if (locked) {
-                Icon(Icons.Rounded.Lock, contentDescription = "Locked", tint = if (selected) c.onAccent else c.accent, modifier = Modifier.size(14.dp))
+                Icon(
+                    Icons.Rounded.Lock,
+                    contentDescription = "Locked",
+                    tint = CinematicNoirTokens.ChampagnePlay,
+                    modifier = Modifier.size(14.dp)
+                )
             }
             Text(
                 text = name,
-                color = if (selected) c.onAccent else c.textPrimary,
-                fontSize = 12.sp,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                style = TextStyle(
+                    fontFamily = YlowInterDisplay,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = if (selected) CinematicNoirTokens.ChampagneHighlight else CinematicNoirTokens.TextPrimary
+                ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
         Text(
             text = count.toString(),
-            color = if (selected) c.onAccent.copy(alpha = 0.8f) else c.textSecondary,
-            fontSize = 11.sp
+            style = TextStyle(
+                fontFamily = YlowInterDisplay,
+                fontSize = 11.sp,
+                color = if (selected) CinematicNoirTokens.ChampagnePlay else CinematicNoirTokens.TextSecondary
+            )
         )
     }
 }
