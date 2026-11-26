@@ -36,7 +36,7 @@ class AppPrefs(context: Context) {
             autoReconnectLive = prefs.getBoolean("auto_reconnect_live", true),
             autoSubtitleLang = runCatching { AutoSubtitleLang.valueOf(prefs.getString("auto_subtitle_lang", "ID")!!) }.getOrDefault(AutoSubtitleLang.ID),
             skipIntroMode = runCatching { SkipIntroMode.valueOf(prefs.getString("skip_intro_mode", "MANUAL")!!) }.getOrDefault(SkipIntroMode.MANUAL),
-            skipIntroSeconds = prefs.getInt("skip_intro_seconds", 85).coerceIn(15, 180),
+            skipIntroSeconds = prefs.getInt("skip_intro_seconds", 85).coerceIn(5, 600),
             autoNextEpisode = prefs.getBoolean("auto_next_episode", true),
             pinCode = prefs.getString("pin_code", "1234") ?: "1234",
             use24HourClock = prefs.getBoolean("use_24h", true),
@@ -90,13 +90,13 @@ class AppPrefs(context: Context) {
         val k = normalizeSeriesKey(seriesKey)
         if (k.isEmpty()) return fallback
         val stored = prefs.getInt("intro_sec_$k", -1)
-        return if (stored in 15..180) stored else fallback
+        return if (stored in 5..600) stored else fallback
     }
 
     fun saveSeriesIntroSeconds(seriesKey: String, seconds: Int) {
         val k = normalizeSeriesKey(seriesKey)
         if (k.isEmpty()) return
-        prefs.edit().putInt("intro_sec_$k", seconds.coerceIn(15, 180)).apply()
+        prefs.edit().putInt("intro_sec_$k", seconds.coerceIn(5, 600)).apply()
     }
 
     // ---- Admin Auth Session ----

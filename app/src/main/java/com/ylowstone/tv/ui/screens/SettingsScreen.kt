@@ -42,7 +42,7 @@ import com.ylowstone.tv.model.*
 import com.ylowstone.tv.ui.components.BoomerangLoadingIndicator
 import com.ylowstone.tv.ui.components.PinDialog
 import com.ylowstone.tv.ui.theme.LocalYlowColors
-import com.ylowstone.tv.ui.theme.accentSwatchColor
+import com.ylowstone.tv.ui.theme.themePaletteSwatchColor
 import com.ylowstone.tv.util.AppIconManager
 import kotlinx.coroutines.launch
 
@@ -58,6 +58,8 @@ fun SettingsScreen(
     onUpdateSettings: (AppSettings) -> Unit,
     onUnlockCategory: (String) -> Unit,
     onResetPinAndLocks: () -> Unit,
+    isAdminLoggedIn: Boolean = false,
+    onLogoutAdmin: () -> Unit = {},
     onBackupRestored: (AppSettings) -> Unit = {}
 ) {
     val c = LocalYlowColors.current
@@ -96,10 +98,13 @@ fun SettingsScreen(
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var updateStatusMsg by remember { mutableStateOf("") }
 
+    val isIndonesian = settings.language == AppLanguage.ID
     val themeLabel = when (settings.themeMode) {
-        ThemeMode.SYSTEM -> strings.themeSystem
-        ThemeMode.LIGHT -> strings.themeLight
-        ThemeMode.AMOLED -> strings.themeAmoled
+        ThemeMode.SYSTEM -> if (isIndonesian) "Sistem (Otomatis)" else "System (Auto)"
+        ThemeMode.AMOLED -> if (isIndonesian) "Gelap" else "Dark"
+        ThemeMode.LIGHT -> if (isIndonesian) "Cerah" else "Light"
+        ThemeMode.AMBER_DUSK -> "Amber Dusk"
+        ThemeMode.VELVET_CRIMSON -> "Velvet Crimson"
     }
 
     val favLayoutLabel = when (settings.favoriteViewMode) {
@@ -123,7 +128,7 @@ fun SettingsScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(if (c.isDark) Color(0xFF0C0E10) else c.surface)
+                .background(c.surface)
                 .padding(horizontal = 8.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -148,59 +153,54 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 32.dp)
         ) {
-            // 1. Theme & Accent Presets
+            // 1. 5 Pilihan Tema Palet Terpadu (v2.4.2)
             YlowSettingsRow(
                 icon = Icons.Rounded.Contrast,
                 title = strings.appearanceTheme,
-                subtitle = "$themeLabel • ${settings.accentPreset.label}",
+                subtitle = themeLabel,
                 expanded = expandedSection == "THEME",
                 onClick = { expandedSection = if (expandedSection == "THEME") "" else "THEME" }
             ) {
-                SegmentedChoiceRow(
-                    options = listOf(
-                        ThemeMode.SYSTEM to strings.themeSystem,
-                        ThemeMode.LIGHT to strings.themeLight,
-                        ThemeMode.AMOLED to strings.themeAmoled
-                    ),
-                    selected = settings.themeMode,
-                    onSelect = { onUpdateSettings(settings.copy(themeMode = it)) }
+                val paletteOptions = listOf(
+                    ThemeMode.SYSTEM to (if (isIndonesian) "Sistem (Otomatis)" else "System (Auto)"),
+                    ThemeMode.AMOLED to (if (isIndonesian) "Gelap" else "Dark"),
+                    ThemeMode.LIGHT to (if (isIndonesian) "Cerah" else "Light"),
+                    ThemeMode.AMBER_DUSK to "Amber Dusk",
+                    ThemeMode.VELVET_CRIMSON to "Velvet Crimson"
                 )
-
-                Spacer(Modifier.height(12.dp))
-                Text(strings.accentPresetTitle, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    AccentPreset.entries.forEach { preset ->
-                        val selected = settings.accentPreset == preset
-                        val swatch = accentSwatchColor(preset)
+                    paletteOptions.forEach { (mode, label) ->
+                        val selected = settings.themeMode == mode
+                        val swatch = themePaletteSwatchColor(mode)
                         Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(11.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(if (selected) c.accentContainer else c.surface)
                                 .border(
-                                    width = if (selected) 1.5.dp else 1.dp,
+                                    width = if (selected) 1.6.dp else 1.dp,
                                     color = if (selected) c.accent else c.glassBorder,
-                                    shape = RoundedCornerShape(11.dp)
+                                    shape = RoundedCornerShape(12.dp)
                                 )
-                                .clickable { onUpdateSettings(settings.copy(accentPreset = preset)) }
-                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                                .clickable { onUpdateSettings(settings.copy(themeMode = mode)) }
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(12.dp)
+                                    .size(13.dp)
                                     .clip(CircleShape)
                                     .background(swatch)
+                                    .border(0.8.dp, c.textPrimary.copy(alpha = 0.25f), CircleShape)
                             )
                             Text(
-                                text = preset.label,
+                                text = label,
                                 color = if (selected) c.accent else c.textPrimary,
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                             )
                         }
@@ -412,7 +412,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(
-                        onClick = { exportBackupLauncher.launch("ylowstonetv_backup_v233.json") },
+                        onClick = { exportBackupLauncher.launch("ylowstonetv_backup_v242.json") },
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f)
                     ) {
@@ -558,14 +558,104 @@ fun SettingsScreen(
                     onSelect = { onUpdateSettings(settings.copy(skipIntroMode = it)) }
                 )
                 if (settings.skipIntroMode != SkipIntroMode.OFF) {
+                    val curMin = settings.skipIntroSeconds / 60
+                    val curSec = settings.skipIntroSeconds % 60
+                    val formattedDur = String.format(java.util.Locale.US, "%02d:%02d", curMin, curSec)
                     Spacer(Modifier.height(8.dp))
-                    Text("${strings.skipIntroDurationLabel}: ${settings.skipIntroSeconds}s", color = c.textSecondary, fontSize = 10.sp)
-                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "${strings.skipIntroDurationLabel}: $formattedDur (${settings.skipIntroSeconds}s)",
+                        color = c.accent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(6.dp))
                     SegmentedChoiceRow(
-                        options = listOf(60 to "60s", 85 to "85s", 100 to "100s"),
+                        options = listOf(60 to "01:00", 85 to "01:25", 100 to "01:40"),
                         selected = settings.skipIntroSeconds,
                         onSelect = { onUpdateSettings(settings.copy(skipIntroSeconds = it)) }
                     )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = if (isIndonesian) "Atur Kustom (Menit & Detik)" else "Custom Duration (Min & Sec)",
+                        color = c.textSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Stepper Menit
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(c.surface)
+                                .border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    val next = ((curMin - 1).coerceAtLeast(0) * 60 + curSec).coerceIn(5, 600)
+                                    onUpdateSettings(settings.copy(skipIntroSeconds = next))
+                                },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(Icons.Rounded.Remove, contentDescription = "-", tint = c.accent, modifier = Modifier.size(16.dp))
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(String.format(java.util.Locale.US, "%02d", curMin), color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text(if (isIndonesian) "Menit" else "Min", color = c.textSecondary, fontSize = 9.sp)
+                            }
+                            IconButton(
+                                onClick = {
+                                    val next = ((curMin + 1).coerceAtMost(10) * 60 + curSec).coerceIn(5, 600)
+                                    onUpdateSettings(settings.copy(skipIntroSeconds = next))
+                                },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = "+", tint = c.accent, modifier = Modifier.size(16.dp))
+                            }
+                        }
+
+                        // Stepper Detik
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(c.surface)
+                                .border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    val next = (settings.skipIntroSeconds - 1).coerceIn(5, 600)
+                                    onUpdateSettings(settings.copy(skipIntroSeconds = next))
+                                },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(Icons.Rounded.Remove, contentDescription = "-", tint = c.accent, modifier = Modifier.size(16.dp))
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(String.format(java.util.Locale.US, "%02d", curSec), color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text(if (isIndonesian) "Detik" else "Sec", color = c.textSecondary, fontSize = 9.sp)
+                            }
+                            IconButton(
+                                onClick = {
+                                    val next = (settings.skipIntroSeconds + 1).coerceIn(5, 600)
+                                    onUpdateSettings(settings.copy(skipIntroSeconds = next))
+                                },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = "+", tint = c.accent, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
                 }
 
                 HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 10.dp))
@@ -697,6 +787,41 @@ fun SettingsScreen(
                     color = c.textSecondary.copy(alpha = 0.72f),
                     fontSize = 11.sp
                 )
+            }
+
+            if (isAdminLoggedIn) {
+                Spacer(Modifier.height(18.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFFFA263E).copy(alpha = 0.14f))
+                            .border(1.2.dp, Color(0xFFFA263E).copy(alpha = 0.65f), RoundedCornerShape(14.dp))
+                            .clickable(onClick = onLogoutAdmin)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Logout,
+                            contentDescription = strings.adminMenuLogout,
+                            tint = Color(0xFFFA263E),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = strings.adminMenuLogout,
+                            color = Color(0xFFFA263E),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
         }
     }

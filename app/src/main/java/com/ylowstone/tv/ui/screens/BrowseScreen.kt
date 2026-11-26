@@ -149,9 +149,9 @@ fun BrowseScreen(
         MediaType.SERIES -> R.drawable.cover_yellowstone_seri
     }
     val sectionGradColor = when (mediaType) {
-        MediaType.LIVE -> CinematicNoirTokens.GradTv
-        MediaType.MOVIE -> CinematicNoirTokens.GradFilm
-        MediaType.SERIES -> CinematicNoirTokens.GradSeri
+        MediaType.LIVE -> c.headerGradTv
+        MediaType.MOVIE -> c.headerGradFilm
+        MediaType.SERIES -> c.headerGradSeri
     }
     val isIndonesian = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
     val sortLabel = if (isIndonesian) "Urut" else "Sort"
@@ -162,7 +162,7 @@ fun BrowseScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(CinematicNoirTokens.BgAmoled)
+            .background(c.bg)
             .statusBarsPadding()
     ) {
         val isPortrait = maxWidth < 600.dp
@@ -300,7 +300,7 @@ fun BrowseScreen(
                         }
                         item(key = "cat_divider") {
                             HorizontalDivider(
-                                color = CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.16f),
+                                color = c.accent.copy(alpha = 0.16f),
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                             )
                         }
@@ -406,7 +406,7 @@ fun BrowseScreen(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(CinematicNoirTokens.BgAmoled)
+                    .background(c.bg)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -416,8 +416,8 @@ fun BrowseScreen(
                         .width(248.dp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0xFF0A0908))
-                        .border(0.8.dp, CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+                        .background(c.surface)
+                        .border(0.8.dp, c.accent.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
                         .padding(10.dp)
                 ) {
                     Row(
@@ -429,13 +429,13 @@ fun BrowseScreen(
                             modifier = Modifier
                                 .size(32.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF171513))
-                                .border(0.8.dp, CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.35f), CircleShape)
+                                .background(c.surfaceElevated)
+                                .border(0.8.dp, c.accent.copy(alpha = 0.35f), CircleShape)
                                 .tvFocusBorder(isTvMode, CircleShape)
                                 .clickable(onClick = onBackHome),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Rounded.ArrowBack, contentDescription = "Back", tint = CinematicNoirTokens.TextPrimary, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(16.dp))
                         }
                         Text(
                             text = sectionTitle,
@@ -443,7 +443,7 @@ fun BrowseScreen(
                                 fontFamily = YlowInterDisplay,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
-                                color = Color.White
+                                color = c.textPrimary
                             ),
                             modifier = Modifier.weight(1f)
                         )
@@ -453,14 +453,14 @@ fun BrowseScreen(
                         value = channelSearchQuery,
                         onValueChange = { channelSearchQuery = it },
                         placeholder = { Text(searchPlaylistHint, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = CinematicNoirTokens.ChampagneAccent, modifier = Modifier.size(16.dp)) },
+                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = c.accent, modifier = Modifier.size(16.dp)) },
                         singleLine = true,
-                        textStyle = TextStyle(fontFamily = YlowInterDisplay, fontSize = 12.sp, color = Color.White),
+                        textStyle = TextStyle(fontFamily = YlowInterDisplay, fontSize = 12.sp, color = c.textPrimary),
                         shape = RoundedCornerShape(10.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = CinematicNoirTokens.ChampagnePlay,
-                            unfocusedBorderColor = CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.35f),
-                            cursorColor = CinematicNoirTokens.ChampagnePlay
+                            focusedBorderColor = c.accent,
+                            unfocusedBorderColor = c.accent.copy(alpha = 0.35f),
+                            cursorColor = c.accent
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -469,7 +469,7 @@ fun BrowseScreen(
                         item { CategoryRowItem(strings.allChannels, allCount, landscapeCategory == "ALL", false, isTvMode, { landscapeCategory = "ALL" }, {}) }
                         item { CategoryRowItem(strings.favourites, favCount, landscapeCategory == "FAV", false, isTvMode, { landscapeCategory = "FAV" }, {}) }
                         item { CategoryRowItem(strings.history, histCount, landscapeCategory == "HIST", false, isTvMode, { landscapeCategory = "HIST" }, {}) }
-                        item { HorizontalDivider(color = CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.16f), modifier = Modifier.padding(vertical = 4.dp)) }
+                        item { HorizontalDivider(color = c.accent.copy(alpha = 0.16f), modifier = Modifier.padding(vertical = 4.dp)) }
                         items(categories, key = { it.name }) { cat ->
                             val isLocked = lockedCategories.contains(cat.name)
                             CategoryRowItem(
@@ -503,7 +503,7 @@ fun BrowseScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .background(CinematicNoirTokens.BgAmoled),
+                            .background(c.bg),
                         contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
                         items(channels, key = { it.id }) { ch ->
@@ -531,8 +531,8 @@ fun BrowseScreen(
                             .weight(0.95f)
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFF0A0908))
-                            .border(0.8.dp, CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+                            .background(c.surface)
+                            .border(0.8.dp, c.accent.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -561,8 +561,8 @@ fun BrowseScreen(
                                 )
                             } else {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.45f), modifier = Modifier.size(40.dp))
-                                    Text(strings.tapToWatch, color = CinematicNoirTokens.TextSecondary, fontSize = 12.sp)
+                                    Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = c.accent.copy(alpha = 0.45f), modifier = Modifier.size(40.dp))
+                                    Text(strings.tapToWatch, color = c.textSecondary, fontSize = 12.sp)
                                 }
                             }
                         }
@@ -580,27 +580,27 @@ fun BrowseScreen(
                                             fontFamily = YlowInterDisplay,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 14.sp,
-                                            color = CinematicNoirTokens.ChampagneHighlight
+                                            color = c.accent
                                         ),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         Text("• LIVE", color = CinematicNoirTokens.LiveRed, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                        Text(ch.category, color = CinematicNoirTokens.TextSecondary, fontSize = 11.sp, maxLines = 1)
+                                        Text(ch.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
                                     }
                                 }
                                 Button(
                                     onClick = { onLaunchPlayer(ch, channels, true) },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = CinematicNoirTokens.ChampagnePlay,
-                                        contentColor = Color(0xFF14110D)
+                                        containerColor = c.accent,
+                                        contentColor = c.onAccent
                                     ),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = Color(0xFF14110D), modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text(strings.fullscreen, color = Color(0xFF14110D), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text(strings.fullscreen, color = c.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -660,7 +660,7 @@ fun BrowseScreen(
             text = {
                 Box(modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 320.dp)) {
                     if (loadingEpisodes) {
-                        CircularProgressIndicator(color = CinematicNoirTokens.ChampagnePlay, modifier = Modifier.align(Alignment.Center))
+                        CircularProgressIndicator(color = c.accent, modifier = Modifier.align(Alignment.Center))
                     } else if (episodes.isEmpty()) {
                         Text(strings.noEpisodes, color = c.textSecondary, modifier = Modifier.align(Alignment.Center))
                     } else {
@@ -715,7 +715,7 @@ fun BrowseScreen(
                                             Text(ep.plot, color = c.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
-                                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = CinematicNoirTokens.ChampagnePlay)
+                                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = c.accent)
                                 }
                             }
                         }
@@ -724,7 +724,7 @@ fun BrowseScreen(
             },
             confirmButton = {
                 TextButton(onClick = { activeSeries = null }) {
-                    Text(strings.cancel, color = CinematicNoirTokens.ChampagneAccent)
+                    Text(strings.cancel, color = c.accent)
                 }
             }
         )
@@ -742,6 +742,7 @@ private fun PosterGrid(
     onToggleFav: (ChannelItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val c = LocalYlowColors.current
     val context = LocalContext.current
     val gridState = rememberLazyGridState()
     Box(modifier = modifier) {
@@ -758,10 +759,10 @@ private fun PosterGrid(
                 Column(
                     modifier = Modifier
                         .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0xFF0E0D0C))
+                        .background(c.surface)
                         .border(
                             width = if (isActive) 1.4.dp else 0.7.dp,
-                            color = if (isActive) CinematicNoirTokens.ChampagnePlay else CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.20f),
+                            color = if (isActive) c.accent else c.accent.copy(alpha = 0.20f),
                             shape = RoundedCornerShape(14.dp)
                         )
                         .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
@@ -775,7 +776,7 @@ private fun PosterGrid(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(148.dp)
-                            .background(Color(0xFF151412)),
+                            .background(c.surfaceElevated),
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
@@ -800,14 +801,14 @@ private fun PosterGrid(
                             Icon(
                                 if (item.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                                 contentDescription = "Fav",
-                                tint = if (item.isFavorite) CinematicNoirTokens.ChampagnePlay else Color.White,
+                                tint = if (item.isFavorite) c.accent else Color.White,
                                 modifier = Modifier.size(15.dp)
                             )
                         }
                     }
                     Text(
                         text = item.name,
-                        color = if (isActive) CinematicNoirTokens.ChampagneHighlight else CinematicNoirTokens.TextPrimary,
+                        color = if (isActive) c.accent else c.textPrimary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 2,
@@ -836,13 +837,14 @@ private fun CategoryRowItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val c = LocalYlowColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.22f) else Color.Transparent)
+            .background(if (selected) c.accent.copy(alpha = 0.22f) else Color.Transparent)
             .then(
-                if (selected) Modifier.border(0.9.dp, CinematicNoirTokens.ChampagnePlay, RoundedCornerShape(10.dp))
+                if (selected) Modifier.border(0.9.dp, c.accent, RoundedCornerShape(10.dp))
                 else Modifier
             )
             .tvFocusBorder(isTvMode, RoundedCornerShape(10.dp))
@@ -860,7 +862,7 @@ private fun CategoryRowItem(
                 Icon(
                     Icons.Rounded.Lock,
                     contentDescription = "Locked",
-                    tint = CinematicNoirTokens.ChampagnePlay,
+                    tint = c.accent,
                     modifier = Modifier.size(14.dp)
                 )
             }
@@ -870,7 +872,7 @@ private fun CategoryRowItem(
                     fontFamily = YlowInterDisplay,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                     fontSize = 12.sp,
-                    color = if (selected) CinematicNoirTokens.ChampagneHighlight else CinematicNoirTokens.TextPrimary
+                    color = if (selected) c.accent else c.textPrimary
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -881,7 +883,7 @@ private fun CategoryRowItem(
             style = TextStyle(
                 fontFamily = YlowInterDisplay,
                 fontSize = 11.sp,
-                color = if (selected) CinematicNoirTokens.ChampagnePlay else CinematicNoirTokens.TextSecondary
+                color = if (selected) c.accent else c.textSecondary
             )
         )
     }

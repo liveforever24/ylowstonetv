@@ -9,6 +9,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -121,7 +122,7 @@ fun YlowstoneApp(
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
     val sharedPlayer = remember(settings.bufferProfile) {
-        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.4.1")
+        val dsFactory = OkHttpDataSource.Factory(repo.httpClient).setUserAgent("YlowstoneTV/2.4.2")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -821,6 +822,8 @@ fun YlowstoneApp(
                             lockedCategories = emptySet()
                             homeDataVersion++
                         },
+                        isAdminLoggedIn = isAdminLoggedIn,
+                        onLogoutAdmin = { performAdminLogout() },
                         onBackupRestored = { restored ->
                             settings = restored
                             homeDataVersion++
@@ -841,7 +844,11 @@ fun YlowstoneApp(
                             AnimatedContent(
                                 targetState = activeTab,
                                 transitionSpec = {
-                                    fadeIn(tween(240)) togetherWith fadeOut(tween(180))
+                                    if (initialState == MainTab.HOME && targetState != MainTab.HOME) {
+                                        (scaleIn(initialScale = 0.95f, animationSpec = tween(220)) + fadeIn(tween(220))) togetherWith fadeOut(tween(140))
+                                    } else {
+                                        fadeIn(tween(200)) togetherWith fadeOut(tween(160))
+                                    }
                                 },
                                 label = "mainTabTransition",
                                 modifier = Modifier.fillMaxSize()
@@ -1120,11 +1127,7 @@ fun YlowstoneApp(
                     },
                     onSyncAdminPlaylists = {
                         syncActivePlaylistOnly()
-                    },
-                    onLogoutAdmin = {
-                        performAdminLogout()
-                    },
-                    onCheckUpdates = { runQuickUpdateCheck() }
+                    }
                 )
             }
 

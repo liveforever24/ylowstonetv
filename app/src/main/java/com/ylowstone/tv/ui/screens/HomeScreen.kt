@@ -20,6 +20,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -49,19 +51,29 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -84,27 +96,28 @@ import com.ylowstone.tv.ui.components.QuickChipSpec
 import com.ylowstone.tv.ui.components.YlowInterDisplay
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
+import com.ylowstone.tv.ui.theme.LocalYlowColors
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.hypot
 
 private object HomeCoverColors {
-    val AmoledBlack = Color(0xFF000000)
     val CardSurfaceTv = Color(0xFF14110D)
     val CardSurfaceFilm = Color(0xFF121718)
     val CardSurfaceSeri = Color(0xFF161412)
-    val UtilitySurface = Color(0xFF111113)
-
-    // 3 warna ambien halus berbeda yang tetap senada
-    val AmbientTv = Color(0xFFC88435)      // Amber-Bronze
-    val AmbientFilm = Color(0xFF6E8B8A)    // Sage-Slate
-    val AmbientSeri = Color(0xFFB09878)    // Champagne-Taupe
+    val AmbientTv = Color(0xFFC88435)
+    val AmbientFilm = Color(0xFF6E8B8A)
+    val AmbientSeri = Color(0xFFB09878)
     val LiveRed = Color(0xFFFA263E)
-    val MutedText = Color(0xFF9C968F)
 }
 
 private enum class HomeSubView { NONE, HISTORY, FAVORITES }
 
 /**
- * Beranda YlowstoneTV v2.4.1 — 1 Layar Penuh (Zero-Scroll) untuk Ponsel (9:16) & TV (16:9)
- * dengan 3 cover WebP kustom, font InterDisplay, serta panel Collapsing Borderless untuk Riwayat & Favorit.
+ * Beranda YlowstoneTV v2.4.2:
+ * - Strict Tap Guard (Swipe-vs-Tap Rejection > 12dp + 350ms debounce) pada semua kartu Beranda
+ * - Animasi ketuk "Tenggelam" (Dive-In sink) halus ~110ms pada kartu TV, FILM, & SERI
+ * - Adaptif penuh terhadap 5 Tema Palet Terpadu (Sistem, Gelap, Cerah, Amber Dusk, Velvet Crimson)
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -127,6 +140,7 @@ fun HomeScreen(
     onOpenActivePlayer: () -> Unit,
     onOpenProfileMenu: () -> Unit
 ) {
+    val c = LocalYlowColors.current
     val context = LocalContext.current
     val isTvHardware = remember(context) { isAndroidTvDevice(context) }
     var activeSubView by remember { mutableStateOf(HomeSubView.NONE) }
@@ -150,7 +164,7 @@ fun HomeScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(HomeCoverColors.AmoledBlack)
+            .background(c.bg)
             .statusBarsPadding()
     ) {
         val isWideMode = isTvMode || isTvHardware || maxWidth > maxHeight
@@ -171,7 +185,6 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(if (isWideMode) 14.dp else 16.dp))
 
             if (isWideMode) {
-                // MODE TV / LANDSCAPE (16:9) — Kiri TV Besar, Kanan FILM & SERI
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -184,7 +197,7 @@ fun HomeScreen(
                         coverRes = R.drawable.cover_yellowstone_tv,
                         icon = Icons.Rounded.LiveTv,
                         surfaceColor = HomeCoverColors.CardSurfaceTv,
-                        ambientColor = HomeCoverColors.AmbientTv,
+                        ambientColor = if (c.isDark) HomeCoverColors.AmbientTv else c.accent,
                         isHero = true,
                         showLiveDot = true,
                         centerContent = true,
@@ -206,7 +219,7 @@ fun HomeScreen(
                             coverRes = R.drawable.cover_yellowstone_film,
                             icon = Icons.Rounded.Movie,
                             surfaceColor = HomeCoverColors.CardSurfaceFilm,
-                            ambientColor = HomeCoverColors.AmbientFilm,
+                            ambientColor = if (c.isDark) HomeCoverColors.AmbientFilm else c.accent,
                             isHero = false,
                             centerContent = true,
                             modifier = Modifier
@@ -220,7 +233,7 @@ fun HomeScreen(
                             coverRes = R.drawable.cover_yellowstone_seri,
                             icon = Icons.Rounded.Tv,
                             surfaceColor = HomeCoverColors.CardSurfaceSeri,
-                            ambientColor = HomeCoverColors.AmbientSeri,
+                            ambientColor = if (c.isDark) HomeCoverColors.AmbientSeri else c.accent,
                             isHero = false,
                             centerContent = true,
                             modifier = Modifier
@@ -233,7 +246,6 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Baris Bawah TV: Riwayat & Favorit 50/50
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -262,14 +274,13 @@ fun HomeScreen(
                     )
                 }
             } else {
-                // MODE PONSEL (9:16) — Penuh Layar Tanpa Ruang Kosong
                 YellowstoneCoverCard(
                     title = strings.liveTv,
                     badgeText = tvCountText,
                     coverRes = R.drawable.cover_yellowstone_tv,
                     icon = Icons.Rounded.LiveTv,
                     surfaceColor = HomeCoverColors.CardSurfaceTv,
-                    ambientColor = HomeCoverColors.AmbientTv,
+                    ambientColor = if (c.isDark) HomeCoverColors.AmbientTv else c.accent,
                     isHero = true,
                     showLiveDot = true,
                     centerContent = false,
@@ -293,7 +304,7 @@ fun HomeScreen(
                         coverRes = R.drawable.cover_yellowstone_film,
                         icon = Icons.Rounded.Movie,
                         surfaceColor = HomeCoverColors.CardSurfaceFilm,
-                        ambientColor = HomeCoverColors.AmbientFilm,
+                        ambientColor = if (c.isDark) HomeCoverColors.AmbientFilm else c.accent,
                         isHero = false,
                         centerContent = false,
                         modifier = Modifier
@@ -307,7 +318,7 @@ fun HomeScreen(
                         coverRes = R.drawable.cover_yellowstone_seri,
                         icon = Icons.Rounded.Tv,
                         surfaceColor = HomeCoverColors.CardSurfaceSeri,
-                        ambientColor = HomeCoverColors.AmbientSeri,
+                        ambientColor = if (c.isDark) HomeCoverColors.AmbientSeri else c.accent,
                         isHero = false,
                         centerContent = false,
                         modifier = Modifier
@@ -319,7 +330,6 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // 2 Kotak Persegi Membulat Kecil: Riwayat & Favorit
                 Row(
                     modifier = Modifier
                         .weight(0.19f)
@@ -350,7 +360,7 @@ fun HomeScreen(
             }
         }
 
-        // PANEL KHUSUS RIWAYAT & FAVORIT (Collapsing Header + Borderless Rows)
+        // PANEL KHUSUS RIWAYAT & FAVORIT
         AnimatedVisibility(
             visible = activeSubView != HomeSubView.NONE,
             enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 12 },
@@ -394,6 +404,7 @@ private fun HomeCollectionOverlay(
     onOpenActivePlayer: () -> Unit,
     onClose: () -> Unit
 ) {
+    val c = LocalYlowColors.current
     val isHistory = subView == HomeSubView.HISTORY
     val title = if (isHistory) strings.watchHistory else strings.favouriteChannels
     val isIndonesian = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
@@ -418,7 +429,7 @@ private fun HomeCollectionOverlay(
         title = title,
         subtitleInfo = "ylowstone • ${filteredList.size} ${strings.channelsCount}",
         coverRes = if (isHistory) R.drawable.cover_yellowstone_seri else R.drawable.cover_yellowstone_tv,
-        headerGradientColor = if (isHistory) CinematicNoirTokens.GradSeri else CinematicNoirTokens.GradNeutral,
+        headerGradientColor = if (isHistory) c.headerGradSeri else c.headerGradNeutral,
         searchQuery = searchQuery,
         onSearchQueryChange = { searchQuery = it },
         searchPlaceholder = if (isIndonesian) "Cari di daftar putar..." else "Search in playlist...",
@@ -496,10 +507,10 @@ private fun HomeCollectionOverlay(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(Color(0xFF0E0D0C))
+                                .background(c.surface)
                                 .border(
                                     width = if (isActive) 1.3.dp else 0.7.dp,
-                                    color = if (isActive) CinematicNoirTokens.ChampagnePlay else CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.22f),
+                                    color = if (isActive) c.accent else c.glassBorder,
                                     shape = RoundedCornerShape(14.dp)
                                 )
                                 .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
@@ -520,7 +531,7 @@ private fun HomeCollectionOverlay(
                                 if (isActive) {
                                     Text("• LIVE", color = CinematicNoirTokens.LiveRed, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 } else {
-                                    Icon(Icons.Rounded.Favorite, contentDescription = null, tint = CinematicNoirTokens.ChampagnePlay, modifier = Modifier.size(15.dp))
+                                    Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
                                 }
                             }
                             Text(
@@ -529,7 +540,7 @@ private fun HomeCollectionOverlay(
                                     fontFamily = YlowInterDisplay,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
-                                    color = if (isActive) CinematicNoirTokens.ChampagneHighlight else CinematicNoirTokens.TextPrimary,
+                                    color = if (isActive) c.accent else c.textPrimary,
                                     lineHeight = 16.sp
                                 ),
                                 maxLines = 2,
@@ -541,7 +552,7 @@ private fun HomeCollectionOverlay(
                                     fontFamily = YlowInterDisplay,
                                     fontWeight = FontWeight.Medium,
                                     fontSize = 10.sp,
-                                    color = CinematicNoirTokens.ChampagneAccent
+                                    color = c.accent
                                 ),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -576,18 +587,49 @@ private fun YlowstoneTopHeader(
     onPlaylistClick: () -> Unit,
     onSettingsClick: () -> Unit,
 ) {
+    val c = LocalYlowColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Column {
-            Image(
-                painter = painterResource(id = R.drawable.ylowstone_wordmark),
-                contentDescription = "YlowstoneTV",
-                contentScale = ContentScale.FillHeight,
-                modifier = Modifier.height(22.dp)
-            )
+            if (c.isDark) {
+                Image(
+                    painter = painterResource(id = R.drawable.ylowstone_wordmark),
+                    contentDescription = "YlowstoneTV",
+                    contentScale = ContentScale.FillHeight,
+                    modifier = Modifier.height(22.dp)
+                )
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Ylowstone",
+                        style = TextStyle(
+                            fontFamily = YlowInterDisplay,
+                            fontWeight = FontWeight.Light,
+                            fontSize = 20.sp,
+                            color = c.textPrimary
+                        )
+                    )
+                    Text(
+                        text = "TV",
+                        style = TextStyle(
+                            fontFamily = YlowInterDisplay,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = c.textPrimary
+                        )
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(HomeCoverColors.LiveRed)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -601,7 +643,7 @@ private fun YlowstoneTopHeader(
                     modifier = Modifier
                         .size(6.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF7D8590))
+                        .background(c.accent)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
@@ -610,7 +652,7 @@ private fun YlowstoneTopHeader(
                         fontFamily = YlowInterDisplay,
                         fontWeight = FontWeight.Medium,
                         fontSize = 11.sp,
-                        color = HomeCoverColors.MutedText,
+                        color = c.textSecondary,
                         letterSpacing = 0.4.sp
                     )
                 )
@@ -635,6 +677,12 @@ private fun YlowstoneTopHeader(
     }
 }
 
+/**
+ * Kartu Cover Utama (TV, FILM, SERI) dengan:
+ * - Strict Tap Guard (geseran > 12dp dibatalkan otomatis agar tidak salah klik saat swipe di Beranda)
+ * - Animasi "Tenggelam" (Dive-In sink: scale 0.94f + fade halus ~110ms) saat diketuk sah
+ * - Dukungan tombol OK / Enter untuk remote Android TV
+ */
 @Composable
 private fun YellowstoneCoverCard(
     title: String,
@@ -650,22 +698,82 @@ private fun YellowstoneCoverCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val c = LocalYlowColors.current
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val maxSlopPx = remember(density) { with(density) { 12.dp.toPx() } }
+
     var isFocused by remember { mutableStateOf(false) }
+    var isSinking by remember { mutableStateOf(false) }
+    var lastTapMs by remember { mutableLongStateOf(0L) }
+
+    fun triggerDiveInTap() {
+        val now = System.currentTimeMillis()
+        if (now - lastTapMs < 350L || isSinking) return
+        lastTapMs = now
+        isSinking = true
+        scope.launch {
+            delay(110L)
+            onClick()
+            delay(180L)
+            isSinking = false
+        }
+    }
+
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.02f else 1f,
-        animationSpec = tween(180),
-        label = "cardFocusScale"
+        targetValue = when {
+            isSinking -> 0.935f
+            isFocused -> 1.02f
+            else -> 1f
+        },
+        animationSpec = tween(if (isSinking) 105 else 180),
+        label = "cardDiveScale"
     )
-    val borderAlpha = if (isFocused) 0.88f else 0.30f
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (isSinking) 0.78f else 1f,
+        animationSpec = tween(105),
+        label = "cardDiveAlpha"
+    )
+    val borderAlpha = if (isFocused) 0.92f else 0.34f
     val borderWidth = if (isFocused) 2.dp else 1.dp
 
     Surface(
         modifier = modifier
             .scale(scale)
+            .alpha(contentAlpha)
             .clip(RoundedCornerShape(cornerRadius))
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
-            .clickable(onClick = onClick),
+            .onKeyEvent { ev ->
+                if (ev.type == KeyEventType.KeyUp && (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter)) {
+                    triggerDiveInTap()
+                    true
+                } else false
+            }
+            .pointerInput(maxSlopPx) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val startPos = down.position
+                    var movedTooFar = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull() ?: break
+                        if (!change.pressed) {
+                            if (!movedTooFar && !change.isConsumed) {
+                                triggerDiveInTap()
+                            }
+                            break
+                        }
+                        val dist = hypot(
+                            (change.position.x - startPos.x).toDouble(),
+                            (change.position.y - startPos.y).toDouble()
+                        )
+                        if (dist > maxSlopPx) {
+                            movedTooFar = true
+                        }
+                    }
+                }
+            },
         shape = RoundedCornerShape(cornerRadius),
         color = surfaceColor,
         border = BorderStroke(
@@ -686,15 +794,16 @@ private fun YellowstoneCoverCard(
                 modifier = Modifier.fillMaxSize()
             )
 
+            // Ambien tipis & tint tema + scrim matte agar teks tetap terbaca tajam
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                ambientColor.copy(alpha = 0.08f),
+                                c.coverTint,
                                 Color.Black.copy(alpha = 0.14f),
-                                Color.Black.copy(alpha = 0.62f)
+                                Color.Black.copy(alpha = 0.64f)
                             )
                         )
                     )
@@ -858,6 +967,9 @@ private fun StatPillBadge(text: String, showLiveDot: Boolean) {
     }
 }
 
+/**
+ * Kartu Ringkas Riwayat & Favorit dengan Strict Tap Guard (Swipe-vs-Tap Rejection > 12dp).
+ */
 @Composable
 private fun UtilityCompactTile(
     label: String,
@@ -867,17 +979,58 @@ private fun UtilityCompactTile(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val c = LocalYlowColors.current
+    val density = LocalDensity.current
+    val maxSlopPx = remember(density) { with(density) { 12.dp.toPx() } }
+
     var isFocused by remember { mutableStateOf(false) }
-    val borderColor = if (isFocused) CinematicNoirTokens.ChampagnePlay else Color.White.copy(alpha = 0.14f)
+    var lastTapMs by remember { mutableLongStateOf(0L) }
+    val borderColor = if (isFocused) c.accent else c.glassBorder
+
+    fun triggerStrictTap() {
+        val now = System.currentTimeMillis()
+        if (now - lastTapMs < 350L) return
+        lastTapMs = now
+        onClick()
+    }
 
     Surface(
         modifier = modifier
             .clip(RoundedCornerShape(24.dp))
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
-            .clickable(onClick = onClick),
+            .onKeyEvent { ev ->
+                if (ev.type == KeyEventType.KeyUp && (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter)) {
+                    triggerStrictTap()
+                    true
+                } else false
+            }
+            .pointerInput(maxSlopPx) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val startPos = down.position
+                    var movedTooFar = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull() ?: break
+                        if (!change.pressed) {
+                            if (!movedTooFar && !change.isConsumed) {
+                                triggerStrictTap()
+                            }
+                            break
+                        }
+                        val dist = hypot(
+                            (change.position.x - startPos.x).toDouble(),
+                            (change.position.y - startPos.y).toDouble()
+                        )
+                        if (dist > maxSlopPx) {
+                            movedTooFar = true
+                        }
+                    }
+                }
+            },
         shape = RoundedCornerShape(24.dp),
-        color = HomeCoverColors.UtilitySurface,
+        color = c.surface,
         border = BorderStroke(if (isFocused) 2.dp else 1.dp, borderColor)
     ) {
         if (isHorizontal) {
@@ -892,7 +1045,7 @@ private fun UtilityCompactTile(
                     Icon(
                         imageVector = icon,
                         contentDescription = label,
-                        tint = Color(0xFFD6D0C8),
+                        tint = c.accent,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
@@ -902,11 +1055,27 @@ private fun UtilityCompactTile(
                             fontFamily = YlowInterDisplay,
                             fontWeight = FontWeight.Medium,
                             fontSize = 14.sp,
-                            color = Color(0xFFEBE6DF)
+                            color = c.textPrimary
                         )
                     )
                 }
-                StatPillBadge(text = count, showLiveDot = false)
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(c.surfaceElevated)
+                        .border(0.8.dp, c.glassBorder, CircleShape)
+                        .padding(horizontal = 11.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = count,
+                        style = TextStyle(
+                            fontFamily = YlowInterDisplay,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.sp,
+                            color = c.textPrimary
+                        )
+                    )
+                }
             }
         } else {
             Column(
@@ -920,13 +1089,13 @@ private fun UtilityCompactTile(
                     modifier = Modifier
                         .size(34.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF1B1B1E)),
+                        .background(c.surfaceElevated),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = label,
-                        tint = Color(0xFFD6D0C8),
+                        tint = c.accent,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -937,7 +1106,7 @@ private fun UtilityCompactTile(
                         fontFamily = YlowInterDisplay,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 16.sp,
-                        color = Color.White
+                        color = c.textPrimary
                     )
                 )
                 Text(
@@ -946,7 +1115,7 @@ private fun UtilityCompactTile(
                         fontFamily = YlowInterDisplay,
                         fontWeight = FontWeight.Medium,
                         fontSize = 12.sp,
-                        color = HomeCoverColors.MutedText
+                        color = c.textSecondary
                     )
                 )
             }
@@ -956,19 +1125,20 @@ private fun UtilityCompactTile(
 
 @Composable
 private fun EmptyHintCard(icon: ImageVector, message: String) {
+    val c = LocalYlowColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF0E0D0C))
-            .border(0.8.dp, CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+            .background(c.surface)
+            .border(0.8.dp, c.glassBorder, RoundedCornerShape(14.dp))
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Icon(icon, contentDescription = null, tint = CinematicNoirTokens.ChampagneAccent, modifier = Modifier.size(22.dp))
-        Text(message, color = CinematicNoirTokens.TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+        Icon(icon, contentDescription = null, tint = c.accent, modifier = Modifier.size(22.dp))
+        Text(message, color = c.textSecondary, fontSize = 12.sp, lineHeight = 16.sp)
     }
 }
 

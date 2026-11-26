@@ -405,8 +405,8 @@ fun ProfileQuickDropdown(
     onManagePlaylists: () -> Unit,
     onOpenAdminLogin: () -> Unit,
     onSyncAdminPlaylists: () -> Unit,
-    onLogoutAdmin: () -> Unit,
-    onCheckUpdates: () -> Unit
+    onLogoutAdmin: () -> Unit = {},
+    onCheckUpdates: () -> Unit = {}
 ) {
     val c = LocalYlowColors.current
     DropdownMenu(
@@ -512,11 +512,6 @@ fun ProfileQuickDropdown(
                 leadingIcon = { Icon(Icons.Rounded.CloudSync, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp)) },
                 onClick = { onDismiss(); onSyncAdminPlaylists() }
             )
-            DropdownMenuItem(
-                text = { Text(strings.adminMenuLogout, color = Color(0xFFFF6B6B), fontSize = 14.sp, fontWeight = FontWeight.SemiBold) },
-                leadingIcon = { Icon(Icons.Rounded.Logout, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(20.dp)) },
-                onClick = { onDismiss(); onLogoutAdmin() }
-            )
         } else {
             DropdownMenuItem(
                 text = { Text(strings.adminMenuLogin, color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium) },
@@ -525,13 +520,6 @@ fun ProfileQuickDropdown(
             )
         }
 
-        HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(horizontal = 12.dp))
-
-        DropdownMenuItem(
-            text = { Text(strings.checkUpdates, color = c.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) },
-            leadingIcon = { Icon(Icons.Rounded.SystemUpdate, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp)) },
-            onClick = { onDismiss(); onCheckUpdates() }
-        )
     }
 }
 
@@ -560,7 +548,7 @@ enum class MainTab { HOME, LIVE, MOVIES, SERIES, SEARCH }
  * Elegant Bottom Navigation Bar with Sliding Transparent Glossy Pill Indicator
  */
 @Composable
-fun FotMobBottomNavbar(
+fun YlowBottomNavbar(
     selectedTab: MainTab,
     strings: AppStrings,
     isTvMode: Boolean,
@@ -637,7 +625,7 @@ fun FotMobBottomNavbar(
                     val tint by animateColorAsState(
                         targetValue = if (active) c.accent else c.textSecondary,
                         animationSpec = tween(260),
-                        label = "fotmobNavTint"
+                        label = "ylowNavTint"
                     )
                     val iconScale by animateFloatAsState(
                         targetValue = if (active) 1.08f else 1.0f,

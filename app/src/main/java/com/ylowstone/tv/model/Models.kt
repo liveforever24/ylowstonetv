@@ -4,7 +4,7 @@ import androidx.annotation.DrawableRes
 import com.ylowstone.tv.R
 
 enum class DeviceMode { SMARTPHONE, TV }
-enum class ThemeMode { SYSTEM, LIGHT, AMOLED }
+enum class ThemeMode { SYSTEM, AMOLED, LIGHT, AMBER_DUSK, VELVET_CRIMSON }
 enum class AppLanguage { ID, EN }
 enum class FavoriteViewMode { GRID, LIST }
 

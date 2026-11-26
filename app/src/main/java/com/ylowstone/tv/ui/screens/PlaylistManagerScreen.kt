@@ -103,14 +103,14 @@ fun PlaylistManagerScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(CinematicNoirTokens.BgAmoled)
+            .background(c.bg)
             .systemBarsPadding()
     ) {
         CinematicCollapsingListScreen(
             title = strings.choosePlaylist,
             subtitleInfo = "ylowstone • ${filteredPlaylists.size} playlist",
             coverRes = R.drawable.cover_yellowstone_tv,
-            headerGradientColor = CinematicNoirTokens.GradNeutral,
+            headerGradientColor = c.headerGradNeutral,
             searchQuery = searchQuery,
             onSearchQueryChange = { searchQuery = it },
             searchPlaceholder = if (isIndonesian) "Cari di daftar putar..." else "Search in playlist...",
@@ -119,9 +119,6 @@ fun PlaylistManagerScreen(
             sortActive = sortAz,
             onSortClick = { sortAz = !sortAz },
             quickChips = buildList {
-                add(QuickChipSpec("add_pl", "+ ${strings.addPlaylist}", false) {
-                    editingProfile = null; showEditor = true
-                })
                 if (!isLoggedIn) {
                     add(QuickChipSpec("admin_login", strings.adminMenuLogin, true) {
                         onOpenLogin()
@@ -151,32 +148,32 @@ fun PlaylistManagerScreen(
                             modifier = Modifier
                                 .size(68.dp)
                                 .clip(CircleShape)
-                                .background(CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.16f)),
+                                .background(c.accent.copy(alpha = 0.16f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = CinematicNoirTokens.ChampagnePlay, modifier = Modifier.size(34.dp))
+                            Icon(Icons.Rounded.LiveTv, contentDescription = null, tint = c.accent, modifier = Modifier.size(34.dp))
                         }
-                        Text(strings.noPlaylistYet, color = CinematicNoirTokens.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                        Text(strings.noPlaylistDesc, color = CinematicNoirTokens.TextSecondary, fontSize = 12.sp)
+                        Text(strings.noPlaylistYet, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                        Text(strings.noPlaylistDesc, color = c.textSecondary, fontSize = 12.sp)
                         Spacer(Modifier.height(4.dp))
                         Button(
                             onClick = onOpenLogin,
-                            colors = ButtonDefaults.buttonColors(containerColor = CinematicNoirTokens.ChampagnePlay, contentColor = Color(0xFF14110D)),
+                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.fillMaxWidth().height(46.dp)
                         ) {
-                            Icon(Icons.Rounded.Login, contentDescription = null, tint = Color(0xFF14110D))
+                            Icon(Icons.Rounded.Login, contentDescription = null, tint = c.onAccent)
                             Spacer(Modifier.width(8.dp))
-                            Text(strings.adminMenuLogin, color = Color(0xFF14110D), fontWeight = FontWeight.Bold)
+                            Text(strings.adminMenuLogin, color = c.onAccent, fontWeight = FontWeight.Bold)
                         }
                         OutlinedButton(
                             onClick = { editingProfile = null; showEditor = true },
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.fillMaxWidth().height(44.dp)
                         ) {
-                            Icon(Icons.Rounded.Add, contentDescription = null, tint = CinematicNoirTokens.ChampagneHighlight)
+                            Icon(Icons.Rounded.Add, contentDescription = null, tint = c.accent)
                             Spacer(Modifier.width(8.dp))
-                            Text(strings.addPlaylist, color = CinematicNoirTokens.TextPrimary, fontWeight = FontWeight.SemiBold)
+                            Text(strings.addPlaylist, color = c.textPrimary, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -205,7 +202,7 @@ fun PlaylistManagerScreen(
                                 .size(46.dp)
                                 .clip(RoundedCornerShape(11.dp))
                                 .background(Brush.linearGradient(listOf(tint.copy(alpha = 0.85f), tint.copy(alpha = 0.42f))))
-                                .border(0.8.dp, CinematicNoirTokens.ChampagneAccent.copy(alpha = 0.30f), RoundedCornerShape(11.dp)),
+                                .border(0.8.dp, c.accent.copy(alpha = 0.30f), RoundedCornerShape(11.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -225,7 +222,7 @@ fun PlaylistManagerScreen(
                                     fontFamily = YlowInterDisplay,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 15.sp,
-                                    color = CinematicNoirTokens.TextPrimary
+                                    color = c.textPrimary
                                 ),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -236,7 +233,7 @@ fun PlaylistManagerScreen(
                                     fontFamily = YlowInterDisplay,
                                     fontWeight = FontWeight.Normal,
                                     fontSize = 11.sp,
-                                    color = CinematicNoirTokens.ChampagneAccent
+                                    color = c.accent
                                 ),
                                 maxLines = 1
                             )
@@ -248,7 +245,7 @@ fun PlaylistManagerScreen(
                             Icon(
                                 imageVector = Icons.Rounded.MoreVert,
                                 contentDescription = "Options",
-                                tint = CinematicNoirTokens.TextSecondary,
+                                tint = c.textSecondary,
                                 modifier = Modifier.size(19.dp)
                             )
                         }
@@ -258,12 +255,32 @@ fun PlaylistManagerScreen(
                 item(key = "pl_hint") {
                     Text(
                         text = strings.longPressHint,
-                        color = CinematicNoirTokens.TextSecondary,
+                        color = c.textSecondary,
                         fontSize = 11.sp,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                     )
                 }
             }
+        }
+
+        // Tombol Tambah Daftar Putar (+) mengambang di pojok kanan bawah (v2.4.2)
+        FloatingActionButton(
+            onClick = { editingProfile = null; showEditor = true },
+            shape = CircleShape,
+            containerColor = c.accent,
+            contentColor = c.onAccent,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 20.dp, bottom = 22.dp)
+                .size(56.dp)
+                .tvFocusBorder(isTvMode, CircleShape)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Add,
+                contentDescription = strings.addPlaylist,
+                tint = c.onAccent,
+                modifier = Modifier.size(28.dp)
+            )
         }
 
         // Loading overlay (v2.3.3: Bumerang melayang bersih tanpa kotak hitam)

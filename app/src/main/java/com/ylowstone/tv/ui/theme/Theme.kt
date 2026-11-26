@@ -24,10 +24,16 @@ data class YlowColors(
     val textSecondary: Color,
     val accent: Color,
     val onAccent: Color,
-    val accentContainer: Color
+    val accentContainer: Color,
+    // Warna gradasi header & tint cover dinamis sesuai tema aktif (v2.4.2)
+    val headerGradTv: Color = Color(0xFF6B4B27),
+    val headerGradFilm: Color = Color(0xFF3E5655),
+    val headerGradSeri: Color = Color(0xFF6E5C45),
+    val headerGradNeutral: Color = Color(0xFF473B2D),
+    val coverTint: Color = Color.Transparent
 )
 
-// Default Ylowstone Signature: Pure Black AMOLED (#000000) + Champagne-Taupe Accent (#B09878)
+// Default: Gelap (AMOLED Noir #000000 + Champagne-Taupe #B09878 / #C4A67E)
 val LocalYlowColors = staticCompositionLocalOf {
     YlowColors(
         isDark = true,
@@ -38,15 +44,28 @@ val LocalYlowColors = staticCompositionLocalOf {
         glassBorder = Color(0xFF2B251F),
         textPrimary = Color(0xFFF5F1E8),
         textSecondary = Color(0xFF9C968F),
-        accent = Color(0xFFB09878),
+        accent = Color(0xFFC4A67E),
         onAccent = Color(0xFF14110D),
-        accentContainer = Color(0xFF241E17)
+        accentContainer = Color(0xFF241E17),
+        headerGradTv = Color(0xFF6B4B27),
+        headerGradFilm = Color(0xFF3E5655),
+        headerGradSeri = Color(0xFF6E5C45),
+        headerGradNeutral = Color(0xFF473B2D),
+        coverTint = Color.Transparent
     )
 }
 
+fun themePaletteSwatchColor(mode: ThemeMode): Color = when (mode) {
+    ThemeMode.SYSTEM -> Color(0xFF8E9AAF)
+    ThemeMode.AMOLED -> Color(0xFFC4A67E)
+    ThemeMode.LIGHT -> Color(0xFF8C6E48)
+    ThemeMode.AMBER_DUSK -> Color(0xFFE89D3C)
+    ThemeMode.VELVET_CRIMSON -> Color(0xFFFA2D48)
+}
+
 fun accentSwatchColor(preset: AccentPreset): Color = when (preset) {
-    AccentPreset.AMBER_SUNSTONE -> Color(0xFFC4A67E)
-    AccentPreset.AMOLED_NOIR -> Color(0xFFB09878)
+    AccentPreset.AMBER_SUNSTONE -> Color(0xFFE89D3C)
+    AccentPreset.AMOLED_NOIR -> Color(0xFFC4A67E)
     AccentPreset.VELVET_CRIMSON -> Color(0xFFFA2D48)
     AccentPreset.SLATE_MIST -> Color(0xFFB5C8D6)
     AccentPreset.HYDROGEN_ICE -> Color(0xFF38BDF8)
@@ -60,73 +79,90 @@ fun YlowstoneTheme(
     content: @Composable () -> Unit
 ) {
     val systemDark = isSystemInDarkTheme()
-    val isDark = when (themeMode) {
-        ThemeMode.AMOLED -> true
-        ThemeMode.LIGHT -> false
-        ThemeMode.SYSTEM -> systemDark
+    val effectiveMode = when (themeMode) {
+        ThemeMode.SYSTEM -> if (systemDark) ThemeMode.AMOLED else ThemeMode.LIGHT
+        else -> themeMode
     }
 
-    val (accent, onAccent, accentContainer) = if (isDark) {
-        when (accentPreset) {
-            AccentPreset.AMBER_SUNSTONE -> Triple(Color(0xFFC4A67E), Color(0xFF14110D), Color(0xFF262018))
-            AccentPreset.AMOLED_NOIR -> Triple(Color(0xFFB09878), Color(0xFF0D0B09), Color(0xFF1E1A15))
-            AccentPreset.VELVET_CRIMSON -> Triple(Color(0xFFFA2D48), Color(0xFFFFFFFF), Color(0xFF36121A))
-            AccentPreset.SLATE_MIST -> Triple(Color(0xFFB5C8D6), Color(0xFF0B1116), Color(0xFF202B33))
-            AccentPreset.HYDROGEN_ICE -> Triple(Color(0xFF38BDF8), Color(0xFF07131C), Color(0xFF102A3A))
-            AccentPreset.EMERALD_STUDIO -> Triple(Color(0xFF10B981), Color(0xFF041610), Color(0xFF0E2D22))
-        }
-    } else {
-        when (accentPreset) {
-            AccentPreset.AMBER_SUNSTONE -> Triple(Color(0xFF8C6E48), Color(0xFFFFFFFF), Color(0xFFF3ECE2))
-            AccentPreset.AMOLED_NOIR -> Triple(Color(0xFF5C4D3B), Color(0xFFFFFFFF), Color(0xFFEBE5DC))
-            AccentPreset.VELVET_CRIMSON -> Triple(Color(0xFFD91E3A), Color(0xFFFFFFFF), Color(0xFFFCE4E8))
-            AccentPreset.SLATE_MIST -> Triple(Color(0xFF526A7A), Color(0xFFFFFFFF), Color(0xFFDCE5EC))
-            AccentPreset.HYDROGEN_ICE -> Triple(Color(0xFF0284C7), Color(0xFFFFFFFF), Color(0xFFE0F2FE))
-            AccentPreset.EMERALD_STUDIO -> Triple(Color(0xFF059669), Color(0xFFFFFFFF), Color(0xFFD1FAE5))
-        }
-    }
-
-    val isSignature = accentPreset == AccentPreset.AMBER_SUNSTONE
-    val isNoir = accentPreset == AccentPreset.AMOLED_NOIR
-
-    val ylow = if (isDark) {
-        YlowColors(
+    val ylow = when (effectiveMode) {
+        // 1 & 2. Gelap — AMOLED Noir (#000000) + Champagne-Taupe (#C4A67E / #B09878)
+        ThemeMode.AMOLED, ThemeMode.SYSTEM -> YlowColors(
             isDark = true,
             bg = Color(0xFF000000),
-            surface = when {
-                isNoir -> Color(0xFF0D0C0B)
-                isSignature -> Color(0xFF11100E)
-                else -> Color(0xFF121416)
-            },
-            surfaceElevated = when {
-                isNoir -> Color(0xFF161412)
-                isSignature -> Color(0xFF1B1815)
-                else -> Color(0xFF1B1E22)
-            },
+            surface = Color(0xFF100F0E),
+            surfaceElevated = Color(0xFF191715),
             navBarBg = Color(0xFF0A0908),
-            glassBorder = when {
-                isNoir || isSignature -> Color(0xFF2D2720)
-                else -> Color(0xFF23282D)
-            },
-            textPrimary = if (isSignature || isNoir) Color(0xFFF5F1E8) else Color(0xFFFFFFFF),
-            textSecondary = if (isSignature || isNoir) Color(0xFF9C968F) else Color(0xFF9AA3AB),
-            accent = accent,
-            onAccent = onAccent,
-            accentContainer = accentContainer
+            glassBorder = Color(0xFF2D2720),
+            textPrimary = Color(0xFFF5F1E8),
+            textSecondary = Color(0xFF9C968F),
+            accent = Color(0xFFC4A67E),
+            onAccent = Color(0xFF14110D),
+            accentContainer = Color(0xFF241E17),
+            headerGradTv = Color(0xFF6B4B27),
+            headerGradFilm = Color(0xFF3E5655),
+            headerGradSeri = Color(0xFF6E5C45),
+            headerGradNeutral = Color(0xFF473B2D),
+            coverTint = Color(0x14B09878)
         )
-    } else {
-        YlowColors(
+
+        // 3. Cerah — Canvas Terang Hangat (#F5F3EE) + Warm Bronze (#8C6E48)
+        ThemeMode.LIGHT -> YlowColors(
             isDark = false,
-            bg = Color(0xFFF5F6F4),
+            bg = Color(0xFFF5F3EE),
             surface = Color(0xFFFFFFFF),
-            surfaceElevated = Color(0xFFEAECE8),
+            surfaceElevated = Color(0xFFEBE7DF),
             navBarBg = Color(0xFFFFFFFF),
-            glassBorder = Color(0xFFD8DDD6),
-            textPrimary = Color(0xFF121512),
-            textSecondary = Color(0xFF5D655E),
-            accent = accent,
-            onAccent = onAccent,
-            accentContainer = accentContainer
+            glassBorder = Color(0xFFD6CEC2),
+            textPrimary = Color(0xFF181512),
+            textSecondary = Color(0xFF625A50),
+            accent = Color(0xFF8C6E48),
+            onAccent = Color(0xFFFFFFFF),
+            accentContainer = Color(0xFFEDE4D7),
+            headerGradTv = Color(0xFFD9C3A3),
+            headerGradFilm = Color(0xFFC2D1CF),
+            headerGradSeri = Color(0xFFD9CDBB),
+            headerGradNeutral = Color(0xFFD5CBC0),
+            coverTint = Color(0x1AF5F3EE)
+        )
+
+        // 4. Amber Dusk — Hitam Hangat (#080705) + Amber Sunstone (#E89D3C)
+        ThemeMode.AMBER_DUSK -> YlowColors(
+            isDark = true,
+            bg = Color(0xFF080705),
+            surface = Color(0xFF14110C),
+            surfaceElevated = Color(0xFF1E1911),
+            navBarBg = Color(0xFF0C0A07),
+            glassBorder = Color(0xFF352917),
+            textPrimary = Color(0xFFF8F2E7),
+            textSecondary = Color(0xFFA89A84),
+            accent = Color(0xFFE89D3C),
+            onAccent = Color(0xFF170F02),
+            accentContainer = Color(0xFF2E220E),
+            headerGradTv = Color(0xFF7D5018),
+            headerGradFilm = Color(0xFF4E4226),
+            headerGradSeri = Color(0xFF704E22),
+            headerGradNeutral = Color(0xFF593D18),
+            coverTint = Color(0x22E89D3C)
+        )
+
+        // 5. Velvet Crimson — Hitam Pekat (#000000) + Velvet Crimson (#FA2D48)
+        ThemeMode.VELVET_CRIMSON -> YlowColors(
+            isDark = true,
+            bg = Color(0xFF000000),
+            surface = Color(0xFF110C0D),
+            surfaceElevated = Color(0xFF1B1214),
+            navBarBg = Color(0xFF0B0809),
+            glassBorder = Color(0xFF361A20),
+            textPrimary = Color(0xFFFAF5F6),
+            textSecondary = Color(0xFFA89498),
+            accent = Color(0xFFFA2D48),
+            onAccent = Color(0xFFFFFFFF),
+            accentContainer = Color(0xFF38121B),
+            headerGradTv = Color(0xFF6E1624),
+            headerGradFilm = Color(0xFF471A25),
+            headerGradSeri = Color(0xFF5E1B29),
+            headerGradNeutral = Color(0xFF4D1520),
+            coverTint = Color(0x24FA2D48)
         )
     }
 
@@ -140,7 +176,7 @@ fun YlowstoneTheme(
         labelMedium = TextStyle(fontFamily = YlowInterDisplay, fontWeight = FontWeight.Medium, fontSize = 11.sp)
     )
 
-    val colorScheme = if (isDark) {
+    val colorScheme = if (ylow.isDark) {
         darkColorScheme(
             primary = ylow.accent,
             onPrimary = ylow.onAccent,

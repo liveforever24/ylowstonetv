@@ -17,7 +17,7 @@ object BackupManager {
 
         val root = JSONObject().apply {
             put("app", "YlowstoneTV")
-            put("version", "2.4.0")
+            put("version", "2.4.2")
             put("exportedAt", System.currentTimeMillis())
 
             put("settings", JSONObject().apply {
@@ -72,7 +72,7 @@ object BackupManager {
                 autoReconnectLive = sObj.optBoolean("autoReconnectLive", current.autoReconnectLive),
                 autoSubtitleLang = runCatching { AutoSubtitleLang.valueOf(sObj.optString("autoSubtitleLang", current.autoSubtitleLang.name)) }.getOrDefault(current.autoSubtitleLang),
                 skipIntroMode = runCatching { SkipIntroMode.valueOf(sObj.optString("skipIntroMode", current.skipIntroMode.name)) }.getOrDefault(current.skipIntroMode),
-                skipIntroSeconds = sObj.optInt("skipIntroSeconds", current.skipIntroSeconds).coerceIn(15, 180),
+                skipIntroSeconds = sObj.optInt("skipIntroSeconds", current.skipIntroSeconds).coerceIn(5, 600),
                 autoNextEpisode = sObj.optBoolean("autoNextEpisode", current.autoNextEpisode),
                 pinCode = sObj.optString("pinCode", current.pinCode).takeIf { it.length == 4 && it.all(Char::isDigit) } ?: current.pinCode,
                 preferExternalPlayer = sObj.optBoolean("preferExternalPlayer", current.preferExternalPlayer)
