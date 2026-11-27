@@ -441,17 +441,25 @@ fun FullscreenPlayerScreen(
     var subDownloadingId by remember(currentChannel.streamUrl) { mutableStateOf<String?>(null) }
     var subError by remember(currentChannel.streamUrl) { mutableStateOf<String?>(null) }
 
-    val parsedSeriesInfo = remember(currentChannel) {
-        if (currentChannel.mediaType != MediaType.SERIES) {
+    val isSeriesEffective = remember(currentChannel) {
+        val urlPathLower = currentChannel.streamUrl.lowercase(Locale.US).substringBefore('?')
+        currentChannel.mediaType == MediaType.SERIES ||
+            urlPathLower.contains("/series/") ||
+            Regex("""[Ss](\d+)[Ee](\d+)""").containsMatchIn(currentChannel.name)
+    }
+
+    val parsedSeriesInfo = remember(currentChannel, isSeriesEffective) {
+        if (!isSeriesEffective) {
             Triple(currentChannel.name, null as Int?, null as Int?)
         } else {
             val m = Regex("""[Ss](\d+)[Ee](\d+)""").find(currentChannel.name)
             val sNum = m?.groupValues?.getOrNull(1)?.toIntOrNull()
             val eNum = m?.groupValues?.getOrNull(2)?.toIntOrNull()
-            val titleCandidate = if (sNum != null && currentChannel.category.isNotBlank()) {
-                currentChannel.category
-            } else {
-                currentChannel.name
+            val nameBeforeSe = m?.let { currentChannel.name.substring(0, it.range.first).trim(' ', '-', ':', '|', '.', '_') } ?: ""
+            val titleCandidate = when {
+                nameBeforeSe.length >= 2 -> nameBeforeSe
+                sNum != null && currentChannel.category.isNotBlank() -> currentChannel.category
+                else -> currentChannel.name
             }
             Triple(titleCandidate, sNum, eNum)
         }
@@ -1335,7 +1343,7 @@ fun FullscreenPlayerScreen(
                                             val (qTitle, sNum, eNum) = parsedSeriesInfo
                                             SubtitleFetcher.searchIndoSubtitles(
                                                 rawTitle = qTitle,
-                                                isSeries = currentChannel.mediaType == MediaType.SERIES,
+                                                isSeries = isSeriesEffective,
                                                 season = sNum,
                                                 episode = eNum
                                             ).onSuccess { list ->

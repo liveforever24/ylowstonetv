@@ -128,12 +128,12 @@ fun YlowstoneApp(
     var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
-    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.4.4") }
+    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.4.5") }
     val streamResolver = remember { XtreamStreamResolver() }
     val sessionMonitor = remember(connectionGuard) { XtreamSessionMonitor(connectionGuard) }
 
     val sharedPlayer = remember(settings.bufferProfile, connectionGuard) {
-        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.4.4")
+        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.4.5")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -182,26 +182,40 @@ fun YlowstoneApp(
         sharedPlayer.trackSelectionParameters = b.build()
     }
 
-    // v2.3.1 Perbaikan #4: Auto-Subtitle Bahasa Indonesia untuk Film & Seri (otomatis deteksi SxxExx tiap ganti episode)
+    // v2.4.5: Auto-Subtitle Bahasa Indonesia untuk Film & Seri (Xtream + M3U Remote/Lokal, prioritas judul sebelum SxxExx)
     LaunchedEffect(activeChannel?.streamUrl, settings.autoSubtitleLang) {
         val ch = activeChannel ?: return@LaunchedEffect
-        val isVod = ch.mediaType == MediaType.MOVIE || ch.mediaType == MediaType.SERIES
+        val urlPathLower = ch.streamUrl.lowercase(java.util.Locale.US).substringBefore('?')
+        val m = Regex("""[Ss](\d+)[Ee](\d+)""").find(ch.name)
+        val isSeriesEffective = ch.mediaType == MediaType.SERIES ||
+            urlPathLower.contains("/series/") ||
+            m != null
+        val isVod = isSeriesEffective ||
+            ch.mediaType == MediaType.MOVIE ||
+            urlPathLower.contains("/movie/") ||
+            urlPathLower.endsWith(".mp4") ||
+            urlPathLower.endsWith(".mkv") ||
+            urlPathLower.endsWith(".webm")
         if (!isVod || settings.autoSubtitleLang != AutoSubtitleLang.ID) return@LaunchedEffect
         if (subtitleSession.streamUrl == ch.streamUrl && subtitleSession.cues.isNotEmpty()) return@LaunchedEffect
 
-        val (qTitle, sNum, eNum) = if (ch.mediaType != MediaType.SERIES) {
+        val (qTitle, sNum, eNum) = if (!isSeriesEffective) {
             Triple(ch.name, null as Int?, null as Int?)
         } else {
-            val m = Regex("""[Ss](\d+)[Ee](\d+)""").find(ch.name)
             val s = m?.groupValues?.getOrNull(1)?.toIntOrNull()
             val e = m?.groupValues?.getOrNull(2)?.toIntOrNull()
-            val titleCandidate = if (s != null && ch.category.isNotBlank()) ch.category else ch.name
+            val nameBeforeSe = m?.let { ch.name.substring(0, it.range.first).trim(' ', '-', ':', '|', '.', '_') } ?: ""
+            val titleCandidate = when {
+                nameBeforeSe.length >= 2 -> nameBeforeSe
+                s != null && ch.category.isNotBlank() -> ch.category
+                else -> ch.name
+            }
             Triple(titleCandidate, s, e)
         }
 
         SubtitleFetcher.searchIndoSubtitles(
             rawTitle = qTitle,
-            isSeries = ch.mediaType == MediaType.SERIES,
+            isSeries = isSeriesEffective,
             season = sNum,
             episode = eNum
         ).onSuccess { candidates ->

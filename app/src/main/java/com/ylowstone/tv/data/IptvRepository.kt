@@ -54,7 +54,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                 detail = "URL tidak valid"
             )
         }
-        val ua = userAgent.ifBlank { "YlowstoneTV/2.3.1" }
+        val ua = userAgent.ifBlank { "YlowstoneTV/2.4.5" }
         val startMs = System.currentTimeMillis()
         try {
             val headReq = Request.Builder()
@@ -150,7 +150,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                     } else {
                         val req = Request.Builder()
                             .url(profile.url.trim())
-                            .header("User-Agent", profile.userAgent.ifBlank { "YlowstoneTV/2.3.1" })
+                            .header("User-Agent", profile.userAgent.ifBlank { "YlowstoneTV/2.4.5" })
                             .build()
                         httpClient.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
@@ -206,9 +206,14 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
             } else if (!trimmed.startsWith("#")) {
                 seenCount++
                 val lowerUrl = trimmed.lowercase()
+                val urlPath = lowerUrl.substringBefore('?')
+                val hasEpisodeTag = Regex("""[Ss]\d+[Ee]\d+""").containsMatchIn(currentName)
                 val mediaType = when {
-                    lowerUrl.contains("/series/") -> MediaType.SERIES
-                    lowerUrl.contains("/movie/") || lowerUrl.endsWith(".mkv") || lowerUrl.endsWith(".mp4") -> MediaType.MOVIE
+                    urlPath.contains("/series/") || hasEpisodeTag -> MediaType.SERIES
+                    urlPath.contains("/movie/") ||
+                        urlPath.endsWith(".mkv") ||
+                        urlPath.endsWith(".mp4") ||
+                        urlPath.endsWith(".webm") -> MediaType.MOVIE
                     else -> MediaType.LIVE
                 }
                 val resolvedCat = currentCategory.ifBlank { "General" }
@@ -251,7 +256,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
     ) {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.3.1" })
+            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.4.5" })
             .build()
         httpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
@@ -463,7 +468,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
     private fun fetchJsonString(url: String, ua: String): String {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.3.1" })
+            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.4.5" })
             .build()
         httpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
