@@ -3,6 +3,7 @@ package com.ylowstone.tv.ui.screens
 import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
@@ -42,6 +43,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Movie
@@ -58,7 +60,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
@@ -175,6 +179,10 @@ fun HomeScreen(
     ) {
         val isWideMode = isTvMode || isTvHardware || maxWidth > maxHeight
 
+        if (c.isDark) {
+            YlowstoneAmbientBlurBackdrop(modifier = Modifier.fillMaxSize())
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -200,7 +208,7 @@ fun HomeScreen(
                     YellowstoneCoverCard(
                         title = strings.liveTv,
                         badgeText = tvCountText,
-                        coverRes = R.drawable.cover_yellowstone_tv,
+                        coverRes = R.drawable.cover_home_tv,
                         icon = Icons.Rounded.LiveTv,
                         surfaceColor = HomeCoverColors.CardSurfaceTv,
                         ambientColor = if (c.isDark) HomeCoverColors.AmbientTv else c.accent,
@@ -222,7 +230,7 @@ fun HomeScreen(
                         YellowstoneCoverCard(
                             title = strings.movies,
                             badgeText = filmCountText,
-                            coverRes = R.drawable.cover_yellowstone_film,
+                            coverRes = R.drawable.cover_home_film,
                             icon = Icons.Rounded.Movie,
                             surfaceColor = HomeCoverColors.CardSurfaceFilm,
                             ambientColor = if (c.isDark) HomeCoverColors.AmbientFilm else c.accent,
@@ -236,7 +244,7 @@ fun HomeScreen(
                         YellowstoneCoverCard(
                             title = strings.series,
                             badgeText = seriCountText,
-                            coverRes = R.drawable.cover_yellowstone_seri,
+                            coverRes = R.drawable.cover_home_seri,
                             icon = Icons.Rounded.Tv,
                             surfaceColor = HomeCoverColors.CardSurfaceSeri,
                             ambientColor = if (c.isDark) HomeCoverColors.AmbientSeri else c.accent,
@@ -258,21 +266,21 @@ fun HomeScreen(
                         .height(58.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    UtilityCompactTile(
+                    HomeNotchPill(
                         label = shortHistoryLabel,
                         count = continueWatchingVod.size.toString(),
-                        icon = Icons.Rounded.PlayCircleOutline,
-                        isHorizontal = true,
+                        thumbRes = R.drawable.cover_pill_continue,
+                        icon = Icons.Rounded.PlayArrow,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
                         onClick = { FlagshipFeedback.playTick(view); activeSubView = HomeSubView.CONTINUE_WATCHING }
                     )
-                    UtilityCompactTile(
+                    HomeNotchPill(
                         label = shortFavoriteLabel,
                         count = favourites.size.toString(),
+                        thumbRes = R.drawable.cover_pill_favorite,
                         icon = Icons.Rounded.Favorite,
-                        isHorizontal = true,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
@@ -283,7 +291,7 @@ fun HomeScreen(
                 YellowstoneCoverCard(
                     title = strings.liveTv,
                     badgeText = tvCountText,
-                    coverRes = R.drawable.cover_yellowstone_tv,
+                    coverRes = R.drawable.cover_home_tv,
                     icon = Icons.Rounded.LiveTv,
                     surfaceColor = HomeCoverColors.CardSurfaceTv,
                     ambientColor = if (c.isDark) HomeCoverColors.AmbientTv else c.accent,
@@ -307,7 +315,7 @@ fun HomeScreen(
                     YellowstoneCoverCard(
                         title = strings.movies,
                         badgeText = filmCountText,
-                        coverRes = R.drawable.cover_yellowstone_film,
+                        coverRes = R.drawable.cover_home_film,
                         icon = Icons.Rounded.Movie,
                         surfaceColor = HomeCoverColors.CardSurfaceFilm,
                         ambientColor = if (c.isDark) HomeCoverColors.AmbientFilm else c.accent,
@@ -321,7 +329,7 @@ fun HomeScreen(
                     YellowstoneCoverCard(
                         title = strings.series,
                         badgeText = seriCountText,
-                        coverRes = R.drawable.cover_yellowstone_seri,
+                        coverRes = R.drawable.cover_home_seri,
                         icon = Icons.Rounded.Tv,
                         surfaceColor = HomeCoverColors.CardSurfaceSeri,
                         ambientColor = if (c.isDark) HomeCoverColors.AmbientSeri else c.accent,
@@ -338,25 +346,25 @@ fun HomeScreen(
 
                 Row(
                     modifier = Modifier
-                        .weight(0.19f)
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    UtilityCompactTile(
+                    HomeNotchPill(
                         label = shortHistoryLabel,
                         count = continueWatchingVod.size.toString(),
-                        icon = Icons.Rounded.PlayCircleOutline,
-                        isHorizontal = false,
+                        thumbRes = R.drawable.cover_pill_continue,
+                        icon = Icons.Rounded.PlayArrow,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
                         onClick = { FlagshipFeedback.playTick(view); activeSubView = HomeSubView.CONTINUE_WATCHING }
                     )
-                    UtilityCompactTile(
+                    HomeNotchPill(
                         label = shortFavoriteLabel,
                         count = favourites.size.toString(),
+                        thumbRes = R.drawable.cover_pill_favorite,
                         icon = Icons.Rounded.Favorite,
-                        isHorizontal = false,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
@@ -434,7 +442,7 @@ private fun HomeCollectionOverlay(
     CinematicCollapsingListScreen(
         title = title,
         subtitleInfo = "ylowstone • ${filteredList.size} ${strings.channelsCount}",
-        coverRes = if (isHistory) R.drawable.cover_yellowstone_seri else R.drawable.cover_yellowstone_tv,
+        coverRes = if (isHistory) R.drawable.cover_home_seri else R.drawable.cover_home_tv,
         headerGradientColor = if (isHistory) c.headerGradSeri else c.headerGradNeutral,
         searchQuery = searchQuery,
         onSearchQueryChange = { searchQuery = it },
@@ -1167,4 +1175,139 @@ private fun formatHistoryTime(ms: Long): String {
 private fun isAndroidTvDevice(context: Context): Boolean {
     val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
     return uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+}
+
+
+@Composable
+private fun YlowstoneAmbientBlurBackdrop(modifier: Modifier = Modifier) {
+    val c = LocalYlowColors.current
+    Box(modifier = modifier.background(c.bg)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .scale(1.18f)
+                    .blur(64.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                    .alpha(0.34f)
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.cover_home_tv),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.weight(0.46f).fillMaxWidth()
+                )
+                Row(modifier = Modifier.weight(0.54f).fillMaxWidth()) {
+                    Image(
+                        painter = painterResource(id = R.drawable.cover_home_film),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    )
+                    Image(
+                        painter = painterResource(id = R.drawable.cover_home_seri),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    )
+                }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            c.bg.copy(alpha = 0.62f),
+                            c.bg.copy(alpha = 0.44f),
+                            c.bg.copy(alpha = 0.78f)
+                        )
+                    )
+                )
+        )
+    }
+}
+
+@Composable
+private fun HomeNotchPill(
+    label: String,
+    count: String,
+    @DrawableRes thumbRes: Int,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val c = LocalYlowColors.current
+    var isFocused by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isFocused) 1.02f else 1f,
+        animationSpec = tween(160),
+        label = "notchPillScale"
+    )
+    val bgColor = if (c.isDark) Color(0xFF000000) else c.surface
+    val borderColor = if (isFocused) c.accent else c.glassBorder
+
+    Surface(
+        modifier = modifier
+            .scale(scale)
+            .clip(CircleShape)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .clickable(onClick = onClick),
+        shape = CircleShape,
+        color = bgColor,
+        border = BorderStroke(if (isFocused) 1.8.dp else 0.9.dp, borderColor)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 6.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(id = thumbRes),
+                contentDescription = label,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .width(52.dp)
+                    .fillMaxHeight()
+                    .clip(CircleShape)
+            )
+            Spacer(modifier = Modifier.width(9.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = label,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(
+                        fontFamily = YlowInterDisplay,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        color = c.textPrimary,
+                        letterSpacing = (-0.1).sp
+                    )
+                )
+                Text(
+                    text = "• $count",
+                    maxLines = 1,
+                    style = TextStyle(
+                        fontFamily = YlowInterDisplay,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 11.sp,
+                        color = c.textSecondary
+                    )
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = c.textPrimary.copy(alpha = 0.88f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
 }

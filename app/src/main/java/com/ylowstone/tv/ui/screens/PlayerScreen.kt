@@ -1328,12 +1328,26 @@ fun FullscreenPlayerScreen(
                 ) {
                     items(drawerSearchResults, key = { "drw_${it.id}_${it.streamUrl}" }) { ch ->
                         val active = ch.id == currentChannel.id && ch.streamUrl == currentChannel.streamUrl
+                        var drawerEpg by remember(ch.id, ch.streamId) { mutableStateOf<EpgProgramItem?>(null) }
+                        if (ch.mediaType == MediaType.LIVE && activePlaylist?.type == PlaylistType.XTREAM && ch.streamId.isNotBlank()) {
+                            LaunchedEffect(ch.streamId) {
+                                val list = repo.fetchShortEpg(activePlaylist, ch.streamId, limit = 2)
+                                val nowSec = System.currentTimeMillis() / 1000L
+                                drawerEpg = list.firstOrNull { it.isNow(nowSec) } ?: list.firstOrNull()
+                            }
+                        }
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(if (active) c.accentContainer else Color.White.copy(alpha = 0.04f))
+                                .border(
+                                    width = if (active) 1.dp else 0.dp,
+                                    color = if (active) c.accent else Color.Transparent,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
                                 .clickable {
+                                    FlagshipFeedback.playSelect(feedbackView)
                                     onSelectChannel(ch)
                                     showChannelDrawer = false
                                 }
@@ -1347,13 +1361,42 @@ fun FullscreenPlayerScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(
-                                ch.category,
-                                color = Color.White.copy(alpha = 0.55f),
-                                fontSize = 10.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            val epgItem = drawerEpg
+                            if (epgItem != null) {
+                                Text(
+                                    text = "${epgItem.formattedTimeRange()} • ${epgItem.title}",
+                                    color = if (active) c.accent.copy(alpha = 0.92f) else Color.White.copy(alpha = 0.68f),
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (epgItem.isNow()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(2.2.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White.copy(alpha = 0.14f))
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth(epgItem.progressFraction())
+                                                .fillMaxHeight()
+                                                .clip(CircleShape)
+                                                .background(c.accent)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    ch.category,
+                                    color = Color.White.copy(alpha = 0.55f),
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }

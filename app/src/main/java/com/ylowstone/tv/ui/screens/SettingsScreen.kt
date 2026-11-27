@@ -811,7 +811,6 @@ fun SettingsScreen(
                         Text(strings.checkUpdates, color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                         Text("v${BuildConfig.VERSION_NAME}", color = c.textSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
                 }
 
                 Spacer(Modifier.height(22.dp))

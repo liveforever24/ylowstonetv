@@ -146,9 +146,9 @@ fun BrowseScreen(
         MediaType.SERIES -> strings.series
     }
     val sectionCoverRes = when (mediaType) {
-        MediaType.LIVE -> R.drawable.cover_yellowstone_tv
-        MediaType.MOVIE -> R.drawable.cover_yellowstone_film
-        MediaType.SERIES -> R.drawable.cover_yellowstone_seri
+        MediaType.LIVE -> R.drawable.cover_home_tv
+        MediaType.MOVIE -> R.drawable.cover_home_film
+        MediaType.SERIES -> R.drawable.cover_home_seri
     }
     val sectionGradColor = when (mediaType) {
         MediaType.LIVE -> c.headerGradTv
@@ -389,11 +389,7 @@ fun BrowseScreen(
                                     FlagshipFeedback.playTick(browseView)
                                     channelSortAz = !channelSortAz
                                 })
-                                if (mediaType == MediaType.LIVE) {
-                                    add(QuickChipSpec("live_badge", "LIVE", true) {
-                                        firstPlayable?.let { openMediaItem(it, channels) }
-                                    })
-                                }
+
                             },
                             onPlayAction = {
                                 firstPlayable?.let {
