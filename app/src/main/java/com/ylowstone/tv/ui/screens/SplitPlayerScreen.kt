@@ -5,7 +5,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
@@ -299,7 +298,7 @@ fun SplitPlayerScreen(
     LaunchedEffect(currentChannel.streamUrl, filteredQueue.size) {
         val idx = filteredQueue.indexOfFirst { it.id == currentChannel.id && it.streamUrl == currentChannel.streamUrl }
         if (idx >= 0) {
-            runCatching { listState.animateScrollToItem((idx - 1).coerceAtLeast(0)) }
+            runCatching { listState.scrollToItem((idx - 2).coerceAtLeast(0)) }
         }
     }
 
@@ -424,7 +423,7 @@ fun SplitPlayerScreen(
                         }
                     }
 
-                    AnimatedVisibility(
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = controlsVisible && !isDraggingDown,
                         enter = fadeIn(),
                         exit = fadeOut(),

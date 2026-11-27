@@ -335,6 +335,18 @@ fun BrowseScreen(
                     // PORTRAIT: DAFTAR CHANNEL / FILM / SERI (COLLAPSING HEADER + BORDERLESS)
                     // =================================================
                     val channelListState = rememberLazyListState()
+                    LaunchedEffect(currentCat, activeChannel?.streamUrl, channels.size, channelSearchQuery) {
+                        val cur = activeChannel ?: return@LaunchedEffect
+                        if (channelSearchQuery.isBlank() && channels.isNotEmpty()) {
+                            val activeIdx = channels.indexOfFirst {
+                                (it.id == cur.id && it.streamUrl == cur.streamUrl) || it.streamUrl == cur.streamUrl
+                            }
+                            if (activeIdx >= 0) {
+                                // +1 karena index 0 adalah collapsing header
+                                runCatching { channelListState.scrollToItem((activeIdx + 1 - 2).coerceAtLeast(0)) }
+                            }
+                        }
+                    }
                     val openedTitle = when (currentCat) {
                         "ALL" -> strings.allChannels
                         "FAV" -> strings.favourites
@@ -499,7 +511,20 @@ fun BrowseScreen(
 
                 if (mediaType == MediaType.LIVE) {
                     // Kolom Daftar Channel Borderless di Tengah
+                    val tvChannelListState = rememberLazyListState()
+                    LaunchedEffect(landscapeCategory, activeChannel?.streamUrl, channels.size, channelSearchQuery) {
+                        val cur = activeChannel ?: return@LaunchedEffect
+                        if (channelSearchQuery.isBlank() && channels.isNotEmpty()) {
+                            val activeIdx = channels.indexOfFirst {
+                                (it.id == cur.id && it.streamUrl == cur.streamUrl) || it.streamUrl == cur.streamUrl
+                            }
+                            if (activeIdx >= 0) {
+                                runCatching { tvChannelListState.scrollToItem((activeIdx - 2).coerceAtLeast(0)) }
+                            }
+                        }
+                    }
                     LazyColumn(
+                        state = tvChannelListState,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()

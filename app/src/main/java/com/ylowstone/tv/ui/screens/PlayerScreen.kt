@@ -23,6 +23,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -1244,7 +1245,24 @@ fun FullscreenPlayerScreen(
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.14f))
 
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                val drawerListState = rememberLazyListState()
+                LaunchedEffect(showChannelDrawer, currentChannel.streamUrl, drawerSearchResults.size, drawerSearchQuery) {
+                    if (showChannelDrawer && drawerSearchQuery.isBlank() && drawerSearchResults.isNotEmpty()) {
+                        val activeIdx = drawerSearchResults.indexOfFirst {
+                            (it.id == currentChannel.id && it.streamUrl == currentChannel.streamUrl) ||
+                                it.streamUrl == currentChannel.streamUrl
+                        }
+                        if (activeIdx >= 0) {
+                            runCatching { drawerListState.scrollToItem((activeIdx - 2).coerceAtLeast(0)) }
+                        }
+                    }
+                }
+
+                LazyColumn(
+                    state = drawerListState,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
                     items(drawerSearchResults, key = { "drw_${it.id}_${it.streamUrl}" }) { ch ->
                         val active = ch.id == currentChannel.id && ch.streamUrl == currentChannel.streamUrl
                         Column(
