@@ -40,7 +40,9 @@ class AppPrefs(context: Context) {
             autoNextEpisode = prefs.getBoolean("auto_next_episode", true),
             pinCode = prefs.getString("pin_code", "1234") ?: "1234",
             use24HourClock = prefs.getBoolean("use_24h", true),
-            preferExternalPlayer = prefs.getBoolean("prefer_external", false)
+            preferExternalPlayer = prefs.getBoolean("prefer_external", false),
+            uiSoundsEnabled = prefs.getBoolean("ui_sounds_enabled", true),
+            enableDoh = prefs.getBoolean("enable_doh", true)
         )
     }
 
@@ -66,10 +68,40 @@ class AppPrefs(context: Context) {
             .putString("pin_code", s.pinCode)
             .putBoolean("use_24h", s.use24HourClock)
             .putBoolean("prefer_external", s.preferExternalPlayer)
+            .putBoolean("ui_sounds_enabled", s.uiSoundsEnabled)
+            .putBoolean("enable_doh", s.enableDoh)
             .apply()
     }
 
-    // ---- Per-Series Subtitle Offset & Intro Duration Memory (v2.3.3) ----
+    // ---- Anti-Bruteforce Login Lockout (5 salah -> kunci 5 menit, v2.5.0) ----
+    fun getLoginFailedAttempts(): Int = prefs.getInt("login_failed_attempts", 0)
+
+    fun getLoginLockoutUntilMs(): Long = prefs.getLong("login_lockout_until_ms", 0L)
+
+    fun recordLoginFailure(): Long {
+        val nextAttempts = getLoginFailedAttempts() + 1
+        val editor = prefs.edit().putInt("login_failed_attempts", nextAttempts)
+        val lockoutUntil = if (nextAttempts >= MAX_LOGIN_ATTEMPTS) {
+            System.currentTimeMillis() + LOCKOUT_DURATION_MS
+        } else {
+            0L
+        }
+        if (lockoutUntil > 0L) {
+            editor.putLong("login_lockout_until_ms", lockoutUntil)
+            editor.putInt("login_failed_attempts", 0)
+        }
+        editor.apply()
+        return lockoutUntil
+    }
+
+    fun clearLoginFailures() {
+        prefs.edit()
+            .putInt("login_failed_attempts", 0)
+            .putLong("login_lockout_until_ms", 0L)
+            .apply()
+    }
+
+    // ---- Per-Series Subtitle Offset & Intro Duration Memory ----
     private fun normalizeSeriesKey(raw: String): String {
         return raw.lowercase(Locale.US).replace(Regex("""[^a-z0-9]+"""), "_").trim('_').take(48)
     }
@@ -99,14 +131,14 @@ class AppPrefs(context: Context) {
         prefs.edit().putInt("intro_sec_$k", seconds.coerceIn(5, 600)).apply()
     }
 
-    // ---- Last Active Playlist Memory (v2.4.7) ----
+    // ---- Last Active Playlist Memory ----
     fun getLastActivePlaylistId(): Long = prefs.getLong("last_active_playlist_id", -1L)
 
     fun setLastActivePlaylistId(playlistId: Long) {
         prefs.edit().putLong("last_active_playlist_id", playlistId).apply()
     }
 
-    // ---- Dual Auth Session (User Biasa PIN vs Full Admin Mode v2.4.7) ----
+    // ---- Dual Auth Session (User Biasa PIN vs Full Admin Mode) ----
     fun isAdminLoggedIn(): Boolean = prefs.getBoolean("admin_logged_in", false)
 
     fun getAdminPin(): String = prefs.getString("admin_pin_token", "") ?: ""
@@ -167,5 +199,10 @@ class AppPrefs(context: Context) {
             if (set.isNotEmpty()) map[id] = set
         }
         return map
+    }
+
+    companion object {
+        const val MAX_LOGIN_ATTEMPTS = 5
+        const val LOCKOUT_DURATION_MS = 5L * 60L * 1000L
     }
 }

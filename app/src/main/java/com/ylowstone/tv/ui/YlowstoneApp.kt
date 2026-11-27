@@ -52,6 +52,7 @@ import com.ylowstone.tv.ui.components.ProfileQuickDropdown
 import com.ylowstone.tv.ui.screens.*
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import com.ylowstone.tv.ui.theme.YlowstoneTheme
+import com.ylowstone.tv.util.FlagshipFeedback
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -116,6 +117,11 @@ fun YlowstoneApp(
 
     // Shared Persistent Media3 Player
     var activeChannel by remember { mutableStateOf<ChannelItem?>(null) }
+    var previousChannel by remember { mutableStateOf<ChannelItem?>(null) }
+    var activeSleepTimer by remember { mutableStateOf(SleepTimerOption.OFF) }
+    var sleepTimerEndMs by remember { mutableLongStateOf(0L) }
+    var sleepTimerRemainingLabel by remember { mutableStateOf("") }
+    var lockoutUntilMs by remember { mutableLongStateOf(prefs.getLoginLockoutUntilMs()) }
     var activeQueue by remember { mutableStateOf<List<ChannelItem>>(emptyList()) }
     var playerMode by remember { mutableStateOf(PlayerMode.NONE) }
     var isLandscapeFullscreen by remember { mutableStateOf(false) }
@@ -126,12 +132,12 @@ fun YlowstoneApp(
     var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
-    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.4.7") }
+    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.5.0", dohEnabled = settings.enableDoh) }
     val streamResolver = remember { XtreamStreamResolver() }
     val sessionMonitor = remember(connectionGuard) { XtreamSessionMonitor(connectionGuard) }
 
     val sharedPlayer = remember(settings.bufferProfile, connectionGuard) {
-        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.4.7")
+        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.5.0")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -160,6 +166,13 @@ fun YlowstoneApp(
         )
     }
     val stabilizerState by reconnectController.state.collectAsState()
+
+    LaunchedEffect(settings.uiSoundsEnabled) {
+        FlagshipFeedback.soundsEnabled = settings.uiSoundsEnabled
+    }
+    LaunchedEffect(settings.enableDoh) {
+        connectionGuard.setDohEnabled(settings.enableDoh)
+    }
 
     // v2.4.7: Proteksi Anti-Screenshot & Anti-Rekam Layar Dinamis untuk User Biasa
     // User Biasa hanya boleh screenshot di Beranda & Pengaturan; masuk Live TV, Film, Seri, Pencarian, Playlist, atau Pemutar otomatis terkunci total.
@@ -351,6 +364,9 @@ fun YlowstoneApp(
     fun playStream(ch: ChannelItem, queue: List<ChannelItem>) {
         val sameStream = activeChannel?.streamUrl == ch.streamUrl
         if (!sameStream) {
+            activeChannel?.let { prev ->
+                if (prev.streamUrl != ch.streamUrl) previousChannel = prev
+            }
             liveReconnectAttempts = 0
             saveCurrentVodProgress(refreshHome = false)
             if (subtitleSession.streamUrl != ch.streamUrl) {
@@ -435,6 +451,40 @@ fun YlowstoneApp(
         isLandscapeFullscreen = false
     }
 
+    LaunchedEffect(activeSleepTimer, sleepTimerEndMs) {
+        if (activeSleepTimer == SleepTimerOption.OFF) {
+            sleepTimerRemainingLabel = ""
+            return@LaunchedEffect
+        }
+        if (activeSleepTimer.endOfEpisode) {
+            sleepTimerRemainingLabel = if (settings.language == AppLanguage.ID) "Akhir Eps" else "End Ep"
+            while (activeSleepTimer.endOfEpisode) {
+                if (sharedPlayer.playbackState == Player.STATE_ENDED) {
+                    activeSleepTimer = SleepTimerOption.OFF
+                    sleepTimerEndMs = 0L
+                    sleepTimerRemainingLabel = ""
+                    stopPlaybackCompletely()
+                    Toast.makeText(context, if (settings.language == AppLanguage.ID) "Sleep Timer: Pemutaran dihentikan" else "Sleep Timer: Playback stopped", Toast.LENGTH_SHORT).show()
+                    break
+                }
+                delay(1000L)
+            }
+            return@LaunchedEffect
+        }
+        while (sleepTimerEndMs > System.currentTimeMillis()) {
+            val remSec = ((sleepTimerEndMs - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L)
+            val m = remSec / 60L
+            val s = remSec % 60L
+            sleepTimerRemainingLabel = String.format(java.util.Locale.US, "%02d:%02d", m, s)
+            delay(1000L)
+        }
+        activeSleepTimer = SleepTimerOption.OFF
+        sleepTimerEndMs = 0L
+        sleepTimerRemainingLabel = ""
+        stopPlaybackCompletely()
+        Toast.makeText(context, if (settings.language == AppLanguage.ID) "Sleep Timer: Koneksi ditutup otomatis" else "Sleep Timer: Stream stopped cleanly", Toast.LENGTH_SHORT).show()
+    }
+
     fun launchPlayer(ch: ChannelItem, queue: List<ChannelItem>, enterLandscape: Boolean) {
         if (settings.preferExternalPlayer) {
             val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -479,6 +529,7 @@ fun YlowstoneApp(
 
     fun openWorkspace(profile: PlaylistProfile) {
         activePlaylist = profile
+        if (profile.url.isNotBlank()) reconnectController.prewarmUrl(profile.url)
         prefs.setLastActivePlaylistId(profile.id)
         activeCounts = repo.db.getCountsByMediaType(profile.id)
         lockedCategories = prefs.getLockedCategories(profile.id)
@@ -614,9 +665,13 @@ fun YlowstoneApp(
             val res = repo.loginAdmin(pin)
             isVerifyingLogin = false
             res.onSuccess { auth ->
+                prefs.clearLoginFailures()
+                lockoutUntilMs = 0L
                 Toast.makeText(context, strings.adminLoginSuccess, Toast.LENGTH_SHORT).show()
                 applyAdminPlaylists(auth.playlists, pin, grantFullAdmin = false)
             }.onFailure { err ->
+                val until = prefs.recordLoginFailure()
+                if (until > 0L) lockoutUntilMs = until
                 loginError = err.message ?: strings.wrongPin
             }
         }
@@ -857,6 +912,11 @@ fun YlowstoneApp(
                         isVerifying = isVerifyingLogin,
                         errorMessage = loginError,
                         canGoBack = returnStageAfterLogin != null,
+                        lockoutUntilMs = lockoutUntilMs,
+                        onRecordFailedAttempt = {
+                            val until = prefs.recordLoginFailure()
+                            if (until > 0L) lockoutUntilMs = until
+                        },
                         onSubmitPin = { enteredPin -> performUserPinLogin(enteredPin) },
                         onSubmitFullAdmin = { includeDefault, serverPin ->
                             performFullAdminLogin(includeDefault, serverPin)
@@ -1330,7 +1390,11 @@ fun YlowstoneApp(
                         isLandscapeFullscreen = false
                     },
                     onEnterSystemPip = onEnterSystemPip,
-                    onClosePlayer = { stopPlaybackCompletely() }
+                    onClosePlayer = { stopPlaybackCompletely() },
+                    previousChannel = previousChannel,
+                    onRecallPrevious = {
+                        previousChannel?.let { prev -> playStream(prev, activeQueue) }
+                    }
                 )
             }
 
@@ -1391,7 +1455,30 @@ fun YlowstoneApp(
                     ),
                     autoNextEpisode = settings.autoNextEpisode,
                     onSaveSeriesSubtitleOffset = { sKey, offMs -> prefs.saveSeriesSubtitleOffsetMs(sKey, offMs) },
-                    onSaveSeriesIntroSeconds = { sKey, sec -> prefs.saveSeriesIntroSeconds(sKey, sec) }
+                    onSaveSeriesIntroSeconds = { sKey, sec -> prefs.saveSeriesIntroSeconds(sKey, sec) },
+                    activePlaylist = playlists.firstOrNull { it.id == activeChannel!!.playlistId } ?: activePlaylist,
+                    previousChannel = previousChannel,
+                    onRecallPrevious = {
+                        previousChannel?.let { prev -> playStream(prev, activeQueue) }
+                    },
+                    activeSleepTimer = activeSleepTimer,
+                    sleepTimerRemainingLabel = sleepTimerRemainingLabel,
+                    onSelectSleepTimer = { opt ->
+                        activeSleepTimer = opt
+                        sleepTimerEndMs = if (opt.minutes > 0) System.currentTimeMillis() + opt.minutes * 60_000L else 0L
+                    },
+                    onPlayCatchUp = { prog ->
+                        val plObj = playlists.firstOrNull { it.id == activeChannel!!.playlistId } ?: activePlaylist
+                        if (plObj != null && activeChannel!!.streamId.isNotBlank()) {
+                            val catchUrl = repo.buildCatchUpUrl(plObj, activeChannel!!.streamId, prog)
+                            val catchItem = activeChannel!!.copy(
+                                name = "${activeChannel!!.name} • ${prog.title}",
+                                streamUrl = catchUrl,
+                                mediaType = MediaType.MOVIE
+                            )
+                            playStream(catchItem, activeQueue)
+                        }
+                    }
                 )
             }
 

@@ -2,6 +2,9 @@ package com.ylowstone.tv.model
 
 import androidx.annotation.DrawableRes
 import com.ylowstone.tv.R
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 enum class DeviceMode { SMARTPHONE, TV }
 enum class ThemeMode { SYSTEM, AMOLED, LIGHT, AMBER_DUSK, VELVET_CRIMSON }
@@ -39,6 +42,44 @@ enum class LoadingAnimStyle(val key: String) {
 }
 
 enum class SkipIntroMode { OFF, MANUAL, AUTO }
+
+enum class SleepTimerOption(
+    val minutes: Int,
+    val labelId: String,
+    val labelEn: String,
+    val endOfEpisode: Boolean = false
+) {
+    OFF(0, "Nonaktif", "Off"),
+    MIN_15(15, "15 Menit", "15 Minutes"),
+    MIN_30(30, "30 Menit", "30 Minutes"),
+    MIN_60(60, "60 Menit", "60 Minutes"),
+    MIN_90(90, "90 Menit", "90 Minutes"),
+    END_OF_EPISODE(-1, "Akhir Episode", "End of Episode", endOfEpisode = true)
+}
+
+data class EpgProgramItem(
+    val id: String,
+    val title: String,
+    val description: String = "",
+    val startSec: Long,
+    val endSec: Long,
+    val hasArchive: Boolean = false
+) {
+    fun isNow(nowSec: Long = System.currentTimeMillis() / 1000L): Boolean =
+        nowSec in startSec..endSec
+
+    fun progressFraction(nowSec: Long = System.currentTimeMillis() / 1000L): Float {
+        val total = (endSec - startSec).coerceAtLeast(1L)
+        return ((nowSec - startSec).toFloat() / total.toFloat()).coerceIn(0f, 1f)
+    }
+
+    fun durationMinutes(): Int = ((endSec - startSec) / 60L).toInt().coerceAtLeast(1)
+
+    fun formattedTimeRange(): String {
+        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+        return "${fmt.format(Date(startSec * 1000L))} - ${fmt.format(Date(endSec * 1000L))}"
+    }
+}
 
 enum class BufferProfile(
     val minBufferMs: Int,
@@ -244,7 +285,9 @@ data class AppSettings(
     val autoNextEpisode: Boolean = true,
     val pinCode: String = "1234",
     val use24HourClock: Boolean = true,
-    val preferExternalPlayer: Boolean = false
+    val preferExternalPlayer: Boolean = false,
+    val uiSoundsEnabled: Boolean = true,
+    val enableDoh: Boolean = true
 )
 
 data class UpdateInfo(

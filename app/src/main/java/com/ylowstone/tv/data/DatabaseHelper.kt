@@ -215,10 +215,10 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             arrayOf(playlistId.toString())
         ).use { c ->
             while (c.moveToNext()) {
-                val url = c.getString(0) ?: continue
-                if (c.getInt(1) == 1) favUrls.add(url)
+                val plainUrl = SecurityCrypto.decryptStreamUrl(c.getString(0) ?: continue)
+                if (c.getInt(1) == 1) favUrls.add(plainUrl)
                 val lw = c.getLong(2)
-                if (lw > 0L) watchedMap[url] = lw
+                if (lw > 0L) watchedMap[plainUrl] = lw
             }
         }
 
@@ -235,7 +235,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                 stmt.bindString(3, item.name)
                 stmt.bindString(4, item.category)
                 stmt.bindString(5, item.logoUrl)
-                stmt.bindString(6, item.streamUrl)
+                stmt.bindString(6, SecurityCrypto.encryptStreamUrl(item.streamUrl))
                 stmt.bindString(7, item.mediaType.name)
                 stmt.bindString(8, item.containerExtension)
                 stmt.bindString(9, item.rating)
@@ -266,10 +266,10 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             arrayOf(playlistId.toString())
         ).use { c ->
             while (c.moveToNext()) {
-                val url = c.getString(0) ?: continue
-                if (c.getInt(1) == 1) favUrls.add(url)
+                val plainUrl = SecurityCrypto.decryptStreamUrl(c.getString(0) ?: continue)
+                if (c.getInt(1) == 1) favUrls.add(plainUrl)
                 val lw = c.getLong(2)
-                if (lw > 0L) watchedMap[url] = lw
+                if (lw > 0L) watchedMap[plainUrl] = lw
             }
         }
         db.beginTransaction()
@@ -297,7 +297,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                 stmt.bindString(3, item.name)
                 stmt.bindString(4, item.category)
                 stmt.bindString(5, item.logoUrl)
-                stmt.bindString(6, item.streamUrl)
+                stmt.bindString(6, SecurityCrypto.encryptStreamUrl(item.streamUrl))
                 stmt.bindString(7, item.mediaType.name)
                 stmt.bindString(8, item.containerExtension)
                 stmt.bindString(9, item.rating)
@@ -350,6 +350,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
     }
 
     fun getHistoryCount(playlistId: Long, mediaType: MediaType): Int {
+        if (mediaType == MediaType.LIVE) return 0
         readableDatabase.rawQuery(
             "SELECT COUNT(*) FROM channels WHERE playlist_id = ? AND media_type = ? AND last_watched > 0",
             arrayOf(playlistId.toString(), mediaType.name)
@@ -434,6 +435,10 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         return list
     }
 
+    /**
+     * v2.5.0: Hanya mencatat Lanjutkan Menonton untuk FILM & SERI (Live TV dikecualikan total),
+     * dan menyimpan stream_url dalam bentuk terenkripsi AES-256-GCM deterministik.
+     */
     fun recordWatchHistory(
         ch: ChannelItem,
         playlistName: String,
@@ -441,15 +446,18 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         durationMs: Long = -1L
     ) {
         if (ch.streamUrl.isBlank() || ch.isAdultContent()) return
+        if (ch.mediaType == MediaType.LIVE) return
+
         val db = writableDatabase
+        val encUrl = SecurityCrypto.encryptStreamUrl(ch.streamUrl)
         val now = System.currentTimeMillis()
         var finalPos = if (positionMs >= 0L) positionMs else 0L
         var finalDur = if (durationMs >= 0L) durationMs else 0L
 
         if (positionMs < 0L || durationMs < 0L) {
             db.rawQuery(
-                "SELECT position_ms, duration_ms FROM watch_history WHERE stream_url = ?",
-                arrayOf(ch.streamUrl)
+                "SELECT position_ms, duration_ms FROM watch_history WHERE stream_url = ? OR stream_url = ?",
+                arrayOf(encUrl, ch.streamUrl)
             ).use { c ->
                 if (c.moveToFirst()) {
                     if (positionMs < 0L) finalPos = c.getLong(0)
@@ -458,8 +466,13 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             }
         }
 
+        // Hapus baris legacy plain-text jika ada agar tidak duplikat setelah enkripsi
+        if (encUrl != ch.streamUrl) {
+            db.delete("watch_history", "stream_url = ?", arrayOf(ch.streamUrl))
+        }
+
         val cv = ContentValues().apply {
-            put("stream_url", ch.streamUrl)
+            put("stream_url", encUrl)
             put("playlist_id", ch.playlistId)
             put("playlist_name", playlistName)
             put("channel_id", ch.id)
@@ -481,19 +494,24 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
 
     fun saveWatchProgress(streamUrl: String, positionMs: Long, durationMs: Long) {
         if (streamUrl.isBlank()) return
+        val encUrl = SecurityCrypto.encryptStreamUrl(streamUrl)
         val cv = ContentValues().apply {
             put("position_ms", positionMs.coerceAtLeast(0L))
             if (durationMs > 0L) put("duration_ms", durationMs)
             put("last_watched", System.currentTimeMillis())
         }
-        writableDatabase.update("watch_history", cv, "stream_url = ?", arrayOf(streamUrl))
+        val updated = writableDatabase.update("watch_history", cv, "stream_url = ?", arrayOf(encUrl))
+        if (updated == 0 && encUrl != streamUrl) {
+            writableDatabase.update("watch_history", cv, "stream_url = ?", arrayOf(streamUrl))
+        }
     }
 
     fun getWatchProgress(streamUrl: String): Pair<Long, Long>? {
         if (streamUrl.isBlank()) return null
+        val encUrl = SecurityCrypto.encryptStreamUrl(streamUrl)
         readableDatabase.rawQuery(
-            "SELECT position_ms, duration_ms FROM watch_history WHERE stream_url = ?",
-            arrayOf(streamUrl)
+            "SELECT position_ms, duration_ms FROM watch_history WHERE stream_url = ? OR stream_url = ?",
+            arrayOf(encUrl, streamUrl)
         ).use { c ->
             if (c.moveToFirst()) {
                 return c.getLong(0) to c.getLong(1)
@@ -502,6 +520,9 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         return null
     }
 
+    /**
+     * v2.5.0: Daftar Lanjutkan Menonton KHUSUS Film & Seri (Live TV dikunci/tidak pernah tampil).
+     */
     fun getRecentHistoryAcrossPlaylists(
         lockedByPlaylist: Map<Long, Set<String>>,
         limit: Int = 40
@@ -513,13 +534,15 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                    h.position_ms, h.duration_ms, h.last_watched
             FROM watch_history h
             JOIN playlists p ON p.id = h.playlist_id
-            WHERE h.last_watched > 0
+            WHERE h.last_watched > 0 AND h.media_type IN ('MOVIE', 'SERIES')
             ORDER BY h.last_watched DESC
             LIMIT ?
         """.trimIndent()
         readableDatabase.rawQuery(sql, arrayOf((limit * 4).toString())).use { c ->
             while (c.moveToNext() && list.size < limit) {
-                val streamUrl = c.getString(0) ?: continue
+                val rawUrl = c.getString(0) ?: continue
+                val streamUrl = SecurityCrypto.decryptStreamUrl(rawUrl)
+                if (streamUrl.isBlank()) continue
                 val plId = c.getLong(1)
                 val plName = c.getString(2) ?: ""
                 val chName = c.getString(5) ?: ""
@@ -527,6 +550,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                 if (isAdultCategoryOrTitle(category, chName)) continue
                 val locked = lockedByPlaylist[plId]
                 if (locked != null && locked.contains(category)) continue
+                val mt = runCatching { MediaType.valueOf(c.getString(8)) }.getOrDefault(MediaType.MOVIE)
+                if (mt == MediaType.LIVE) continue
                 val ch = ChannelItem(
                     id = c.getLong(3),
                     playlistId = plId,
@@ -535,7 +560,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                     category = category,
                     logoUrl = c.getString(7) ?: "",
                     streamUrl = streamUrl,
-                    mediaType = runCatching { MediaType.valueOf(c.getString(8)) }.getOrDefault(MediaType.LIVE),
+                    mediaType = mt,
                     lastWatchedAt = c.getLong(11)
                 )
                 list.add(
@@ -549,104 +574,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             }
         }
         return list
-    }
-
-    fun addToWatchGroup(groupName: String, ch: ChannelItem, playlistName: String) {
-        val cleanGroup = groupName.trim()
-        if (cleanGroup.isEmpty() || ch.streamUrl.isBlank()) return
-        val cv = ContentValues().apply {
-            put("group_name", cleanGroup)
-            put("stream_url", ch.streamUrl)
-            put("playlist_id", ch.playlistId)
-            put("playlist_name", playlistName.ifBlank { "YlowstoneTV" })
-            put("channel_id", ch.id)
-            put("stream_id", ch.streamId)
-            put("name", ch.name)
-            put("category", ch.category)
-            put("logo_url", ch.logoUrl)
-            put("media_type", ch.mediaType.name)
-            put("added_at", System.currentTimeMillis())
-        }
-        writableDatabase.insertWithOnConflict("watch_groups", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
-    }
-
-    fun removeFromWatchGroup(groupName: String, streamUrl: String) {
-        writableDatabase.delete(
-            "watch_groups",
-            "group_name = ? AND stream_url = ?",
-            arrayOf(groupName.trim(), streamUrl)
-        )
-    }
-
-    fun deleteWatchGroup(groupName: String) {
-        writableDatabase.delete("watch_groups", "group_name = ?", arrayOf(groupName.trim()))
-    }
-
-    fun getGroupsForStream(streamUrl: String): Set<String> {
-        if (streamUrl.isBlank()) return emptySet()
-        val set = LinkedHashSet<String>()
-        readableDatabase.rawQuery(
-            "SELECT group_name FROM watch_groups WHERE stream_url = ?",
-            arrayOf(streamUrl)
-        ).use { c ->
-            while (c.moveToNext()) {
-                val g = c.getString(0)?.trim()
-                if (!g.isNullOrEmpty()) set.add(g)
-            }
-        }
-        return set
-    }
-
-    fun getAllWatchGroupNames(): List<String> {
-        val ordered = LinkedHashSet<String>()
-        ordered.addAll(DEFAULT_WATCH_GROUPS)
-        readableDatabase.rawQuery(
-            "SELECT DISTINCT group_name FROM watch_groups ORDER BY group_name ASC",
-            null
-        ).use { c ->
-            while (c.moveToNext()) {
-                val g = c.getString(0)?.trim()
-                if (!g.isNullOrEmpty()) ordered.add(g)
-            }
-        }
-        return ordered.toList()
-    }
-
-    fun getWatchGroupsAcrossPlaylists(
-        lockedByPlaylist: Map<Long, Set<String>>
-    ): Map<String, List<TaggedChannel>> {
-        val grouped = LinkedHashMap<String, MutableList<TaggedChannel>>()
-        val sql = """
-            SELECT g.group_name, g.stream_url, g.playlist_id, COALESCE(p.name, g.playlist_name) AS pl_name,
-                   g.channel_id, g.stream_id, g.name, g.category, g.logo_url, g.media_type, g.added_at
-            FROM watch_groups g
-            LEFT JOIN playlists p ON p.id = g.playlist_id
-            ORDER BY g.added_at DESC
-        """.trimIndent()
-        readableDatabase.rawQuery(sql, null).use { c ->
-            while (c.moveToNext()) {
-                val groupName = c.getString(0)?.trim() ?: continue
-                val streamUrl = c.getString(1) ?: continue
-                val plId = c.getLong(2)
-                val plName = c.getString(3) ?: "YlowstoneTV"
-                val chName = c.getString(6) ?: ""
-                val category = c.getString(7) ?: ""
-                val locked = lockedByPlaylist[plId]
-                if (locked != null && locked.contains(category)) continue
-                val ch = ChannelItem(
-                    id = c.getLong(4),
-                    playlistId = plId,
-                    streamId = c.getString(5) ?: "",
-                    name = chName,
-                    category = category,
-                    logoUrl = c.getString(8) ?: "",
-                    streamUrl = streamUrl,
-                    mediaType = runCatching { MediaType.valueOf(c.getString(9)) }.getOrDefault(MediaType.LIVE)
-                )
-                grouped.getOrPut(groupName) { mutableListOf() }.add(TaggedChannel(ch, plName))
-            }
-        }
-        return grouped
     }
 
     fun searchAcrossPlaylists(
@@ -701,7 +628,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         name = c.getString(3),
         category = c.getString(4),
         logoUrl = c.getString(5),
-        streamUrl = c.getString(6),
+        streamUrl = SecurityCrypto.decryptStreamUrl(c.getString(6) ?: ""),
         mediaType = runCatching { MediaType.valueOf(c.getString(7)) }.getOrDefault(MediaType.LIVE),
         containerExtension = c.getString(8),
         rating = c.getString(9),
@@ -716,8 +643,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             null
         ).use { c ->
             while (c.moveToNext()) {
-                val u = c.getString(0)?.trim()
-                if (!u.isNullOrEmpty()) list.add(u)
+                val u = SecurityCrypto.decryptStreamUrl(c.getString(0)?.trim() ?: "")
+                if (u.isNotEmpty()) list.add(u)
             }
         }
         return list
@@ -730,7 +657,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         try {
             val cv = ContentValues().apply { put("is_favorite", 1) }
             for (u in urls) {
-                db.update("channels", cv, "stream_url = ?", arrayOf(u))
+                val enc = SecurityCrypto.encryptStreamUrl(u)
+                db.update("channels", cv, "stream_url = ? OR stream_url = ?", arrayOf(enc, u))
             }
             db.setTransactionSuccessful()
         } finally {

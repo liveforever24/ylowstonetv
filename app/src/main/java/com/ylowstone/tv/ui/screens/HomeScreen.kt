@@ -42,7 +42,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Tv
@@ -74,6 +74,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -97,6 +98,7 @@ import com.ylowstone.tv.ui.components.YlowInterDisplay
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
+import com.ylowstone.tv.util.FlagshipFeedback
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.hypot
@@ -111,7 +113,7 @@ private object HomeCoverColors {
     val LiveRed = Color(0xFFFA263E)
 }
 
-private enum class HomeSubView { NONE, HISTORY, FAVORITES }
+private enum class HomeSubView { NONE, CONTINUE_WATCHING, FAVORITES }
 
 /**
  * Beranda YlowstoneTV v2.4.2:
@@ -157,8 +159,12 @@ fun HomeScreen(
     val filmCountText = formatCompactCount(movieCount)
     val seriCountText = formatCompactCount(seriesCount)
 
+    val view = LocalView.current
     val isIndonesian = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
-    val shortHistoryLabel = if (isIndonesian) "Riwayat" else "History"
+    val continueWatchingVod = remember(history) {
+        history.filter { it.channel.mediaType == MediaType.MOVIE || it.channel.mediaType == MediaType.SERIES }
+    }
+    val shortHistoryLabel = if (isIndonesian) "Lanjutkan Menonton" else "Continue Watching"
     val shortFavoriteLabel = if (isIndonesian) "Favorit" else "Favourites"
 
     BoxWithConstraints(
@@ -254,13 +260,13 @@ fun HomeScreen(
                 ) {
                     UtilityCompactTile(
                         label = shortHistoryLabel,
-                        count = history.size.toString(),
-                        icon = Icons.Rounded.History,
+                        count = continueWatchingVod.size.toString(),
+                        icon = Icons.Rounded.PlayCircleOutline,
                         isHorizontal = true,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        onClick = { activeSubView = HomeSubView.HISTORY }
+                        onClick = { FlagshipFeedback.playTick(view); activeSubView = HomeSubView.CONTINUE_WATCHING }
                     )
                     UtilityCompactTile(
                         label = shortFavoriteLabel,
@@ -270,7 +276,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        onClick = { activeSubView = HomeSubView.FAVORITES }
+                        onClick = { FlagshipFeedback.playTick(view); activeSubView = HomeSubView.FAVORITES }
                     )
                 }
             } else {
@@ -338,13 +344,13 @@ fun HomeScreen(
                 ) {
                     UtilityCompactTile(
                         label = shortHistoryLabel,
-                        count = history.size.toString(),
-                        icon = Icons.Rounded.History,
+                        count = continueWatchingVod.size.toString(),
+                        icon = Icons.Rounded.PlayCircleOutline,
                         isHorizontal = false,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        onClick = { activeSubView = HomeSubView.HISTORY }
+                        onClick = { FlagshipFeedback.playTick(view); activeSubView = HomeSubView.CONTINUE_WATCHING }
                     )
                     UtilityCompactTile(
                         label = shortFavoriteLabel,
@@ -354,7 +360,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        onClick = { activeSubView = HomeSubView.FAVORITES }
+                        onClick = { FlagshipFeedback.playTick(view); activeSubView = HomeSubView.FAVORITES }
                     )
                 }
             }
@@ -368,7 +374,7 @@ fun HomeScreen(
         ) {
             HomeCollectionOverlay(
                 subView = activeSubView,
-                history = history,
+                history = continueWatchingVod,
                 favourites = favourites,
                 favoriteViewMode = favoriteViewMode,
                 activeChannel = activeChannel,
@@ -405,8 +411,8 @@ private fun HomeCollectionOverlay(
     onClose: () -> Unit
 ) {
     val c = LocalYlowColors.current
-    val isHistory = subView == HomeSubView.HISTORY
-    val title = if (isHistory) strings.watchHistory else strings.favouriteChannels
+    val isHistory = subView == HomeSubView.CONTINUE_WATCHING
+    val title = if (isHistory) (if (strings.watchHistory.startsWith("Riwayat", ignoreCase = true)) "Lanjutkan Menonton" else "Continue Watching") else strings.favouriteChannels
     val isIndonesian = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
     var searchQuery by remember(subView) { mutableStateOf("") }
     var sortAz by remember(subView) { mutableStateOf(false) }
@@ -462,8 +468,8 @@ private fun HomeCollectionOverlay(
         if (filteredList.isEmpty()) {
             item(key = "empty_collection") {
                 EmptyHintCard(
-                    icon = if (isHistory) Icons.Rounded.History else Icons.Rounded.FavoriteBorder,
-                    message = if (isHistory) strings.noHistoryYet else strings.noFavouritesYet
+                    icon = if (isHistory) Icons.Rounded.PlayCircleOutline else Icons.Rounded.FavoriteBorder,
+                    message = if (isHistory) (if (isIndonesian) "Belum ada film atau seri yang ditonton" else "No movies or series in progress") else strings.noFavouritesYet
                 )
             }
         } else if (isHistory) {
@@ -476,9 +482,9 @@ private fun HomeCollectionOverlay(
                 val subText = if (hasProgress) {
                     val posStr = formatHistoryTime(tagged.positionMs)
                     val durStr = if (tagged.durationMs > 0L) " / ${formatHistoryTime(tagged.durationMs)}" else ""
-                    "${tagged.playlistName} • Lanjut $posStr$durStr"
+                    "${tagged.playlistName} • $posStr$durStr"
                 } else {
-                    "${tagged.playlistName} • ${tagged.channel.category}"
+                    tagged.playlistName
                 }
                 val isActive = activeChannel?.streamUrl == tagged.channel.streamUrl
 
@@ -707,9 +713,11 @@ private fun YellowstoneCoverCard(
     var isSinking by remember { mutableStateOf(false) }
     var lastTapMs by remember { mutableLongStateOf(0L) }
 
+    val cardView = LocalView.current
     fun triggerDiveInTap() {
         val now = System.currentTimeMillis()
         if (now - lastTapMs < 350L || isSinking) return
+        FlagshipFeedback.playSelect(cardView)
         lastTapMs = now
         isSinking = true
         scope.launch {

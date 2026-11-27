@@ -5,7 +5,13 @@ import android.net.Uri
 import android.util.JsonReader
 import android.util.JsonToken
 import com.ylowstone.tv.BuildConfig
+import android.util.Base64
 import com.ylowstone.tv.model.*
+import com.ylowstone.tv.util.SecurityCrypto
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -38,6 +44,96 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
             .build()
     }
 
+    private val pinnedBackendClient: OkHttpClient by lazy {
+        httpClient.newBuilder()
+            .certificatePinner(SecurityCrypto.createPinnedBackendCertificatePinner())
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
+    }
+
+    private data class CachedEpg(val items: List<EpgProgramItem>, val fetchedAtMs: Long)
+    private val epgCache = ConcurrentHashMap<String, CachedEpg>()
+
+    /**
+     * Live EPG & Catch-Up (v2.5.0): Tarik jadwal acara Xtream via get_short_epg dengan cache 3 menit.
+     */
+    suspend fun fetchShortEpg(
+        profile: PlaylistProfile,
+        streamId: String,
+        limit: Int = 6
+    ): List<EpgProgramItem> = withContext(Dispatchers.IO) {
+        if (profile.type != PlaylistType.XTREAM || streamId.isBlank()) return@withContext emptyList()
+        val cacheKey = "${profile.id}:$streamId"
+        val now = System.currentTimeMillis()
+        epgCache[cacheKey]?.let { cached ->
+            if (now - cached.fetchedAtMs < 180_000L) return@withContext cached.items
+        }
+        val parsed = runCatching {
+            val base = profile.url.trim().trimEnd('/')
+            val u = Uri.encode(profile.username.trim())
+            val p = Uri.encode(profile.password.trim())
+            val req = Request.Builder()
+                .url("$base/player_api.php?username=$u&password=$p&action=get_short_epg&stream_id=${Uri.encode(streamId)}&limit=$limit")
+                .header("User-Agent", profile.userAgent.ifBlank { "YlowstoneTV/2.5.0" })
+                .get()
+                .build()
+            healthCheckClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@use emptyList()
+                val raw = resp.body?.string().orEmpty()
+                if (raw.isBlank()) return@use emptyList()
+                val arr = JSONObject(raw).optJSONArray("epg_listings") ?: return@use emptyList()
+                val out = mutableListOf<EpgProgramItem>()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val title = decodeEpgText(obj.optString("title", ""))
+                    if (title.isBlank()) continue
+                    val desc = decodeEpgText(obj.optString("description", ""))
+                    val startSec = obj.optString("start_timestamp", "").toLongOrNull() ?: continue
+                    val endSec = obj.optString("stop_timestamp", "").toLongOrNull() ?: (startSec + 3600L)
+                    val hasArchive = obj.optInt("has_archive", 0) == 1 || obj.optString("has_archive") == "1"
+                    out.add(
+                        EpgProgramItem(
+                            id = obj.optString("id", "$streamId-$startSec"),
+                            title = title,
+                            description = desc,
+                            startSec = startSec,
+                            endSec = endSec,
+                            hasArchive = hasArchive
+                        )
+                    )
+                }
+                out.sortedBy { it.startSec }
+            }
+        }.getOrDefault(emptyList())
+        epgCache[cacheKey] = CachedEpg(parsed, now)
+        parsed
+    }
+
+    fun buildCatchUpUrl(
+        profile: PlaylistProfile,
+        streamId: String,
+        program: EpgProgramItem
+    ): String {
+        val base = profile.url.trim().trimEnd('/')
+        val u = Uri.encode(profile.username.trim())
+        val p = Uri.encode(profile.password.trim())
+        val fmt = SimpleDateFormat("yyyy-MM-dd:HH-mm", Locale.US)
+        val startStr = fmt.format(Date(program.startSec * 1000L))
+        val durMin = program.durationMinutes()
+        return "$base/timeshift/$u/$p/$durMin/$startStr/$streamId.ts"
+    }
+
+    private fun decodeEpgText(raw: String): String {
+        val clean = raw.trim()
+        if (clean.isEmpty()) return ""
+        return runCatching {
+            val decoded = String(Base64.decode(clean, Base64.DEFAULT), Charsets.UTF_8).trim()
+            if (decoded.isNotEmpty() && decoded.none { it == '\uFFFD' }) decoded else clean
+        }.getOrDefault(clean)
+    }
+
+
     /**
      * Cek status stream IPTV secara cepat (Aktif / Delay / Mati) dengan fallback HEAD -> Range GET.
      */
@@ -54,7 +150,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                 detail = "URL tidak valid"
             )
         }
-        val ua = userAgent.ifBlank { "YlowstoneTV/2.4.5" }
+        val ua = userAgent.ifBlank { "YlowstoneTV/2.5.0" }
         val startMs = System.currentTimeMillis()
         try {
             val headReq = Request.Builder()
@@ -150,7 +246,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                     } else {
                         val req = Request.Builder()
                             .url(profile.url.trim())
-                            .header("User-Agent", profile.userAgent.ifBlank { "YlowstoneTV/2.4.5" })
+                            .header("User-Agent", profile.userAgent.ifBlank { "YlowstoneTV/2.5.0" })
                             .build()
                         httpClient.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
@@ -256,7 +352,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
     ) {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.4.5" })
+            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.5.0" })
             .build()
         httpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
@@ -468,7 +564,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
     private fun fetchJsonString(url: String, ua: String): String {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.4.5" })
+            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.5.0" })
             .build()
         httpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
@@ -625,7 +721,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                 .post(body)
                 .build()
 
-            httpClient.newCall(req).execute().use { resp ->
+            pinnedBackendClient.newCall(req).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 val json = runCatching { JSONObject(raw) }.getOrNull()
                 if (!resp.isSuccessful || json == null || !json.optBoolean("ok", false)) {

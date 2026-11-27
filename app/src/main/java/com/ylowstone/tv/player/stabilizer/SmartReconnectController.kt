@@ -42,10 +42,11 @@ sealed class StabilizerState {
 }
 
 /**
- * Pengendali stabilitas playback universal v1.3 untuk YlowstoneTV.
- * Mendukung satu pintu masuk untuk Xtream Codes, URL M3U/M3U8, file lokal,
- * direct .ts, VOD (.mp4/.mkv), DASH (.mpd), link tanpa ekstensi, dan video web,
- * lengkap dengan 2-way auto-swap (.m3u8 <-> .ts) anti-loop & cache format per channel.
+ * Pengendali stabilitas playback universal v2.0 untuk YlowstoneTV:
+ * - Mempertahankan 2-way auto-swap (.m3u8 <-> .ts) anti-loop & cache format per channel (v1.3).
+ * - Graceful Teardown + Cool-Down Handshake + cek active_cons saat pindah jaringan (anti ketendang IP baru).
+ * - Silent Token Auto-Heal untuk HTTP 401/403/410 pada stream bertoken sementara tanpa spam retry.
+ * - Zapping Pre-Warm host DNS/IP di latar belakang.
  */
 class SmartReconnectController(
     private val appContext: Context,
@@ -69,6 +70,7 @@ class SmartReconnectController(
     private var attemptCount: Int = 0
     private var wasRecovering: Boolean = false
     private var hasSwappedProtocolOnce: Boolean = false
+    private var hasSilentTokenHealedOnce: Boolean = false
 
     private var activeJob: Job? = null
     private var stabilityResetJob: Job? = null
@@ -95,7 +97,6 @@ class SmartReconnectController(
             val source = currentSource ?: return
             stabilityResetJob?.cancel()
 
-            // File lokal tidak perlu retry jaringan berulang
             if (source is YlowstoneStreamSource.LocalMedia) {
                 _state.value = StabilizerState.Failed("Berkas lokal tidak dapat diputar")
                 return
@@ -109,7 +110,29 @@ class SmartReconnectController(
                 return
             }
 
-            // 2. Fallback Live TV 2 arah (.m3u8 <-> .ts), maksimal 1x swap per sesi error (anti-loop)
+            // 2. Silent Token Auto-Heal untuk HTTP 401/403/410 (token sementara kadaluarsa)
+            if (!hasSilentTokenHealedOnce && isTokenExpiredError(error)) {
+                hasSilentTokenHealedOnce = true
+                wasRecovering = true
+                val targetHost = when (source) {
+                    is YlowstoneStreamSource.Xtream -> source.normalizedHost
+                    is YlowstoneStreamSource.DirectUrl -> source.rawUrl
+                    is YlowstoneStreamSource.Vod -> source.rawUrl
+                    else -> ""
+                }
+                if (targetHost.isNotBlank()) {
+                    connectionGuard.clearSessionCookiesForHost(targetHost)
+                }
+                launchReconnect(
+                    source = source,
+                    delayMs = TOKEN_HEAL_DELAY_MS,
+                    countAsAttempt = false,
+                    reason = "Menyegarkan sesi"
+                )
+                return
+            }
+
+            // 3. Fallback Live TV 2 arah (.m3u8 <-> .ts), maksimal 1x swap per sesi error (anti-loop)
             if (source.isLive &&
                 !hasSwappedProtocolOnce &&
                 (currentProtocol == StreamProtocol.HLS_M3U8 || currentProtocol == StreamProtocol.MPEG_TS) &&
@@ -134,12 +157,11 @@ class SmartReconnectController(
                 }
             }
 
-            // Jika percobaan swap gagal tanpa pernah READY, bersihkan override agar tidak meracuni cache
             if (hasSwappedProtocolOnce) {
                 resolver.clearPendingSwap(source)
             }
 
-            // 3. Gangguan jaringan atau token redirect kedaluwarsa -> backoff + jitter natural
+            // 4. Gangguan jaringan -> backoff + jitter natural
             if (attemptCount < backoffScheduleMs.size) {
                 val baseDelay = backoffScheduleMs[attemptCount]
                 val jitter = Random.nextLong(-JITTER_MS, JITTER_MS + 1)
@@ -176,8 +198,15 @@ class SmartReconnectController(
     }
 
     /**
-     * Pintu masuk universal untuk memutar segala jenis sumber YlowstoneTV.
+     * Pre-warm DNS DoH & Fast-IP Pinning di latar belakang saat pengguna menjelajahi daftar channel.
      */
+    fun prewarmUrl(rawUrl: String) {
+        if (rawUrl.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            connectionGuard.prewarmHost(rawUrl)
+        }
+    }
+
     fun play(
         source: YlowstoneStreamSource,
         customUserAgent: String? = null,
@@ -193,6 +222,7 @@ class SmartReconnectController(
         attemptCount = 0
         wasRecovering = false
         hasSwappedProtocolOnce = false
+        hasSilentTokenHealedOnce = false
 
         val effectiveDebounce = debounceMs ?: if (source.isLive) ZAPPING_DEBOUNCE_MS else 0L
 
@@ -204,16 +234,14 @@ class SmartReconnectController(
                 _state.value = StabilizerState.SwitchingChannel(channelLabel)
             }
             streamMutex.withLock {
-                connectionGuard.releaseActiveStreamCleanly(player)
+                // Graceful teardown + cool-down adaptif agar sesi lama tertutup bersih di server Xtream
+                val cooldown = if (source.isLive) LIVE_SWITCH_COOLDOWN_MS else 180L
+                connectionGuard.releaseActiveStreamCleanly(player, cooldownMs = cooldown)
                 prepareFromSource(source, customUserAgent, startPositionMs)
             }
         }
     }
 
-    /**
-     * Pintasan cepat untuk URL mentah (M3U remote, item file .m3u/.m3u8 lokal,
-     * aliran tunggal, VOD .mp4/.mkv, direct .ts, maupun tautan video web).
-     */
     fun playUrl(
         rawUrl: String,
         isLiveHint: Boolean? = null,
@@ -235,9 +263,6 @@ class SmartReconnectController(
         )
     }
 
-    /**
-     * Kompatibilitas dengan pemanggil v1.1 khusus Xtream Codes.
-     */
     fun playCanonical(
         source: XtreamCanonicalSource,
         customUserAgent: String? = null,
@@ -252,6 +277,10 @@ class SmartReconnectController(
         )
     }
 
+    /**
+     * Graceful Teardown + Cool-Down Handshake + cek kuota active_cons saat ganti IP/Jaringan (Wi-Fi <-> 4G/5G).
+     * Mencegah server Xtream menganggap IP baru sebagai koneksi ganda (anti ketendang).
+     */
     fun onNetworkSwitched(networkLabel: String) {
         val source = currentSource ?: return
         if (source is YlowstoneStreamSource.LocalMedia) return
@@ -259,12 +288,28 @@ class SmartReconnectController(
         activeJob?.cancel()
         stabilityResetJob?.cancel()
         wasRecovering = true
+        hasSilentTokenHealedOnce = false
 
         activeJob = scope.launch {
             _state.value = StabilizerState.SwitchingNetwork(networkLabel)
             streamMutex.withLock {
+                connectionGuard.clearDnsPins()
                 connectionGuard.releaseActiveStreamCleanly(player, cooldownMs = 0L)
                 delay(NETWORK_HANDOFF_DELAY_MS)
+
+                if (source is YlowstoneStreamSource.Xtream) {
+                    val status = sessionMonitor.fetchStatus(
+                        hostUrl = source.normalizedHost,
+                        username = source.username,
+                        password = source.password,
+                        forceRefresh = true
+                    )
+                    if (status != null && status.isQuotaFull) {
+                        // Beri ekstra waktu agar server Xtream melepas socket ghost dari IP lama
+                        delay(GHOST_SOCKET_EXTRA_COOLDOWN_MS)
+                    }
+                }
+
                 prepareFromSource(source, currentUserAgent)
             }
         }
@@ -283,6 +328,7 @@ class SmartReconnectController(
         attemptCount = 0
         wasRecovering = false
         hasSwappedProtocolOnce = false
+        hasSilentTokenHealedOnce = false
         scope.launch {
             streamMutex.withLock {
                 connectionGuard.releaseActiveStreamCleanly(player, cooldownMs = 0L)
@@ -351,6 +397,7 @@ class SmartReconnectController(
             delay(STABLE_PLAYBACK_RESET_MS)
             attemptCount = 0
             hasSwappedProtocolOnce = false
+            hasSilentTokenHealedOnce = false
         }
     }
 
@@ -376,6 +423,12 @@ class SmartReconnectController(
                 message = "Aliran offline (${describeError(error)})"
             )
         }
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun isTokenExpiredError(error: PlaybackException): Boolean {
+        val httpCause = error.cause as? HttpDataSource.InvalidResponseCodeException
+        return httpCause?.responseCode in TOKEN_EXPIRED_HTTP_CODES
     }
 
     @OptIn(UnstableApi::class)
@@ -409,10 +462,14 @@ class SmartReconnectController(
 
     companion object {
         private const val ZAPPING_DEBOUNCE_MS = 400L
-        private const val PROTOCOL_SWAP_DELAY_MS = 300L
-        private const val NETWORK_HANDOFF_DELAY_MS = 1_200L
+        private const val LIVE_SWITCH_COOLDOWN_MS = 420L
+        private const val PROTOCOL_SWAP_DELAY_MS = 350L
+        private const val TOKEN_HEAL_DELAY_MS = 900L
+        private const val NETWORK_HANDOFF_DELAY_MS = 1_100L
+        private const val GHOST_SOCKET_EXTRA_COOLDOWN_MS = 1_400L
         private const val STABLE_PLAYBACK_RESET_MS = 10_000L
         private const val JITTER_MS = 300L
+        private val TOKEN_EXPIRED_HTTP_CODES = setOf(401, 403, 410)
         private val SWAP_HTTP_STATUS_CODES = setOf(400, 403, 404, 405, 415, 500, 502, 503)
     }
 }

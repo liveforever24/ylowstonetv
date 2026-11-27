@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -62,7 +63,12 @@ import com.ylowstone.tv.data.SubtitleFetcher
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.ChannelItem
 import com.ylowstone.tv.model.MediaType
+import com.ylowstone.tv.model.EpgProgramItem
+import com.ylowstone.tv.model.PlaylistProfile
+import com.ylowstone.tv.model.PlaylistType
 import com.ylowstone.tv.model.SkipIntroMode
+import com.ylowstone.tv.model.SleepTimerOption
+import com.ylowstone.tv.util.FlagshipFeedback
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -407,7 +413,14 @@ fun FullscreenPlayerScreen(
     skipIntroSeconds: Int = 85,
     autoNextEpisode: Boolean = true,
     onSaveSeriesSubtitleOffset: (String, Long) -> Unit = { _, _ -> },
-    onSaveSeriesIntroSeconds: (String, Int) -> Unit = { _, _ -> }
+    onSaveSeriesIntroSeconds: (String, Int) -> Unit = { _, _ -> },
+    activePlaylist: PlaylistProfile? = null,
+    previousChannel: ChannelItem? = null,
+    onRecallPrevious: () -> Unit = {},
+    activeSleepTimer: SleepTimerOption = SleepTimerOption.OFF,
+    sleepTimerRemainingLabel: String = "",
+    onSelectSleepTimer: (SleepTimerOption) -> Unit = {},
+    onPlayCatchUp: (EpgProgramItem) -> Unit = {}
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -423,7 +436,12 @@ fun FullscreenPlayerScreen(
     var controlsVisible by remember { mutableStateOf(true) }
     var isScreenLocked by remember { mutableStateOf(false) }
     var showChannelDrawer by remember { mutableStateOf(false) }
+    val feedbackView = LocalView.current
     var showTrackDrawer by remember { mutableStateOf(false) }
+    var showSleepDialog by remember { mutableStateOf(false) }
+    var showEpgDialog by remember { mutableStateOf(false) }
+    var epgList by remember(currentChannel.streamId) { mutableStateOf<List<EpgProgramItem>>(emptyList()) }
+    var loadingEpg by remember(currentChannel.streamId) { mutableStateOf(false) }
     var isSeekDragging by remember { mutableStateOf(false) }
 
     // Indonesian Subtitle (Hoisted in YlowstoneApp so it survives PiP, Minimize, and App Switching!)
@@ -874,6 +892,53 @@ fun FullscreenPlayerScreen(
             )
         }
 
+        // v2.5.0: Gestur Geser dari Tepi Kiri untuk Slide-In Channel Drawer tanpa keluar Fullscreen
+        if (!isScreenLocked && !showChannelDrawer && !showTrackDrawer) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .width(26.dp)
+                    .fillMaxHeight()
+                    .pointerInput(Unit) {
+                        var accumX = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { accumX = 0f },
+                            onDragEnd = { accumX = 0f }
+                        ) { change, dragAmount ->
+                            if (dragAmount > 0f) {
+                                accumX += dragAmount
+                                if (accumX > 48f) {
+                                    change.consume()
+                                    FlagshipFeedback.playTick(feedbackView)
+                                    showChannelDrawer = true
+                                    accumX = 0f
+                                }
+                            }
+                        }
+                    }
+            )
+        }
+
+        // Pil Countdown Sleep Timer saat aktif (OSD Frosted Glass)
+        if (sleepTimerRemainingLabel.isNotEmpty() && !showChannelDrawer && !showTrackDrawer) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .systemBarsPadding()
+                    .padding(start = 20.dp, top = if (controlsVisible) 66.dp else 16.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xB80E1014))
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+                    .clickable { showSleepDialog = true }
+                    .padding(horizontal = 11.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Icon(Icons.Rounded.Bedtime, contentDescription = null, tint = c.accent, modifier = Modifier.size(14.dp))
+                Text(sleepTimerRemainingLabel, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+
         if (isBuffering) {
             CircularProgressIndicator(color = c.accent, modifier = Modifier.align(Alignment.Center))
         }
@@ -1031,8 +1096,8 @@ fun FullscreenPlayerScreen(
                     .systemBarsPadding()
                     .padding(20.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(alpha = 0.75f))
-                    .border(1.dp, c.accent, RoundedCornerShape(16.dp))
+                    .background(Color(0xC40E1014))
+                    .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
                     .clickable { isScreenLocked = false }
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
@@ -1088,25 +1153,81 @@ fun FullscreenPlayerScreen(
                             }
                         }
 
-                        // Clean Right Controls: Search + Lock + Settings/Tracks ONLY
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = { showChannelDrawer = true },
-                                modifier = Modifier.size(42.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f))
-                            ) {
-                                Icon(Icons.Rounded.Search, contentDescription = strings.search, tint = Color.White, modifier = Modifier.size(22.dp))
+                        // v2.5.0: OSD Frosted Glass Controls (Quick Recall, EPG/Catch-Up, Sleep Timer, Drawer, Screen Lock, Tracks)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color(0xB80E1014))
+                                .border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            if (previousChannel != null) {
+                                IconButton(
+                                    onClick = {
+                                        FlagshipFeedback.playSelect(feedbackView)
+                                        onRecallPrevious()
+                                    },
+                                    modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f))
+                                ) {
+                                    Icon(Icons.Rounded.History, contentDescription = "Last Channel", tint = Color.White, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                            if (!isVod && activePlaylist?.type == PlaylistType.XTREAM && currentChannel.streamId.isNotBlank()) {
+                                IconButton(
+                                    onClick = {
+                                        FlagshipFeedback.playTick(feedbackView)
+                                        showEpgDialog = true
+                                        loadingEpg = true
+                                        coroutineScope.launch {
+                                            epgList = repo.fetchShortEpg(activePlaylist, currentChannel.streamId, limit = 8)
+                                            loadingEpg = false
+                                        }
+                                    },
+                                    modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f))
+                                ) {
+                                    Icon(Icons.Rounded.EventNote, contentDescription = "EPG", tint = Color.White, modifier = Modifier.size(20.dp))
+                                }
                             }
                             IconButton(
-                                onClick = { isScreenLocked = true; controlsVisible = true },
-                                modifier = Modifier.size(42.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f))
+                                onClick = {
+                                    FlagshipFeedback.playTick(feedbackView)
+                                    showSleepDialog = true
+                                },
+                                modifier = Modifier.size(38.dp).clip(CircleShape).background(
+                                    if (activeSleepTimer != SleepTimerOption.OFF) c.accent.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.12f)
+                                )
                             ) {
-                                Icon(Icons.Rounded.LockOpen, contentDescription = strings.screenLocked, tint = Color.White, modifier = Modifier.size(21.dp))
+                                Icon(Icons.Rounded.Bedtime, contentDescription = "Sleep Timer", tint = if (activeSleepTimer != SleepTimerOption.OFF) c.accent else Color.White, modifier = Modifier.size(19.dp))
                             }
                             IconButton(
-                                onClick = { showTrackDrawer = true },
-                                modifier = Modifier.size(44.dp).clip(CircleShape).background(c.accent)
+                                onClick = {
+                                    FlagshipFeedback.playTick(feedbackView)
+                                    showChannelDrawer = true
+                                },
+                                modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f))
                             ) {
-                                Icon(Icons.Rounded.Settings, contentDescription = strings.tracks, tint = c.onAccent, modifier = Modifier.size(23.dp))
+                                Icon(Icons.Rounded.ViewSidebar, contentDescription = strings.search, tint = Color.White, modifier = Modifier.size(20.dp))
+                            }
+                            IconButton(
+                                onClick = {
+                                    FlagshipFeedback.playTick(feedbackView)
+                                    isScreenLocked = true
+                                    controlsVisible = true
+                                },
+                                modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f))
+                            ) {
+                                Icon(Icons.Rounded.LockOpen, contentDescription = strings.screenLocked, tint = Color.White, modifier = Modifier.size(19.dp))
+                            }
+                            IconButton(
+                                onClick = {
+                                    FlagshipFeedback.playTick(feedbackView)
+                                    showTrackDrawer = true
+                                },
+                                modifier = Modifier.size(40.dp).clip(CircleShape).background(c.accent)
+                            ) {
+                                Icon(Icons.Rounded.Settings, contentDescription = strings.tracks, tint = c.onAccent, modifier = Modifier.size(21.dp))
                             }
                         }
                     }
@@ -1565,6 +1686,162 @@ fun FullscreenPlayerScreen(
             }
         }
     }
+
+        // v2.5.0: Dialog Sleep Timer Pintar
+        if (showSleepDialog) {
+            val isIndo = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
+            AlertDialog(
+                onDismissRequest = { showSleepDialog = false },
+                containerColor = c.surface,
+                shape = RoundedCornerShape(22.dp),
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Rounded.Bedtime, contentDescription = null, tint = c.accent)
+                        Text(if (isIndo) "Sleep Timer Pintar" else "Smart Sleep Timer", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        SleepTimerOption.entries.forEach { opt ->
+                            val selected = activeSleepTimer == opt
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (selected) c.accentContainer else c.surfaceElevated)
+                                    .border(1.dp, if (selected) c.accent else c.glassBorder, RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        FlagshipFeedback.playSelect(feedbackView)
+                                        onSelectSleepTimer(opt)
+                                        showSleepDialog = false
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = if (isIndo) opt.labelId else opt.labelEn,
+                                    color = if (selected) c.accent else c.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
+                                if (selected) {
+                                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showSleepDialog = false }) {
+                        Text(strings.closeBtn, color = c.accent, fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
+
+        // v2.5.0: Dialog Live EPG & Catch-Up
+        if (showEpgDialog) {
+            val isIndo = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
+            AlertDialog(
+                onDismissRequest = { showEpgDialog = false },
+                containerColor = c.surface,
+                shape = RoundedCornerShape(22.dp),
+                title = {
+                    Column {
+                        Text(if (isIndo) "Jadwal Acara (EPG)" else "Program Guide (EPG)", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                        Text(currentChannel.name, color = c.accent, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 340.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (loadingEpg) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(color = c.accent, strokeWidth = 2.5.dp, modifier = Modifier.size(22.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Text(if (isIndo) "Memuat EPG..." else "Loading EPG...", color = c.textSecondary, fontSize = 12.sp)
+                            }
+                        } else if (epgList.isEmpty()) {
+                            Text(
+                                text = if (isIndo) "Jadwal EPG tidak tersedia untuk saluran ini." else "No EPG schedule available for this channel.",
+                                color = c.textSecondary,
+                                fontSize = 12.sp
+                            )
+                        } else {
+                            val nowSec = System.currentTimeMillis() / 1000L
+                            epgList.forEach { prog ->
+                                val isLiveNow = prog.isNow(nowSec)
+                                val canCatchUp = prog.hasArchive && prog.endSec <= nowSec
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isLiveNow) c.accentContainer else c.surfaceElevated)
+                                        .border(1.dp, if (isLiveNow) c.accent else c.glassBorder, RoundedCornerShape(12.dp))
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(prog.formattedTimeRange(), color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        if (isLiveNow) {
+                                            Text("• LIVE", color = Color(0xFFFA263E), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        } else if (canCatchUp) {
+                                            Text(
+                                                text = if (isIndo) "Putar Ulang" else "Catch-Up",
+                                                color = c.onAccent,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(c.accent)
+                                                    .clickable {
+                                                        FlagshipFeedback.playSelect(feedbackView)
+                                                        showEpgDialog = false
+                                                        onPlayCatchUp(prog)
+                                                    }
+                                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(prog.title, color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    if (isLiveNow) {
+                                        LinearProgressIndicator(
+                                            progress = { prog.progressFraction(nowSec) },
+                                            color = c.accent,
+                                            trackColor = c.glassBorder,
+                                            modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape)
+                                        )
+                                    }
+                                    if (prog.description.isNotBlank()) {
+                                        Text(prog.description, color = c.textSecondary, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showEpgDialog = false }) {
+                        Text(strings.closeBtn, color = c.accent, fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
+
 }
 
 @Composable
@@ -1679,5 +1956,6 @@ private fun TrackGroupSection(
                 }
             }
         }
-    }
+    
+}
 }

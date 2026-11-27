@@ -12,7 +12,6 @@ import android.content.res.Configuration
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
-import android.os.Debug
 import android.util.Rational
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -30,6 +29,8 @@ import com.ylowstone.tv.data.AppPrefs
 import com.ylowstone.tv.data.DatabaseHelper
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.ui.YlowstoneApp
+import com.ylowstone.tv.util.FlagshipFeedback
+import com.ylowstone.tv.util.SecurityCrypto
 
 class MainActivity : ComponentActivity() {
 
@@ -61,8 +62,8 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        // Proteksi anti-debugger pada build Release
-        if (!BuildConfig.DEBUG && (Debug.isDebuggerConnected() || Debug.waitingForDebugger())) {
+        // Proteksi Integritas APK, Anti-Tamper, Anti-Hooking & Anti-Debugger pada build Release (v2.5.0)
+        if (!SecurityCrypto.verifyAppIntegrity(applicationContext)) {
             finishAffinity()
             return
         }
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         prefs = AppPrefs(applicationContext)
+        FlagshipFeedback.init(applicationContext)
         val db = DatabaseHelper(applicationContext)
         repo = IptvRepository(applicationContext, db)
 

@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -33,7 +34,10 @@ import com.ylowstone.tv.ui.components.YlowstoneLogoBadge
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
+import com.ylowstone.tv.util.FlagshipFeedback
 import com.ylowstone.tv.util.SecurityCrypto
+import kotlinx.coroutines.delay
+import java.util.Locale
 
 @Composable
 fun AdminLoginScreen(
@@ -43,12 +47,15 @@ fun AdminLoginScreen(
     isVerifying: Boolean,
     errorMessage: String,
     canGoBack: Boolean,
+    lockoutUntilMs: Long = 0L,
+    onRecordFailedAttempt: () -> Unit = {},
     onSubmitPin: (String) -> Unit,
     onSubmitFullAdmin: (includeDefaultPlaylists: Boolean, serverPin: String) -> Unit,
     onContinueGuest: () -> Unit,
     onBack: () -> Unit
 ) {
     val c = LocalYlowColors.current
+    val view = LocalView.current
     val isIndo = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
 
     var pin by remember { mutableStateOf("") }
@@ -60,21 +67,49 @@ fun AdminLoginScreen(
     var includeDefaultPlaylists by remember { mutableStateOf(true) }
 
     var localError by remember { mutableStateOf("") }
-    val displayError = localError.ifBlank { errorMessage }
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(lockoutUntilMs) {
+        while (lockoutUntilMs > System.currentTimeMillis()) {
+            nowMs = System.currentTimeMillis()
+            delay(1000L)
+        }
+        nowMs = System.currentTimeMillis()
+    }
+
+    val lockoutRemainingSec = ((lockoutUntilMs - nowMs) / 1000L).coerceAtLeast(0L).toInt()
+    val isLockedOut = lockoutRemainingSec > 0
+    val formattedLockout = remember(lockoutRemainingSec) {
+        val m = lockoutRemainingSec / 60
+        val s = lockoutRemainingSec % 60
+        String.format(Locale.US, "%02d:%02d", m, s)
+    }
+
+    val displayError = when {
+        isLockedOut -> if (isIndo) {
+            "Terlalu banyak percobaan salah. Coba lagi dalam $formattedLockout"
+        } else {
+            "Too many failed attempts. Try again in $formattedLockout"
+        }
+        localError.isNotEmpty() -> localError
+        else -> errorMessage
+    }
 
     fun triggerUserPinSubmit() {
-        if (isVerifying) return
+        if (isVerifying || isLockedOut) return
         if (pin.length != 4) {
             localError = strings.pinMustBe4Digits
             return
         }
+        FlagshipFeedback.playSelect(view)
         localError = ""
         onSubmitPin(pin)
     }
 
     fun triggerFullAdminSubmit() {
-        if (isVerifying) return
+        if (isVerifying || isLockedOut) return
         if (!SecurityCrypto.verifyAdminPassword(adminPassword)) {
+            onRecordFailedAttempt()
             localError = if (isIndo) "Password Admin tidak valid" else "Invalid Admin password"
             return
         }
@@ -86,6 +121,7 @@ fun AdminLoginScreen(
             }
             return
         }
+        FlagshipFeedback.playSelect(view)
         localError = ""
         onSubmitFullAdmin(includeDefaultPlaylists, pin)
     }
@@ -106,7 +142,10 @@ fun AdminLoginScreen(
                     .background(c.surface)
                     .border(1.dp, c.glassBorder, CircleShape)
                     .glossyPressPill(20f)
-                    .clickable(enabled = !isVerifying, onClick = onBack),
+                    .clickable(enabled = !isVerifying, onClick = {
+                        FlagshipFeedback.playTick(view)
+                        onBack()
+                    }),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(20.dp))
@@ -169,12 +208,7 @@ fun AdminLoginScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(
-                            Icons.Rounded.AccountCircle,
-                            contentDescription = null,
-                            tint = c.accent,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Icon(Icons.Rounded.AccountCircle, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
                         Text(
                             text = IptvRepository.FIXED_ADMIN_USERNAME,
                             color = c.textPrimary,
@@ -183,16 +217,11 @@ fun AdminLoginScreen(
                             letterSpacing = 0.3.sp
                         )
                     }
-                    Icon(
-                        Icons.Rounded.Lock,
-                        contentDescription = null,
-                        tint = c.textSecondary,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Icon(Icons.Rounded.Lock, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(16.dp))
                 }
             }
 
-            // 4-Digit Numeric PIN Input (Mode User Biasa / Playlist Default)
+            // 4-Digit Numeric PIN Input
             OutlinedTextField(
                 value = pin,
                 onValueChange = { next ->
@@ -221,7 +250,7 @@ fun AdminLoginScreen(
                     if (showAdminPanel) triggerFullAdminSubmit() else triggerUserPinSubmit()
                 }),
                 singleLine = true,
-                enabled = !isVerifying,
+                enabled = !isVerifying && !isLockedOut,
                 isError = displayError.isNotEmpty(),
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -254,7 +283,12 @@ fun AdminLoginScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(18.dp))
+                    Icon(
+                        if (isLockedOut) Icons.Rounded.Timer else Icons.Rounded.ErrorOutline,
+                        contentDescription = null,
+                        tint = Color(0xFFFF6B6B),
+                        modifier = Modifier.size(18.dp)
+                    )
                     Text(
                         text = displayError,
                         color = Color(0xFFFF8A80),
@@ -264,11 +298,10 @@ fun AdminLoginScreen(
                 }
             }
 
-            // Tombol Login Mode User Biasa
             if (!showAdminPanel) {
                 Button(
                     onClick = { triggerUserPinSubmit() },
-                    enabled = !isVerifying,
+                    enabled = !isVerifying && !isLockedOut,
                     colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
@@ -277,11 +310,7 @@ fun AdminLoginScreen(
                         .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
                 ) {
                     if (isVerifying) {
-                        CircularProgressIndicator(
-                            color = c.onAccent,
-                            strokeWidth = 2.2.dp,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        CircularProgressIndicator(color = c.onAccent, strokeWidth = 2.2.dp, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(10.dp))
                         Text(strings.adminVerifying, color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     } else {
@@ -292,7 +321,6 @@ fun AdminLoginScreen(
                 }
             }
 
-            // Toggle Login Admin (Akses Penuh)
             HorizontalDivider(color = c.glassBorder, thickness = 0.7.dp)
 
             Row(
@@ -305,7 +333,8 @@ fun AdminLoginScreen(
                         color = if (showAdminPanel) c.accent.copy(alpha = 0.55f) else c.glassBorder,
                         shape = RoundedCornerShape(12.dp)
                     )
-                    .clickable(enabled = !isVerifying) {
+                    .clickable(enabled = !isVerifying && !isLockedOut) {
+                        FlagshipFeedback.playTick(view)
                         showAdminPanel = !showAdminPanel
                         localError = ""
                     }
@@ -372,7 +401,7 @@ fun AdminLoginScreen(
                         ),
                         keyboardActions = KeyboardActions(onDone = { triggerFullAdminSubmit() }),
                         singleLine = true,
-                        enabled = !isVerifying,
+                        enabled = !isVerifying && !isLockedOut,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -381,7 +410,8 @@ fun AdminLoginScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .clickable(enabled = !isVerifying) {
+                            .clickable(enabled = !isVerifying && !isLockedOut) {
+                                FlagshipFeedback.playTick(view)
                                 includeDefaultPlaylists = !includeDefaultPlaylists
                                 localError = ""
                             }
@@ -391,7 +421,9 @@ fun AdminLoginScreen(
                     ) {
                         Checkbox(
                             checked = includeDefaultPlaylists,
+                            enabled = !isLockedOut,
                             onCheckedChange = {
+                                FlagshipFeedback.playTick(view)
                                 includeDefaultPlaylists = it
                                 localError = ""
                             },
@@ -422,7 +454,7 @@ fun AdminLoginScreen(
 
                     Button(
                         onClick = { triggerFullAdminSubmit() },
-                        enabled = !isVerifying,
+                        enabled = !isVerifying && !isLockedOut,
                         colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
@@ -431,11 +463,7 @@ fun AdminLoginScreen(
                             .tvFocusBorder(isTvMode, RoundedCornerShape(12.dp))
                     ) {
                         if (isVerifying) {
-                            CircularProgressIndicator(
-                                color = c.onAccent,
-                                strokeWidth = 2.2.dp,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            CircularProgressIndicator(color = c.onAccent, strokeWidth = 2.2.dp, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(10.dp))
                             Text(strings.adminVerifying, color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         } else {
@@ -454,8 +482,11 @@ fun AdminLoginScreen(
 
             if (!canGoBack) {
                 TextButton(
-                    enabled = !isVerifying,
-                    onClick = onContinueGuest
+                    enabled = !isVerifying && !isLockedOut,
+                    onClick = {
+                        FlagshipFeedback.playTick(view)
+                        onContinueGuest()
+                    }
                 ) {
                     Text(
                         text = strings.adminContinueGuest,

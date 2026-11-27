@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,7 +37,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +64,7 @@ import com.ylowstone.tv.ui.components.ChannelLogoBox
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
+import com.ylowstone.tv.util.FlagshipFeedback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -102,7 +109,9 @@ fun SplitPlayerScreen(
     onEnterFullscreen: () -> Unit,
     onMinimizeToFloat: () -> Unit,
     onEnterSystemPip: () -> Unit,
-    onClosePlayer: () -> Unit
+    onClosePlayer: () -> Unit,
+    previousChannel: ChannelItem? = null,
+    onRecallPrevious: () -> Unit = {}
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -142,7 +151,9 @@ fun SplitPlayerScreen(
         channelList.indexOfFirst { it.id == currentChannel.id && it.streamUrl == currentChannel.streamUrl }.coerceAtLeast(0)
     }
 
+    val feedbackView = LocalView.current
     var controlsVisible by remember { mutableStateOf(true) }
+    var isSeekDragging by remember { mutableStateOf(false) }
     var showTrackSheet by remember { mutableStateOf(false) }
     var queueSearchQuery by remember { mutableStateOf("") }
     val filteredQueue = remember(channelList, queueSearchQuery) {
@@ -287,8 +298,8 @@ fun SplitPlayerScreen(
         list
     }
 
-    LaunchedEffect(controlsVisible, showTrackSheet) {
-        if (controlsVisible && !showTrackSheet) {
+    LaunchedEffect(controlsVisible, showTrackSheet, isSeekDragging) {
+        if (controlsVisible && !showTrackSheet && !isSeekDragging) {
             delay(4000)
             controlsVisible = false
         }
@@ -515,42 +526,76 @@ fun SplitPlayerScreen(
                                 }
                             }
 
-                            // Bottom Bar: VOD time + Fullscreen button
-                            Row(
+                            // Bottom Bar: Seekbar Seret KHUSUS Film & Seri (v2.5.0) + Waktu + Fullscreen
+                            Column(
                                 modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 if (isVod && durationMs > 0L) {
-                                    Text(
-                                        text = "${formatSplitTimeMs(positionMs)} / ${formatSplitTimeMs(durationMs)}",
-                                        color = Color.White.copy(alpha = 0.9f),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(start = 4.dp)
+                                    SplitDragOnlySeekBar(
+                                        positionMs = positionMs,
+                                        durationMs = durationMs,
+                                        onSeekCommitted = { target ->
+                                            FlagshipFeedback.playTick(feedbackView)
+                                            exoPlayer.seekTo(target)
+                                            positionMs = target
+                                        },
+                                        onDraggingStateChanged = { isSeekDragging = it }
                                     )
-                                } else {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                        modifier = Modifier.padding(start = 4.dp)
-                                    ) {
-                                        Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(Color(0xFFEF4444)))
-                                        Text(strings.liveTv, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
                                 }
-
                                 Row(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(c.accent)
-                                        .clickable(onClick = onEnterFullscreen)
-                                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                                    modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Icon(Icons.Rounded.Fullscreen, contentDescription = strings.fullscreen, tint = c.onAccent, modifier = Modifier.size(16.dp))
-                                    Text(strings.fullscreen, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    if (isVod && durationMs > 0L) {
+                                        Text(
+                                            text = "${formatSplitTimeMs(positionMs)} / ${formatSplitTimeMs(durationMs)}",
+                                            color = Color.White.copy(alpha = 0.9f),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(start = 4.dp)
+                                        )
+                                    } else {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.padding(start = 4.dp)
+                                        ) {
+                                            Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(Color(0xFFEF4444)))
+                                            Text(strings.liveTv, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            if (previousChannel != null) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(Color.White.copy(alpha = 0.16f))
+                                                        .clickable {
+                                                            FlagshipFeedback.playTick(feedbackView)
+                                                            onRecallPrevious()
+                                                        }
+                                                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                                                ) {
+                                                    Text("↩", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(c.accent)
+                                            .clickable {
+                                                FlagshipFeedback.playSelect(feedbackView)
+                                                onEnterFullscreen()
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(Icons.Rounded.Fullscreen, contentDescription = strings.fullscreen, tint = c.onAccent, modifier = Modifier.size(16.dp))
+                                        Text(strings.fullscreen, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -680,6 +725,48 @@ fun SplitPlayerScreen(
                         }
                         if (isBuffering) {
                             CircularProgressIndicator(color = c.accent, modifier = Modifier.align(Alignment.Center))
+                        }
+                    }
+
+                    // Seekbar Seret Video khusus Film & Seri pada Mode TV / Layar Setengah (v2.5.0)
+                    if (isVod && durationMs > 0L) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(c.surface)
+                                .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            SplitDragOnlySeekBar(
+                                positionMs = positionMs,
+                                durationMs = durationMs,
+                                onSeekCommitted = { target ->
+                                    FlagshipFeedback.playTick(feedbackView)
+                                    exoPlayer.seekTo(target)
+                                    positionMs = target
+                                },
+                                onDraggingStateChanged = { isSeekDragging = it }
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = formatSplitTimeMs(positionMs),
+                                    color = c.accent,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = formatSplitTimeMs(durationMs),
+                                    color = c.textSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                     }
 
@@ -1198,5 +1285,85 @@ private fun SplitQueuePanel(
                 }
             }
         }
+    }
+}
+
+
+@Composable
+private fun SplitDragOnlySeekBar(
+    positionMs: Long,
+    durationMs: Long,
+    onSeekCommitted: (Long) -> Unit,
+    onDraggingStateChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val c = LocalYlowColors.current
+    val safeDuration = durationMs.coerceAtLeast(1L)
+    var barWidthPx by remember { mutableFloatStateOf(1f) }
+    var isDragging by remember { mutableStateOf(false) }
+    var dragFraction by remember { mutableFloatStateOf(0f) }
+
+    val displayFraction = if (isDragging) {
+        dragFraction
+    } else {
+        (positionMs.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(26.dp)
+            .onSizeChanged { barWidthPx = it.width.toFloat().coerceAtLeast(1f) }
+            .pointerInput(durationMs) {
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        isDragging = true
+                        dragFraction = (positionMs.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
+                        onDraggingStateChanged(true)
+                    },
+                    onDragEnd = {
+                        val target = (dragFraction * safeDuration).toLong().coerceIn(0L, safeDuration)
+                        isDragging = false
+                        onDraggingStateChanged(false)
+                        onSeekCommitted(target)
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        onDraggingStateChanged(false)
+                    }
+                ) { change, dragAmount ->
+                    change.consume()
+                    dragFraction = (dragFraction + (dragAmount / barWidthPx)).coerceIn(0f, 1f)
+                }
+            },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (isDragging) 5.dp else 3.5.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color.White.copy(alpha = 0.28f))
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(displayFraction)
+                .height(if (isDragging) 5.dp else 3.5.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(c.accent)
+        )
+        Box(
+            modifier = Modifier
+                .offset {
+                    val thumbPx = if (isDragging) 16.dp.toPx() else 12.dp.toPx()
+                    val x = (displayFraction * (barWidthPx - thumbPx)).roundToInt()
+                    IntOffset(x, 0)
+                }
+                .size(if (isDragging) 16.dp else 12.dp)
+                .shadow(4.dp, CircleShape)
+                .clip(CircleShape)
+                .background(c.accent)
+                .border(1.6.dp, Color.White, CircleShape)
+        )
     }
 }

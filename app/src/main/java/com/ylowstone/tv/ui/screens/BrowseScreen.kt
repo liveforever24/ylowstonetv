@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,6 +63,7 @@ import com.ylowstone.tv.ui.components.YlowInterDisplay
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
+import com.ylowstone.tv.util.FlagshipFeedback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -247,11 +249,13 @@ fun BrowseScreen(
                         sortLabel = sortLabel,
                         sortActive = catSortAz,
                         onSortClick = { catSortAz = !catSortAz },
-                        quickChips = listOf(
-                            QuickChipSpec("all", strings.allChannels, false) { openedCategory = "ALL" },
-                            QuickChipSpec("fav", "${strings.favourites} ($favCount)", false) { openedCategory = "FAV" },
-                            QuickChipSpec("hist", "${strings.history} ($histCount)", false) { openedCategory = "HIST" }
-                        ),
+                        quickChips = buildList {
+                            add(QuickChipSpec("all", strings.allChannels, false) { openedCategory = "ALL" })
+                            add(QuickChipSpec("fav", "${strings.favourites} ($favCount)", false) { openedCategory = "FAV" })
+                            if (mediaType != MediaType.LIVE) {
+                                add(QuickChipSpec("hist", if (isIndonesian) "Lanjutkan Menonton ($histCount)" else "Continue Watching ($histCount)", false) { openedCategory = "HIST" })
+                            }
+                        },
                         onPlayAction = { openedCategory = "ALL" },
                         onBack = onBackHome,
                         topRightAction = {
@@ -286,17 +290,19 @@ fun BrowseScreen(
                                 onLongClick = {}
                             )
                         }
-                        item(key = "cat_hist") {
-                            BorderlessCategoryRow(
-                                name = strings.history,
-                                countText = "$histCount ${strings.channelsCount}",
-                                icon = Icons.Rounded.History,
-                                locked = false,
-                                highlight = false,
-                                isTvMode = isTvMode,
-                                onClick = { openedCategory = "HIST" },
-                                onLongClick = {}
-                            )
+                        if (mediaType != MediaType.LIVE) {
+                            item(key = "cat_hist") {
+                                BorderlessCategoryRow(
+                                    name = if (isIndonesian) "Lanjutkan Menonton" else "Continue Watching",
+                                    countText = "$histCount ${strings.channelsCount}",
+                                    icon = Icons.Rounded.PlayCircleOutline,
+                                    locked = false,
+                                    highlight = false,
+                                    isTvMode = isTvMode,
+                                    onClick = { openedCategory = "HIST" },
+                                    onLongClick = {}
+                                )
+                            }
                         }
                         item(key = "cat_divider") {
                             HorizontalDivider(
@@ -355,57 +361,112 @@ fun BrowseScreen(
                     }
                     val firstPlayable = channels.firstOrNull { !it.isProviderSeparator() }
 
-                    CinematicCollapsingListScreen(
-                        title = openedTitle,
-                        subtitleInfo = "ylowstone • ${channels.size} ${strings.channelsCount}",
-                        coverRes = sectionCoverRes,
-                        headerGradientColor = sectionGradColor,
-                        searchQuery = channelSearchQuery,
-                        onSearchQueryChange = { channelSearchQuery = it },
-                        searchPlaceholder = searchPlaylistHint,
-                        isTvMode = isTvMode,
-                        listState = channelListState,
-                        showLiveMetaTag = mediaType == MediaType.LIVE,
-                        sortLabel = sortLabel,
-                        sortActive = channelSortAz,
-                        onSortClick = { channelSortAz = !channelSortAz },
-                        quickChips = buildList {
-                            add(QuickChipSpec("fav_filter", favChipLabel, channelFavOnly) { channelFavOnly = !channelFavOnly })
-                            add(QuickChipSpec("sort_az", sortChipLabel, channelSortAz) { channelSortAz = !channelSortAz })
-                            if (mediaType == MediaType.LIVE) {
-                                add(QuickChipSpec("live_badge", "LIVE", true) {
-                                    firstPlayable?.let { openMediaItem(it, channels) }
+                    val browseView = LocalView.current
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        CinematicCollapsingListScreen(
+                            title = openedTitle,
+                            subtitleInfo = "ylowstone • ${channels.size} ${strings.channelsCount}",
+                            coverRes = sectionCoverRes,
+                            headerGradientColor = sectionGradColor,
+                            searchQuery = channelSearchQuery,
+                            onSearchQueryChange = { channelSearchQuery = it },
+                            searchPlaceholder = searchPlaylistHint,
+                            isTvMode = isTvMode,
+                            listState = channelListState,
+                            showLiveMetaTag = mediaType == MediaType.LIVE,
+                            sortLabel = sortLabel,
+                            sortActive = channelSortAz,
+                            onSortClick = {
+                                FlagshipFeedback.playTick(browseView)
+                                channelSortAz = !channelSortAz
+                            },
+                            quickChips = buildList {
+                                add(QuickChipSpec("fav_filter", favChipLabel, channelFavOnly) {
+                                    FlagshipFeedback.playTick(browseView)
+                                    channelFavOnly = !channelFavOnly
                                 })
-                            }
-                        },
-                        onPlayAction = {
-                            firstPlayable?.let { openMediaItem(it, channels) }
-                        },
-                        onBack = {
-                            openedCategory = null
-                            channelSearchQuery = ""
-                            channelFavOnly = false
-                        },
-                        topRightAction = {
-                            ProfileYBadgeButton(isTvMode = isTvMode, onClick = onOpenProfileMenu)
-                        },
-                        activeMiniChannel = if (playerMode == PlayerMode.NONE || playerMode == PlayerMode.FLOATING) activeChannel else null,
-                        isMiniPlaying = isPlaying,
-                        onMiniTogglePlay = onTogglePlayPause,
-                        onMiniOpenPlayer = onOpenActivePlayer
-                    ) {
-                        items(channels, key = { it.id }) { ch ->
-                            val isActive = activeChannel?.id == ch.id && activeChannel.streamUrl == ch.streamUrl
-                            BorderlessChannelRow(
-                                ch = ch,
-                                active = isActive,
-                                isTvMode = isTvMode,
-                                onClick = { openMediaItem(ch, channels) },
-                                onLongClick = { onLongPressChannel(ch) },
-                                onToggleFav = {
-                                    onToggleFavorite(ch)
-                                    refreshTrigger++
+                                add(QuickChipSpec("sort_az", sortChipLabel, channelSortAz) {
+                                    FlagshipFeedback.playTick(browseView)
+                                    channelSortAz = !channelSortAz
+                                })
+                                if (mediaType == MediaType.LIVE) {
+                                    add(QuickChipSpec("live_badge", "LIVE", true) {
+                                        firstPlayable?.let { openMediaItem(it, channels) }
+                                    })
                                 }
+                            },
+                            onPlayAction = {
+                                firstPlayable?.let {
+                                    FlagshipFeedback.playSelect(browseView)
+                                    openMediaItem(it, channels)
+                                }
+                            },
+                            onBack = {
+                                FlagshipFeedback.playTick(browseView)
+                                openedCategory = null
+                                channelSearchQuery = ""
+                                channelFavOnly = false
+                            },
+                            topRightAction = {
+                                ProfileYBadgeButton(isTvMode = isTvMode, onClick = onOpenProfileMenu)
+                            },
+                            activeMiniChannel = if (playerMode == PlayerMode.NONE || playerMode == PlayerMode.FLOATING) activeChannel else null,
+                            isMiniPlaying = isPlaying,
+                            onMiniTogglePlay = onTogglePlayPause,
+                            onMiniOpenPlayer = onOpenActivePlayer
+                        ) {
+                            items(channels, key = { it.id }) { ch ->
+                                val isActive = activeChannel?.id == ch.id && activeChannel.streamUrl == ch.streamUrl
+                                var nowEpg by remember(ch.id, ch.streamId) { mutableStateOf<EpgProgramItem?>(null) }
+                                if (mediaType == MediaType.LIVE && playlist.type == PlaylistType.XTREAM && ch.streamId.isNotBlank()) {
+                                    LaunchedEffect(ch.streamId) {
+                                        val list = repo.fetchShortEpg(playlist, ch.streamId, limit = 2)
+                                        val nowSec = System.currentTimeMillis() / 1000L
+                                        nowEpg = list.firstOrNull { it.isNow(nowSec) } ?: list.firstOrNull()
+                                    }
+                                }
+                                val epgSub = nowEpg?.let { "${it.formattedTimeRange()} • ${it.title}" }
+                                val epgProg = nowEpg?.takeIf { it.isNow() }?.progressFraction() ?: 0f
+                                BorderlessChannelRow(
+                                    ch = ch,
+                                    active = isActive,
+                                    isTvMode = isTvMode,
+                                    subtitleOverride = epgSub,
+                                    progressFraction = epgProg,
+                                    onClick = {
+                                        FlagshipFeedback.playSelect(browseView)
+                                        openMediaItem(ch, channels)
+                                    },
+                                    onLongClick = { onLongPressChannel(ch) },
+                                    onToggleFav = {
+                                        FlagshipFeedback.playTick(browseView)
+                                        onToggleFavorite(ch)
+                                        refreshTrigger++
+                                    }
+                                )
+                            }
+                        }
+
+                        // Indeks Loncat A-Z di sisi kanan (v2.5.0)
+                        if (channels.size >= 12) {
+                            AzFastJumpRail(
+                                items = channels.map { it.name },
+                                onSelectLetter = { letter ->
+                                    FlagshipFeedback.playTick(browseView)
+                                    val targetIdx = channels.indexOfFirst { item ->
+                                        val firstChar = item.name.trim().firstOrNull()?.uppercaseChar()
+                                        if (letter == '#') firstChar == null || !firstChar.isLetter()
+                                        else firstChar == letter
+                                    }
+                                    if (targetIdx >= 0) {
+                                        scope.launch {
+                                            runCatching { channelListState.scrollToItem(targetIdx + 1) }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .padding(end = 3.dp, top = 76.dp, bottom = 76.dp)
                             )
                         }
                     }
@@ -911,5 +972,56 @@ private fun CategoryRowItem(
                 color = if (selected) c.accent else c.textSecondary
             )
         )
+    }
+}
+
+
+@Composable
+private fun AzFastJumpRail(
+    items: List<String>,
+    onSelectLetter: (Char) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val c = LocalYlowColors.current
+    val availableLetters = remember(items) {
+        val present = HashSet<Char>()
+        for (name in items) {
+            val ch = name.trim().firstOrNull()?.uppercaseChar()
+            if (ch != null && ch in 'A'..'Z') present.add(ch) else present.add('#')
+        }
+        val ordered = mutableListOf<Char>()
+        if (present.contains('#')) ordered.add('#')
+        for (l in 'A'..'Z') {
+            if (present.contains(l)) ordered.add(l)
+        }
+        ordered
+    }
+    if (availableLetters.size < 3) return
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(c.surface.copy(alpha = 0.72f))
+            .border(0.6.dp, c.glassBorder, RoundedCornerShape(999.dp))
+            .padding(horizontal = 3.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(1.dp)
+    ) {
+        availableLetters.forEach { letter ->
+            Box(
+                modifier = Modifier
+                    .size(width = 18.dp, height = 16.dp)
+                    .clip(CircleShape)
+                    .clickable { onSelectLetter(letter) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = letter.toString(),
+                    color = c.accent,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
     }
 }
