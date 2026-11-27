@@ -36,15 +36,15 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 /**
- * Pil status sementara universal untuk seluruh tipe aliran YlowstoneTV
- * (HLS, TS, VOD, DASH, WEB, AUTO). Otomatis mengikuti 5 tema dinamis dan
- * menghilang sendiri setelah 2,8 detik saat aliran berjalan stabil.
+ * Pil status sementara universal untuk seluruh tipe aliran YlowstoneTV.
+ * v2.4.7: Label protokol (HLS / TS / VOD) hanya tampil saat showProtocolBadge = true (Mode Admin).
  */
 @Composable
 fun StabilizerStatusPill(
     state: StabilizerState,
     onRetryClick: () -> Unit,
     modifier: Modifier = Modifier,
+    showProtocolBadge: Boolean = true,
     autoHideMillis: Long = 2_800L
 ) {
     var visible by remember { mutableStateOf(false) }
@@ -72,10 +72,14 @@ fun StabilizerStatusPill(
     val colorScheme = MaterialTheme.colorScheme
     val (dotColor, label, showSpinner, clickableRetry) = when (state) {
         is StabilizerState.Playing -> {
-            val text = if (state.recoveredFromIssue) {
-                "Tersambung kembali · ${state.protocol.shortLabel}"
+            val text = if (showProtocolBadge) {
+                if (state.recoveredFromIssue) {
+                    "Tersambung kembali · ${state.protocol.shortLabel}"
+                } else {
+                    "Stream aktif · ${state.protocol.shortLabel}"
+                }
             } else {
-                "Stream aktif · ${state.protocol.shortLabel}"
+                if (state.recoveredFromIssue) "Tersambung kembali" else "Stream aktif"
             }
             PillVisualSpec(Color(0xFF4CAF50), text, false, false)
         }

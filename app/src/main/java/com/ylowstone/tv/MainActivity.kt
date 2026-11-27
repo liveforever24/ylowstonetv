@@ -12,7 +12,9 @@ import android.content.res.Configuration
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
+import android.os.Debug
 import android.util.Rational
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -58,6 +60,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        // Proteksi anti-debugger pada build Release
+        if (!BuildConfig.DEBUG && (Debug.isDebuggerConnected() || Debug.waitingForDebugger())) {
+            finishAffinity()
+            return
+        }
+
         enableEdgeToEdge()
 
         prefs = AppPrefs(applicationContext)
@@ -91,6 +100,13 @@ class MainActivity : ComponentActivity() {
                 },
                 onRequestImmersive = { immersive ->
                     setImmersiveMode(immersive)
+                },
+                onSetSecureScreen = { secure ->
+                    if (secure) {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    }
                 },
                 onPipStateChanged = { eligible, playing ->
                     isPipEligible = eligible

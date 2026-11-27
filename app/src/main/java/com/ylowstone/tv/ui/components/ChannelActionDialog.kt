@@ -32,10 +32,6 @@ import com.ylowstone.tv.model.StreamHealthState
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import kotlinx.coroutines.launch
 
-/**
- * Menyembunyikan potongan username/password Xtream di teks preview UI agar aman saat di-screenshot,
- * sementara link asli utuh tetap disalin ke clipboard saat tombol ditekan.
- */
 private fun maskStreamUrlForPreview(url: String): String {
     val clean = url.trim()
     val xtreamPattern = Regex("""(https?://[^/]+/(?:live|movie|series)/)([^/]+)/([^/]+)(/.*)""")
@@ -49,11 +45,9 @@ private fun maskStreamUrlForPreview(url: String): String {
 }
 
 /**
- * Menu tekan lama (long-press) ringkas v2.4.0 untuk Live TV, Film, Seri, & Pencarian:
- * 1. Salin Link Stream (preview tersamar, clipboard utuh)
- * 2. Cek Status Aktif / Delay / Mati
- * 3. Tambah / Hapus Favorit
- * (Fitur Kategori Tontonan / Watch Groups dihapus total sesuai desain v2.4.0)
+ * Menu tekan lama (long-press) v2.4.7:
+ * - Salin Link Stream HANYA tersedia untuk Mode Admin Penuh (disembunyikan total untuk User Biasa).
+ * - Cek Status Stream & Tambah/Hapus Favorit tetap tersedia untuk semua pengguna.
  */
 @Composable
 fun ChannelLongPressDialog(
@@ -61,6 +55,7 @@ fun ChannelLongPressDialog(
     playlistName: String,
     repo: IptvRepository,
     strings: AppStrings,
+    isFullAdmin: Boolean = false,
     onDismiss: () -> Unit,
     onToggleFavorite: (ChannelItem) -> Unit
 ) {
@@ -119,45 +114,47 @@ fun ChannelLongPressDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 1. Salin Link Stream
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(c.surfaceElevated)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                        .clickable {
-                            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            cm.setPrimaryClip(ClipData.newPlainText(channel.name, channel.streamUrl))
-                            Toast.makeText(context, strings.copied, Toast.LENGTH_SHORT).show()
-                        }
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(
+                // 1. Salin Link Stream — Khusus Mode Admin Penuh (terkunci untuk User Biasa)
+                if (isFullAdmin) {
+                    Row(
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(c.accentContainer),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(c.surfaceElevated)
+                            .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                            .clickable {
+                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                cm.setPrimaryClip(ClipData.newPlainText(channel.name, channel.streamUrl))
+                                Toast.makeText(context, strings.copied, Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Rounded.ContentCopy, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = strings.copyStreamLink,
-                            color = c.textPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = maskStreamUrlForPreview(channel.streamUrl),
-                            color = c.textSecondary,
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(c.accentContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.ContentCopy, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.copyStreamLink,
+                                color = c.textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = maskStreamUrlForPreview(channel.streamUrl),
+                                color = c.textSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
 

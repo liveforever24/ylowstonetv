@@ -12,14 +12,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -32,12 +29,11 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import com.ylowstone.tv.data.AppPrefs
 import com.ylowstone.tv.data.ActiveSubtitleSession
+import com.ylowstone.tv.data.AppPrefs
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.data.SubtitleFetcher
 import com.ylowstone.tv.i18n.stringsFor
@@ -46,9 +42,9 @@ import com.ylowstone.tv.player.stabilizer.NetworkSwitchGuard
 import com.ylowstone.tv.player.stabilizer.SmartReconnectController
 import com.ylowstone.tv.player.stabilizer.StabilizerStatusPill
 import com.ylowstone.tv.player.stabilizer.StrictConnectionGuard
-import com.ylowstone.tv.player.stabilizer.YlowstoneStreamSource
 import com.ylowstone.tv.player.stabilizer.XtreamSessionMonitor
 import com.ylowstone.tv.player.stabilizer.XtreamStreamResolver
+import com.ylowstone.tv.player.stabilizer.YlowstoneStreamSource
 import com.ylowstone.tv.ui.components.BoomerangLoadingIndicator
 import com.ylowstone.tv.ui.components.ChannelLongPressDialog
 import com.ylowstone.tv.ui.components.MainTab
@@ -80,6 +76,7 @@ fun YlowstoneApp(
     pipCommandAction: String,
     onRequestLandscape: (Boolean) -> Unit,
     onRequestImmersive: (Boolean) -> Unit,
+    onSetSecureScreen: (Boolean) -> Unit,
     onPipStateChanged: (eligible: Boolean, playing: Boolean) -> Unit,
     onEnterSystemPip: () -> Unit,
     onExitApp: () -> Unit
@@ -96,6 +93,7 @@ fun YlowstoneApp(
     var returnStageAfterLogin by remember { mutableStateOf<AppStage?>(null) }
 
     var isAdminLoggedIn by remember { mutableStateOf(prefs.isAdminLoggedIn()) }
+    var isFullAdmin by remember { mutableStateOf(prefs.isFullAdminMode()) }
     var adminPlaylistIds by remember { mutableStateOf(prefs.getAdminPlaylistIds()) }
     var isVerifyingLogin by remember { mutableStateOf(false) }
     var loginError by remember { mutableStateOf("") }
@@ -128,12 +126,12 @@ fun YlowstoneApp(
     var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
-    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.4.6") }
+    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.4.7") }
     val streamResolver = remember { XtreamStreamResolver() }
     val sessionMonitor = remember(connectionGuard) { XtreamSessionMonitor(connectionGuard) }
 
     val sharedPlayer = remember(settings.bufferProfile, connectionGuard) {
-        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.4.6")
+        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.4.7")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -163,6 +161,20 @@ fun YlowstoneApp(
     }
     val stabilizerState by reconnectController.state.collectAsState()
 
+    // v2.4.7: Proteksi Anti-Screenshot & Anti-Rekam Layar Dinamis untuk User Biasa
+    // User Biasa hanya boleh screenshot di Beranda & Pengaturan; masuk Live TV, Film, Seri, Pencarian, Playlist, atau Pemutar otomatis terkunci total.
+    LaunchedEffect(isFullAdmin, stage, activeTab, playerMode) {
+        val shouldBlockCapture = if (isFullAdmin) {
+            false
+        } else {
+            val isProtectedPlayer = playerMode != PlayerMode.NONE
+            val isProtectedTab = stage == AppStage.WORKSPACE && activeTab != MainTab.HOME
+            val isProtectedStage = stage == AppStage.PLAYLISTS
+            isProtectedPlayer || isProtectedTab || isProtectedStage
+        }
+        onSetSecureScreen(shouldBlockCapture)
+    }
+
     // Apply embedded subtitle language preference whenever setting changes
     LaunchedEffect(sharedPlayer, settings.autoSubtitleLang) {
         val b = sharedPlayer.trackSelectionParameters.buildUpon()
@@ -182,7 +194,7 @@ fun YlowstoneApp(
         sharedPlayer.trackSelectionParameters = b.build()
     }
 
-    // v2.4.5: Auto-Subtitle Bahasa Indonesia untuk Film & Seri (Xtream + M3U Remote/Lokal, prioritas judul sebelum SxxExx)
+    // Auto-Subtitle Bahasa Indonesia untuk Film & Seri (Xtream + M3U Remote/Lokal)
     LaunchedEffect(activeChannel?.streamUrl, settings.autoSubtitleLang) {
         val ch = activeChannel ?: return@LaunchedEffect
         val urlPathLower = ch.streamUrl.lowercase(java.util.Locale.US).substringBefore('?')
@@ -261,7 +273,6 @@ fun YlowstoneApp(
                 tracksVersion++
             }
             override fun onPlayerError(error: PlaybackException) {
-                // Xtream Live ditangani penuh oleh SmartReconnectController agar tidak terjadi double-reconnect
                 if (reconnectController.isHandlingCurrentStream) return
                 val cur = activeChannel
                 if (cur != null && cur.mediaType == MediaType.LIVE && settings.autoReconnectLive && liveReconnectAttempts < 2) {
@@ -468,6 +479,7 @@ fun YlowstoneApp(
 
     fun openWorkspace(profile: PlaylistProfile) {
         activePlaylist = profile
+        prefs.setLastActivePlaylistId(profile.id)
         activeCounts = repo.db.getCountsByMediaType(profile.id)
         lockedCategories = prefs.getLockedCategories(profile.id)
         activeTab = MainTab.HOME
@@ -483,16 +495,22 @@ fun YlowstoneApp(
         }
     }
 
+    // v2.4.7: Langsung kembali ke playlist terakhir yang dipakai (bukan urutan abjad/teratas)
     fun proceedToAppOrLogin() {
         val currentList = repo.db.getAllPlaylists()
         playlists = currentList
         val hasDefault = hasDefaultServerPlaylist(currentList, adminPlaylistIds)
-        if (!hasDefault && !prefs.hasPassedLoginGate()) {
+        val hasGate = prefs.hasPassedLoginGate() || isFullAdmin
+        if (!hasDefault && !hasGate) {
             returnStageAfterLogin = null
             loginError = ""
             stage = AppStage.ADMIN_LOGIN
         } else if (currentList.isNotEmpty()) {
-            openWorkspace(currentList.first())
+            val lastId = prefs.getLastActivePlaylistId()
+            val preferred = currentList.firstOrNull { it.id == lastId } ?: currentList.first()
+            openWorkspace(preferred)
+        } else if (isFullAdmin) {
+            stage = AppStage.PLAYLISTS
         } else {
             returnStageAfterLogin = null
             loginError = ""
@@ -539,10 +557,12 @@ fun YlowstoneApp(
         }
     }
 
-    fun applyAdminPlaylists(remotePlaylists: List<PlaylistProfile>, pin: String) {
+    fun applyAdminPlaylists(remotePlaylists: List<PlaylistProfile>, pin: String, grantFullAdmin: Boolean) {
         prefs.setAdminSession(true, pin)
+        prefs.setFullAdminMode(grantFullAdmin)
         prefs.setPassedLoginGate(true)
         isAdminLoggedIn = true
+        isFullAdmin = grantFullAdmin
 
         val currentAll = repo.db.getAllPlaylists()
         val oldAdminIds = prefs.getAdminPlaylistIds()
@@ -576,7 +596,10 @@ fun YlowstoneApp(
         homeDataVersion++
         returnStageAfterLogin = null
 
-        val primary = savedProfiles.firstOrNull() ?: playlists.firstOrNull()
+        val lastId = prefs.getLastActivePlaylistId()
+        val primary = playlists.firstOrNull { it.id == lastId }
+            ?: savedProfiles.firstOrNull()
+            ?: playlists.firstOrNull()
         if (primary != null) {
             syncAndEnter(primary, null, enterAfter = true)
         } else {
@@ -584,7 +607,7 @@ fun YlowstoneApp(
         }
     }
 
-    fun performAdminLogin(pin: String) {
+    fun performUserPinLogin(pin: String) {
         isVerifyingLogin = true
         loginError = ""
         scope.launch {
@@ -592,9 +615,58 @@ fun YlowstoneApp(
             isVerifyingLogin = false
             res.onSuccess { auth ->
                 Toast.makeText(context, strings.adminLoginSuccess, Toast.LENGTH_SHORT).show()
-                applyAdminPlaylists(auth.playlists, pin)
+                applyAdminPlaylists(auth.playlists, pin, grantFullAdmin = false)
             }.onFailure { err ->
                 loginError = err.message ?: strings.wrongPin
+            }
+        }
+    }
+
+    fun performFullAdminLogin(includeDefaultPlaylists: Boolean, serverPin: String) {
+        if (includeDefaultPlaylists) {
+            isVerifyingLogin = true
+            loginError = ""
+            scope.launch {
+                val res = repo.loginAdmin(serverPin)
+                isVerifyingLogin = false
+                res.onSuccess { auth ->
+                    val msg = if (settings.language == AppLanguage.ID) "Login Mode Admin Penuh berhasil" else "Full Admin login successful"
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    applyAdminPlaylists(auth.playlists, serverPin, grantFullAdmin = true)
+                }.onFailure { err ->
+                    loginError = err.message ?: strings.wrongPin
+                }
+            }
+        } else {
+            // Mode Admin bersih tanpa membawa playlist default server
+            val oldDefaultIds = prefs.getAdminPlaylistIds()
+            for (id in oldDefaultIds) {
+                repo.db.deletePlaylist(id)
+            }
+            prefs.setAdminPlaylistIds(emptySet())
+            adminPlaylistIds = emptySet()
+            prefs.setAdminSession(true, "")
+            prefs.setFullAdminMode(true)
+            prefs.setPassedLoginGate(true)
+            isAdminLoggedIn = true
+            isFullAdmin = true
+            loginError = ""
+            returnStageAfterLogin = null
+
+            val remaining = repo.db.getAllPlaylists()
+            playlists = remaining
+            homeDataVersion++
+
+            val msg = if (settings.language == AppLanguage.ID) "Mode Admin Penuh aktif" else "Full Admin mode active"
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+
+            if (remaining.isNotEmpty()) {
+                val lastId = prefs.getLastActivePlaylistId()
+                val preferred = remaining.firstOrNull { it.id == lastId } ?: remaining.first()
+                openWorkspace(preferred)
+            } else {
+                activePlaylist = null
+                stage = AppStage.PLAYLISTS
             }
         }
     }
@@ -607,12 +679,15 @@ fun YlowstoneApp(
         }
         prefs.setAdminPlaylistIds(emptySet())
         prefs.setAdminSession(false, "")
+        prefs.setFullAdminMode(false)
         prefs.setPassedLoginGate(false)
         adminPlaylistIds = emptySet()
         isAdminLoggedIn = false
+        isFullAdmin = false
         playlists = repo.db.getAllPlaylists()
         if (activePlaylist != null && idsToDelete.contains(activePlaylist!!.id)) {
             activePlaylist = playlists.firstOrNull()
+            prefs.setLastActivePlaylistId(activePlaylist?.id ?: -1L)
         }
         homeDataVersion++
         returnStageAfterLogin = null
@@ -621,7 +696,6 @@ fun YlowstoneApp(
         stage = AppStage.ADMIN_LOGIN
     }
 
-    // v2.3.1 Perbaikan #1: Sync murni hanya 1 playlist yang sedang aktif dipilih (tidak tarik ulang server / semua playlist)
     fun syncActivePlaylistOnly() {
         val current = activePlaylist ?: playlists.firstOrNull()
         if (current != null) {
@@ -629,20 +703,6 @@ fun YlowstoneApp(
             syncAndEnter(fresh, null, enterAfter = false)
         } else {
             Toast.makeText(context, strings.noPlaylistYet, Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun runQuickUpdateCheck() {
-        Toast.makeText(context, strings.checkingUpdate, Toast.LENGTH_SHORT).show()
-        scope.launch {
-            repo.checkGitHubUpdate()
-                .onSuccess { info ->
-                    if (info.hasUpdate) quickUpdateDialogInfo = info
-                    else Toast.makeText(context, strings.upToDate, Toast.LENGTH_SHORT).show()
-                }
-                .onFailure { err ->
-                    Toast.makeText(context, "Error: ${err.message}", Toast.LENGTH_SHORT).show()
-                }
         }
     }
 
@@ -667,7 +727,6 @@ fun YlowstoneApp(
         }
     }
 
-    // v2.3.1 Perbaikan #3: Gestur Back 2x dari layar Kategori -> langsung Beranda tanpa pop-up
     fun handleDoubleBackToHome() {
         val now = System.currentTimeMillis()
         if (now - lastCategoryBackPressTime <= 2000L) {
@@ -798,12 +857,22 @@ fun YlowstoneApp(
                         isVerifying = isVerifyingLogin,
                         errorMessage = loginError,
                         canGoBack = returnStageAfterLogin != null,
-                        onSubmitPin = { enteredPin -> performAdminLogin(enteredPin) },
+                        onSubmitPin = { enteredPin -> performUserPinLogin(enteredPin) },
+                        onSubmitFullAdmin = { includeDefault, serverPin ->
+                            performFullAdminLogin(includeDefault, serverPin)
+                        },
                         onContinueGuest = {
+                            prefs.setFullAdminMode(false)
+                            isFullAdmin = false
                             prefs.setPassedLoginGate(true)
                             returnStageAfterLogin = null
-                            if (playlists.isNotEmpty()) openWorkspace(playlists.first())
-                            else stage = AppStage.PLAYLISTS
+                            if (playlists.isNotEmpty()) {
+                                val lastId = prefs.getLastActivePlaylistId()
+                                val preferred = playlists.firstOrNull { it.id == lastId } ?: playlists.first()
+                                openWorkspace(preferred)
+                            } else {
+                                stage = AppStage.PLAYLISTS
+                            }
                         },
                         onBack = {
                             val ret = returnStageAfterLogin ?: AppStage.PLAYLISTS
@@ -818,6 +887,7 @@ fun YlowstoneApp(
                         playlists = playlists,
                         adminPlaylistIds = adminPlaylistIds,
                         isLoggedIn = isAdminLoggedIn,
+                        isFullAdmin = isFullAdmin,
                         streamFormat = settings.streamFormat,
                         strings = strings,
                         isTvMode = isTvMode,
@@ -850,10 +920,13 @@ fun YlowstoneApp(
 
                             val remaining = repo.db.getAllPlaylists()
                             playlists = remaining
-                            if (activePlaylist?.id == profile.id) activePlaylist = remaining.firstOrNull()
+                            if (activePlaylist?.id == profile.id) {
+                                activePlaylist = remaining.firstOrNull()
+                                prefs.setLastActivePlaylistId(activePlaylist?.id ?: -1L)
+                            }
                             homeDataVersion++
 
-                            if (wasDefault || !hasDefaultServerPlaylist(remaining, nextIds)) {
+                            if (!isFullAdmin && (wasDefault || !hasDefaultServerPlaylist(remaining, nextIds))) {
                                 prefs.setAdminSession(false, "")
                                 prefs.setPassedLoginGate(false)
                                 isAdminLoggedIn = false
@@ -902,9 +975,19 @@ fun YlowstoneApp(
                             homeDataVersion++
                         },
                         isAdminLoggedIn = isAdminLoggedIn,
+                        isFullAdmin = isFullAdmin,
                         onLogoutAdmin = { performAdminLogout() },
                         onBackupRestored = { restored ->
                             settings = restored
+                            val refreshed = repo.db.getAllPlaylists()
+                            playlists = refreshed
+                            if (activePlaylist == null && refreshed.isNotEmpty()) {
+                                val lastId = prefs.getLastActivePlaylistId()
+                                activePlaylist = refreshed.firstOrNull { it.id == lastId } ?: refreshed.first()
+                            }
+                            activePlaylist?.let { cur ->
+                                activeCounts = repo.db.getCountsByMediaType(cur.id)
+                            }
                             homeDataVersion++
                         }
                     )
@@ -1145,7 +1228,7 @@ fun YlowstoneApp(
                 }
             }
 
-            // Global Sync / Indexing Overlay (v2.3.3: Bumerang melayang bersih tanpa kotak hitam)
+            // Global Sync / Indexing Overlay (Bumerang melayang bersih tanpa kotak hitam)
             if (isLoading && stage != AppStage.PLAYLISTS) {
                 Box(
                     modifier = Modifier
@@ -1181,7 +1264,7 @@ fun YlowstoneApp(
                     expanded = showProfileDropdown,
                     activePlaylistName = activePlaylist?.name,
                     deviceMode = settings.deviceMode,
-                    isAdminLoggedIn = isAdminLoggedIn,
+                    isAdminLoggedIn = isAdminLoggedIn || isFullAdmin,
                     strings = strings,
                     onDismiss = { showProfileDropdown = false },
                     onOpenSettings = {
@@ -1312,11 +1395,12 @@ fun YlowstoneApp(
                 )
             }
 
-            // Pil Status XtreamStabilizer v1.1 (otomatis hilang 2.8 detik saat stream stabil)
+            // Pil Status UniversalStreamStabilizer (v2.4.7: sembunyikan label HLS/TS untuk User Biasa)
             if ((playerMode == PlayerMode.FULLSCREEN || playerMode == PlayerMode.SPLIT) && activeChannel != null) {
                 StabilizerStatusPill(
                     state = stabilizerState,
                     onRetryClick = { reconnectController.retryNow() },
+                    showProtocolBadge = isFullAdmin,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .statusBarsPadding()
@@ -1325,13 +1409,14 @@ fun YlowstoneApp(
             }
         }
 
-        // Menu Tekan Lama (Long-Press) Ringkas v2.4.0 (Salin Link, Cek Status, Favorit)
+        // Menu Tekan Lama (Long-Press) v2.4.7 (Salin Link hanya untuk Mode Admin Penuh)
         longPressTarget?.let { (ch, plName) ->
             ChannelLongPressDialog(
                 channel = ch,
                 playlistName = plName,
                 repo = repo,
                 strings = strings,
+                isFullAdmin = isFullAdmin,
                 onDismiss = { longPressTarget = null },
                 onToggleFavorite = { targetCh ->
                     repo.db.toggleFavorite(targetCh.id, !targetCh.isFavorite)

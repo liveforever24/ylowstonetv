@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.ylowstone.tv.model.*
+import com.ylowstone.tv.util.SecurityCrypto
 
 class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv.db", null, 5) {
 
@@ -139,6 +140,9 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             val idxUpdated = c.getColumnIndex("last_updated")
 
             while (c.moveToNext()) {
+                val rawUrl = if (idxUrl >= 0) c.getString(idxUrl) ?: "" else ""
+                val rawUser = if (idxUser >= 0) c.getString(idxUser) ?: "" else ""
+                val rawPass = if (idxPass >= 0) c.getString(idxPass) ?: "" else ""
                 list.add(
                     PlaylistProfile(
                         id = if (idxId >= 0) c.getLong(idxId) else 0L,
@@ -146,9 +150,9 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                         type = runCatching {
                             PlaylistType.valueOf(if (idxType >= 0) c.getString(idxType) ?: "M3U" else "M3U")
                         }.getOrDefault(PlaylistType.M3U),
-                        url = if (idxUrl >= 0) c.getString(idxUrl) ?: "" else "",
-                        username = if (idxUser >= 0) c.getString(idxUser) ?: "" else "",
-                        password = if (idxPass >= 0) c.getString(idxPass) ?: "" else "",
+                        url = SecurityCrypto.decryptLocalField(rawUrl),
+                        username = SecurityCrypto.decryptLocalField(rawUser),
+                        password = SecurityCrypto.decryptLocalField(rawPass),
                         userAgent = if (idxUa >= 0) c.getString(idxUa) ?: "" else "",
                         liveCategories = if (idxLive >= 0) parseCategoryList(c.getString(idxLive)) else emptyList(),
                         movieCategories = if (idxMovie >= 0) parseCategoryList(c.getString(idxMovie)) else emptyList(),
@@ -166,9 +170,9 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         val cv = ContentValues().apply {
             put("name", p.name)
             put("type", p.type.name)
-            put("url", p.url)
-            put("username", p.username)
-            put("password", p.password)
+            put("url", SecurityCrypto.encryptLocalField(p.url))
+            put("username", SecurityCrypto.encryptLocalField(p.username))
+            put("password", SecurityCrypto.encryptLocalField(p.password))
             put("user_agent", p.userAgent)
             put("live_categories", serializeCategoryList(p.liveCategories))
             put("movie_categories", serializeCategoryList(p.movieCategories))
@@ -404,7 +408,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         return list
     }
 
-    // ---- Cross-Playlist Home & Search Queries (Respecting PIN locks & Adult privacy filter) ----
     fun getAllFavoritesAcrossPlaylists(
         lockedByPlaylist: Map<Long, Set<String>>,
         limit: Int = 80
@@ -548,7 +551,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         return list
     }
 
-    // ---- Custom Watch Groups (Fase 2: Sports, Event Pertandingan, Daftar Tontonan, dll.) ----
     fun addToWatchGroup(groupName: String, ch: ChannelItem, playlistName: String) {
         val cleanGroup = groupName.trim()
         if (cleanGroup.isEmpty() || ch.streamUrl.isBlank()) return
@@ -706,7 +708,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         isFavorite = c.getInt(10) == 1,
         lastWatchedAt = c.getLong(11)
     )
-
 
     fun getAllFavoriteStreamUrls(): List<String> {
         val list = mutableListOf<String>()

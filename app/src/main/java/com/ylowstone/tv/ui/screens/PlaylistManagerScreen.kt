@@ -10,9 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,28 +27,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ylowstone.tv.R
 import com.ylowstone.tv.i18n.AppStrings
+import com.ylowstone.tv.model.LoadingAnimStyle
 import com.ylowstone.tv.model.PlaylistProfile
 import com.ylowstone.tv.model.PlaylistType
-import com.ylowstone.tv.model.LoadingAnimStyle
 import com.ylowstone.tv.model.StreamFormat
-import androidx.compose.foundation.lazy.items
-import com.ylowstone.tv.R
 import com.ylowstone.tv.ui.components.BoomerangLoadingIndicator
 import com.ylowstone.tv.ui.components.CinematicCollapsingListScreen
-import com.ylowstone.tv.ui.components.CinematicNoirTokens
+import com.ylowstone.tv.ui.components.ProfileYBadgeButton
 import com.ylowstone.tv.ui.components.QuickChipSpec
 import com.ylowstone.tv.ui.components.YlowInterDisplay
-import androidx.compose.ui.text.TextStyle
-import com.ylowstone.tv.ui.components.ProfileYBadgeButton
-import com.ylowstone.tv.ui.components.YlowstoneLogoBadge
-import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 
@@ -69,6 +63,7 @@ fun PlaylistManagerScreen(
     playlists: List<PlaylistProfile>,
     adminPlaylistIds: Set<Long>,
     isLoggedIn: Boolean,
+    isFullAdmin: Boolean = false,
     streamFormat: StreamFormat,
     strings: AppStrings,
     isTvMode: Boolean,
@@ -119,7 +114,7 @@ fun PlaylistManagerScreen(
             sortActive = sortAz,
             onSortClick = { sortAz = !sortAz },
             quickChips = buildList {
-                if (!isLoggedIn) {
+                if (!isLoggedIn && !isFullAdmin) {
                     add(QuickChipSpec("admin_login", strings.adminMenuLogin, true) {
                         onOpenLogin()
                     })
@@ -263,7 +258,7 @@ fun PlaylistManagerScreen(
             }
         }
 
-        // Tombol Tambah Daftar Putar (+) mengambang di pojok kanan bawah (v2.4.2)
+        // Tombol Tambah Daftar Putar (+) mengambang di pojok kanan bawah
         FloatingActionButton(
             onClick = { editingProfile = null; showEditor = true },
             shape = CircleShape,
@@ -283,7 +278,7 @@ fun PlaylistManagerScreen(
             )
         }
 
-        // Loading overlay (v2.3.3: Bumerang melayang bersih tanpa kotak hitam)
+        // Loading overlay (Bumerang melayang bersih tanpa kotak hitam)
         if (isLoading) {
             Box(
                 modifier = Modifier
@@ -309,24 +304,15 @@ fun PlaylistManagerScreen(
         }
     }
 
-    // 3-dot / Long-press action menu dialog (Edit, Tampilkan Link, Perbarui, Hapus)
+    // 3-dot / Long-press action menu dialog (v2.4.7: Edit & Tampilkan Link hanya untuk Mode Admin Penuh)
     actionTarget?.let { target ->
-        val isAdminProtected = adminPlaylistIds.contains(target.id)
         AlertDialog(
             onDismissRequest = { actionTarget = null },
             containerColor = c.surface,
             title = { Text(target.name, color = c.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (isAdminProtected) {
-                        Text(
-                            text = strings.adminProtectedPlaylist,
-                            color = c.accent,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
-                    } else {
+                    if (isFullAdmin) {
                         ActionRow(Icons.Rounded.Edit, strings.editPlaylist) {
                             actionTarget = null
                             editingProfile = target
@@ -336,6 +322,14 @@ fun PlaylistManagerScreen(
                             actionTarget = null
                             inspectLinkTarget = target
                         }
+                    } else {
+                        Text(
+                            text = strings.adminProtectedPlaylist,
+                            color = c.accent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
                     }
                     ActionRow(Icons.Rounded.Refresh, strings.refresh) {
                         actionTarget = null
@@ -355,59 +349,61 @@ fun PlaylistManagerScreen(
         )
     }
 
-    // Show & Copy Playlist Link dialog (with password reveal toggle)
-    inspectLinkTarget?.let { target ->
-        var reveal by remember { mutableStateOf(false) }
-        val displayLink = if (reveal) target.buildShareableLink(streamFormat) else target.buildMaskedLink(streamFormat)
-        AlertDialog(
-            onDismissRequest = { inspectLinkTarget = null },
-            containerColor = c.surface,
-            title = { Text(strings.showLink, color = c.textPrimary, fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(c.surfaceElevated)
-                            .padding(12.dp)
-                    ) {
-                        Text(displayLink, color = c.textPrimary, fontSize = 12.sp)
+    // Show & Copy Playlist Link dialog — Khusus Mode Admin Penuh
+    if (isFullAdmin) {
+        inspectLinkTarget?.let { target ->
+            var reveal by remember { mutableStateOf(false) }
+            val displayLink = if (reveal) target.buildShareableLink(streamFormat) else target.buildMaskedLink(streamFormat)
+            AlertDialog(
+                onDismissRequest = { inspectLinkTarget = null },
+                containerColor = c.surface,
+                title = { Text(strings.showLink, color = c.textPrimary, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(c.surfaceElevated)
+                                .padding(12.dp)
+                        ) {
+                            Text(displayLink, color = c.textPrimary, fontSize = 12.sp)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { reveal = !reveal },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    if (reveal) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (reveal) "Hide" else "Show", fontSize = 12.sp)
+                            }
+                            Button(
+                                onClick = {
+                                    clipboard.setText(AnnotatedString(target.buildShareableLink(streamFormat)))
+                                    Toast.makeText(context, strings.copied, Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Rounded.ContentCopy, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(strings.copyLink, color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = { reveal = !reveal },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                if (reveal) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (reveal) "Hide" else "Show", fontSize = 12.sp)
-                        }
-                        Button(
-                            onClick = {
-                                clipboard.setText(AnnotatedString(target.buildShareableLink(streamFormat)))
-                                Toast.makeText(context, strings.copied, Toast.LENGTH_SHORT).show()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Rounded.ContentCopy, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(strings.copyLink, color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
+                },
+                confirmButton = {
+                    TextButton(onClick = { inspectLinkTarget = null }) {
+                        Text("OK", color = c.accent)
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { inspectLinkTarget = null }) {
-                    Text("OK", color = c.accent)
-                }
-            }
-        )
+            )
+        }
     }
 
     if (showEditor) {

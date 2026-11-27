@@ -4,10 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -31,6 +33,7 @@ import com.ylowstone.tv.ui.components.YlowstoneLogoBadge
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
+import com.ylowstone.tv.util.SecurityCrypto
 
 @Composable
 fun AdminLoginScreen(
@@ -41,17 +44,25 @@ fun AdminLoginScreen(
     errorMessage: String,
     canGoBack: Boolean,
     onSubmitPin: (String) -> Unit,
+    onSubmitFullAdmin: (includeDefaultPlaylists: Boolean, serverPin: String) -> Unit,
     onContinueGuest: () -> Unit,
     onBack: () -> Unit
 ) {
     val c = LocalYlowColors.current
+    val isIndo = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
+
     var pin by remember { mutableStateOf("") }
     var showPin by remember { mutableStateOf(false) }
-    var localError by remember { mutableStateOf("") }
 
+    var showAdminPanel by remember { mutableStateOf(false) }
+    var adminPassword by remember { mutableStateOf("") }
+    var showAdminPassword by remember { mutableStateOf(false) }
+    var includeDefaultPlaylists by remember { mutableStateOf(true) }
+
+    var localError by remember { mutableStateOf("") }
     val displayError = localError.ifBlank { errorMessage }
 
-    fun triggerSubmit() {
+    fun triggerUserPinSubmit() {
         if (isVerifying) return
         if (pin.length != 4) {
             localError = strings.pinMustBe4Digits
@@ -59,6 +70,24 @@ fun AdminLoginScreen(
         }
         localError = ""
         onSubmitPin(pin)
+    }
+
+    fun triggerFullAdminSubmit() {
+        if (isVerifying) return
+        if (!SecurityCrypto.verifyAdminPassword(adminPassword)) {
+            localError = if (isIndo) "Password Admin tidak valid" else "Invalid Admin password"
+            return
+        }
+        if (includeDefaultPlaylists && pin.length != 4) {
+            localError = if (isIndo) {
+                "Masukkan PIN 4 digit untuk menyertakan playlist default"
+            } else {
+                "Enter 4-digit PIN to include default playlists"
+            }
+            return
+        }
+        localError = ""
+        onSubmitFullAdmin(includeDefaultPlaylists, pin)
     }
 
     Box(
@@ -87,16 +116,17 @@ fun AdminLoginScreen(
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
-                .widthIn(max = 410.dp)
+                .widthIn(max = 420.dp)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(24.dp))
                 .background(c.surface)
                 .border(1.dp, c.glassBorder, RoundedCornerShape(24.dp))
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            YlowstoneLogoBadge(iconOption = appIcon, size = 60.dp)
+            YlowstoneLogoBadge(iconOption = appIcon, size = 58.dp)
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -105,7 +135,7 @@ fun AdminLoginScreen(
                 Text(
                     text = strings.adminLoginTitle,
                     color = c.textPrimary,
-                    fontSize = 21.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
@@ -131,7 +161,7 @@ fun AdminLoginScreen(
                         .clip(RoundedCornerShape(14.dp))
                         .background(c.surfaceElevated)
                         .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                        .padding(horizontal = 14.dp, vertical = 14.dp),
+                        .padding(horizontal = 14.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -162,7 +192,7 @@ fun AdminLoginScreen(
                 }
             }
 
-            // 4-Digit Numeric PIN Input
+            // 4-Digit Numeric PIN Input (Mode User Biasa / Playlist Default)
             OutlinedTextField(
                 value = pin,
                 onValueChange = { next ->
@@ -187,7 +217,9 @@ fun AdminLoginScreen(
                     keyboardType = KeyboardType.NumberPassword,
                     imeAction = ImeAction.Done
                 ),
-                keyboardActions = KeyboardActions(onDone = { triggerSubmit() }),
+                keyboardActions = KeyboardActions(onDone = {
+                    if (showAdminPanel) triggerFullAdminSubmit() else triggerUserPinSubmit()
+                }),
                 singleLine = true,
                 enabled = !isVerifying,
                 isError = displayError.isNotEmpty(),
@@ -232,28 +264,191 @@ fun AdminLoginScreen(
                 }
             }
 
-            Button(
-                onClick = { triggerSubmit() },
-                enabled = !isVerifying,
-                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                shape = RoundedCornerShape(14.dp),
+            // Tombol Login Mode User Biasa
+            if (!showAdminPanel) {
+                Button(
+                    onClick = { triggerUserPinSubmit() },
+                    enabled = !isVerifying,
+                    colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
+                ) {
+                    if (isVerifying) {
+                        CircularProgressIndicator(
+                            color = c.onAccent,
+                            strokeWidth = 2.2.dp,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(strings.adminVerifying, color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    } else {
+                        Icon(Icons.Rounded.Login, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(19.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(strings.adminLoginBtn, color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                }
+            }
+
+            // Toggle Login Admin (Akses Penuh)
+            HorizontalDivider(color = c.glassBorder, thickness = 0.7.dp)
+
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
-                    .tvFocusBorder(isTvMode, RoundedCornerShape(14.dp))
-            ) {
-                if (isVerifying) {
-                    CircularProgressIndicator(
-                        color = c.onAccent,
-                        strokeWidth = 2.2.dp,
-                        modifier = Modifier.size(18.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (showAdminPanel) c.accentContainer else Color.Transparent)
+                    .border(
+                        width = 1.dp,
+                        color = if (showAdminPanel) c.accent.copy(alpha = 0.55f) else c.glassBorder,
+                        shape = RoundedCornerShape(12.dp)
                     )
-                    Spacer(Modifier.width(10.dp))
-                    Text(strings.adminVerifying, color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                } else {
-                    Icon(Icons.Rounded.Login, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(19.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(strings.adminLoginBtn, color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    .clickable(enabled = !isVerifying) {
+                        showAdminPanel = !showAdminPanel
+                        localError = ""
+                    }
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AdminPanelSettings,
+                        contentDescription = null,
+                        tint = if (showAdminPanel) c.accent else c.textSecondary,
+                        modifier = Modifier.size(19.dp)
+                    )
+                    Text(
+                        text = if (isIndo) "Login Admin" else "Admin Login",
+                        color = if (showAdminPanel) c.accent else c.textPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Icon(
+                    imageVector = if (showAdminPanel) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = null,
+                    tint = c.textSecondary,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+
+            androidx.compose.animation.AnimatedVisibility(visible = showAdminPanel) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(c.surfaceElevated)
+                        .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = adminPassword,
+                        onValueChange = {
+                            adminPassword = it
+                            localError = ""
+                        },
+                        label = { Text(if (isIndo) "Password Admin" else "Admin Password", fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Rounded.Key, contentDescription = null, modifier = Modifier.size(19.dp)) },
+                        trailingIcon = {
+                            IconButton(onClick = { showAdminPassword = !showAdminPassword }) {
+                                Icon(
+                                    if (showAdminPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                    contentDescription = "Toggle Password",
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                        },
+                        visualTransformation = if (showAdminPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(onDone = { triggerFullAdminSubmit() }),
+                        singleLine = true,
+                        enabled = !isVerifying,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(enabled = !isVerifying) {
+                                includeDefaultPlaylists = !includeDefaultPlaylists
+                                localError = ""
+                            }
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Checkbox(
+                            checked = includeDefaultPlaylists,
+                            onCheckedChange = {
+                                includeDefaultPlaylists = it
+                                localError = ""
+                            },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = c.accent,
+                                checkmarkColor = c.onAccent
+                            )
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isIndo) "Sertakan playlist default" else "Include default playlists",
+                                color = c.textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = if (includeDefaultPlaylists) {
+                                    if (isIndo) "Playlist server ikut dimuat (gunakan PIN di atas)" else "Default server playlists will load (uses PIN above)"
+                                } else {
+                                    if (isIndo) "Masuk mode Admin bersih tanpa playlist default" else "Enter clean Admin mode without default playlists"
+                                },
+                                color = c.textSecondary,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = { triggerFullAdminSubmit() },
+                        enabled = !isVerifying,
+                        colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .tvFocusBorder(isTvMode, RoundedCornerShape(12.dp))
+                    ) {
+                        if (isVerifying) {
+                            CircularProgressIndicator(
+                                color = c.onAccent,
+                                strokeWidth = 2.2.dp,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(strings.adminVerifying, color = c.onAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        } else {
+                            Icon(Icons.Rounded.VerifiedUser, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = if (isIndo) "Masuk Akses Penuh" else "Sign In as Admin",
+                                color = c.onAccent,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
                 }
             }
 

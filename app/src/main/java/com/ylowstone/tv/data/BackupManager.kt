@@ -3,23 +3,30 @@ package com.ylowstone.tv.data
 import android.content.Context
 import android.net.Uri
 import com.ylowstone.tv.model.*
+import com.ylowstone.tv.util.SecurityCrypto
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Backup & Restore 1-File JSON untuk Pengaturan & Saluran Favorit (v2.4.0).
+ * Backup & Restore 1-File Terenkripsi AES-256-GCM (v2.4.7):
+ * - Membawa pengaturan, SELURUH daftar playlist (termasuk Xtream/M3U/Direct), & favorit.
+ * - Payload terkunci penuh dengan AES-256-GCM agar tidak bisa dibaca plain-text oleh pihak luar.
+ * - Tetap kompatibel mundur (backward-compatible) untuk file backup .json lama yang belum terenkripsi.
  */
 object BackupManager {
 
+    data class RestoreResult(
+        val settings: AppSettings,
+        val playlistsRestored: Int,
+        val favoritesRestored: Int
+    )
+
     fun exportToUri(context: Context, uri: Uri, prefs: AppPrefs, db: DatabaseHelper): Result<Int> = runCatching {
         val s = prefs.loadSettings()
+        val allPlaylists = db.getAllPlaylists()
         val favUrls = db.getAllFavoriteStreamUrls()
 
-        val root = JSONObject().apply {
-            put("app", "YlowstoneTV")
-            put("version", "2.4.2")
-            put("exportedAt", System.currentTimeMillis())
-
+        val innerPayload = JSONObject().apply {
             put("settings", JSONObject().apply {
                 put("deviceMode", s.deviceMode.name)
                 put("themeMode", s.themeMode.name)
@@ -39,24 +46,63 @@ object BackupManager {
                 put("preferExternalPlayer", s.preferExternalPlayer)
             })
 
+            val plArr = JSONArray()
+            allPlaylists.forEach { p ->
+                plArr.put(JSONObject().apply {
+                    put("name", p.name)
+                    put("type", p.type.name)
+                    put("url", p.url)
+                    put("username", p.username)
+                    put("password", p.password)
+                    put("userAgent", p.userAgent)
+                    put("colorIndex", p.colorIndex)
+                    put("lastUpdated", p.lastUpdated)
+                    put("liveCategories", JSONArray(p.liveCategories))
+                    put("movieCategories", JSONArray(p.movieCategories))
+                    put("seriesCategories", JSONArray(p.seriesCategories))
+                })
+            }
+            put("playlists", plArr)
+
             val favArr = JSONArray()
             favUrls.forEach { favArr.put(it) }
             put("favoriteStreamUrls", favArr)
         }
 
+        val (ivB64, cipherB64) = SecurityCrypto.encryptBackupPayload(innerPayload.toString())
+
+        val envelope = JSONObject().apply {
+            put("app", "YlowstoneTV")
+            put("enc", "AES-256-GCM")
+            put("version", "2.4.7")
+            put("exportedAt", System.currentTimeMillis())
+            put("iv", ivB64)
+            put("payload", cipherB64)
+        }
+
         context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { writer ->
-            writer.write(root.toString(2))
+            writer.write(envelope.toString(2))
         } ?: throw IllegalStateException("Gagal menulis file backup")
 
-        favUrls.size
+        allPlaylists.size
     }
 
-    fun importFromUri(context: Context, uri: Uri, prefs: AppPrefs, db: DatabaseHelper): Result<AppSettings> = runCatching {
+    fun importFromUri(context: Context, uri: Uri, prefs: AppPrefs, db: DatabaseHelper): Result<RestoreResult> = runCatching {
         val raw = context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
             ?: throw IllegalStateException("Gagal membaca file backup")
-        val root = JSONObject(raw)
-        val current = prefs.loadSettings()
+        val outer = JSONObject(raw)
 
+        val root = if (outer.optString("enc") == "AES-256-GCM" && outer.has("iv") && outer.has("payload")) {
+            val decrypted = SecurityCrypto.decryptBackupPayload(
+                outer.getString("iv"),
+                outer.getString("payload")
+            )
+            JSONObject(decrypted)
+        } else {
+            outer
+        }
+
+        val current = prefs.loadSettings()
         val sObj = root.optJSONObject("settings")
         val restoredSettings = if (sObj != null) {
             current.copy(
@@ -80,6 +126,55 @@ object BackupManager {
         } else current
         prefs.saveSettings(restoredSettings)
 
+        var playlistsRestored = 0
+        val plArr = root.optJSONArray("playlists")
+        if (plArr != null && plArr.length() > 0) {
+            val existing = db.getAllPlaylists().toMutableList()
+            for (i in 0 until plArr.length()) {
+                val obj = plArr.optJSONObject(i) ?: continue
+                val name = obj.optString("name", "").trim()
+                val url = obj.optString("url", "").trim()
+                if (name.isEmpty() || url.isEmpty()) continue
+                val type = runCatching {
+                    PlaylistType.valueOf(obj.optString("type", "M3U"))
+                }.getOrDefault(PlaylistType.M3U)
+                val username = obj.optString("username", "")
+                val password = obj.optString("password", "")
+                val userAgent = obj.optString("userAgent", "")
+                val colorIndex = obj.optInt("colorIndex", i % 6)
+                val lastUpdated = obj.optLong("lastUpdated", 0L)
+
+                val match = existing.firstOrNull {
+                    it.type == type &&
+                        it.url.equals(url, ignoreCase = true) &&
+                        it.username == username
+                } ?: existing.firstOrNull {
+                    it.name.equals(name, ignoreCase = true) && it.type == type
+                }
+
+                val profile = PlaylistProfile(
+                    id = match?.id ?: 0L,
+                    name = name,
+                    type = type,
+                    url = url,
+                    username = username,
+                    password = password,
+                    userAgent = userAgent,
+                    liveCategories = jsonArrayToStringList(obj.optJSONArray("liveCategories")),
+                    movieCategories = jsonArrayToStringList(obj.optJSONArray("movieCategories")),
+                    seriesCategories = jsonArrayToStringList(obj.optJSONArray("seriesCategories")),
+                    colorIndex = colorIndex,
+                    lastUpdated = lastUpdated
+                )
+                val savedId = db.upsertPlaylist(profile)
+                if (match == null) {
+                    existing.add(profile.copy(id = savedId))
+                }
+                playlistsRestored++
+            }
+        }
+
+        var favoritesRestored = 0
         val favArr = root.optJSONArray("favoriteStreamUrls")
         if (favArr != null) {
             val urls = HashSet<String>()
@@ -87,9 +182,26 @@ object BackupManager {
                 val u = favArr.optString(i, "").trim()
                 if (u.isNotEmpty()) urls.add(u)
             }
-            if (urls.isNotEmpty()) db.restoreFavoriteStreamUrls(urls)
+            if (urls.isNotEmpty()) {
+                db.restoreFavoriteStreamUrls(urls)
+                favoritesRestored = urls.size
+            }
         }
 
-        restoredSettings
+        RestoreResult(
+            settings = restoredSettings,
+            playlistsRestored = playlistsRestored,
+            favoritesRestored = favoritesRestored
+        )
+    }
+
+    private fun jsonArrayToStringList(arr: JSONArray?): List<String> {
+        if (arr == null) return emptyList()
+        val out = mutableListOf<String>()
+        for (i in 0 until arr.length()) {
+            val s = arr.optString(i, "").trim()
+            if (s.isNotEmpty()) out.add(s)
+        }
+        return out
     }
 }

@@ -99,7 +99,14 @@ class AppPrefs(context: Context) {
         prefs.edit().putInt("intro_sec_$k", seconds.coerceIn(5, 600)).apply()
     }
 
-    // ---- Admin Auth Session ----
+    // ---- Last Active Playlist Memory (v2.4.7) ----
+    fun getLastActivePlaylistId(): Long = prefs.getLong("last_active_playlist_id", -1L)
+
+    fun setLastActivePlaylistId(playlistId: Long) {
+        prefs.edit().putLong("last_active_playlist_id", playlistId).apply()
+    }
+
+    // ---- Dual Auth Session (User Biasa PIN vs Full Admin Mode v2.4.7) ----
     fun isAdminLoggedIn(): Boolean = prefs.getBoolean("admin_logged_in", false)
 
     fun getAdminPin(): String = prefs.getString("admin_pin_token", "") ?: ""
@@ -109,6 +116,12 @@ class AppPrefs(context: Context) {
             .putBoolean("admin_logged_in", loggedIn)
             .putString("admin_pin_token", if (loggedIn) pin else "")
             .apply()
+    }
+
+    fun isFullAdminMode(): Boolean = prefs.getBoolean("full_admin_mode", false)
+
+    fun setFullAdminMode(enabled: Boolean) {
+        prefs.edit().putBoolean("full_admin_mode", enabled).apply()
     }
 
     fun hasPassedLoginGate(): Boolean = prefs.getBoolean("passed_login_gate", false)
