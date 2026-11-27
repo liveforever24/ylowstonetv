@@ -56,11 +56,17 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.ylowstone.tv.data.ActiveSubtitleSession
+import androidx.compose.ui.draw.clipToBounds
+import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.data.SubtitleFetcher
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.ChannelItem
+import com.ylowstone.tv.model.EpgProgramItem
 import com.ylowstone.tv.model.MediaType
+import com.ylowstone.tv.model.PlaylistProfile
+import com.ylowstone.tv.model.PlaylistType
 import com.ylowstone.tv.ui.components.ChannelLogoBox
+import com.ylowstone.tv.ui.components.PrecisionVodSeekBar
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
@@ -110,6 +116,8 @@ fun SplitPlayerScreen(
     onMinimizeToFloat: () -> Unit,
     onEnterSystemPip: () -> Unit,
     onClosePlayer: () -> Unit,
+    repo: IptvRepository? = null,
+    activePlaylist: PlaylistProfile? = null,
     previousChannel: ChannelItem? = null,
     onRecallPrevious: () -> Unit = {}
 ) {
@@ -167,6 +175,17 @@ fun SplitPlayerScreen(
     // State gestur seret video ke bawah menuju PiP
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     var isDraggingDown by remember { mutableStateOf(false) }
+    var swipeUpAccum by remember { mutableFloatStateOf(0f) }
+    var currentLiveEpg by remember(currentChannel.streamId, isVod) { mutableStateOf<EpgProgramItem?>(null) }
+    LaunchedEffect(currentChannel.streamId, activePlaylist?.id, isVod) {
+        if (!isVod && repo != null && activePlaylist?.type == PlaylistType.XTREAM && currentChannel.streamId.isNotBlank()) {
+            val list = repo.fetchShortEpg(activePlaylist, currentChannel.streamId, limit = 2)
+            val nowSec = System.currentTimeMillis() / 1000L
+            currentLiveEpg = list.firstOrNull { it.isNow(nowSec) } ?: list.firstOrNull()
+        } else {
+            currentLiveEpg = null
+        }
+    }
     val animatedDragY by animateFloatAsState(
         targetValue = dragOffsetY,
         animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
@@ -342,27 +361,40 @@ fun SplitPlayerScreen(
                         .pointerInput(pipThresholdPx) {
                             detectVerticalDragGestures(
                                 onDragStart = {
-                                    isDraggingDown = true
+                                    isDraggingDown = false
+                                    swipeUpAccum = 0f
                                     controlsVisible = false
                                 },
                                 onDragCancel = {
                                     isDraggingDown = false
                                     dragOffsetY = 0f
+                                    swipeUpAccum = 0f
                                 },
                                 onDragEnd = {
+                                    val shouldPip = dragOffsetY >= pipThresholdPx
+                                    val shouldFull = swipeUpAccum <= -(pipThresholdPx * 0.55f)
                                     isDraggingDown = false
-                                    if (dragOffsetY >= pipThresholdPx) {
-                                        dragOffsetY = 0f
+                                    dragOffsetY = 0f
+                                    swipeUpAccum = 0f
+                                    if (shouldPip) {
+                                        FlagshipFeedback.playTick(feedbackView)
                                         onMinimizeToFloat()
-                                    } else {
-                                        dragOffsetY = 0f
+                                    } else if (shouldFull) {
+                                        FlagshipFeedback.playSelect(feedbackView)
+                                        onEnterFullscreen()
                                     }
                                 },
                                 onVerticalDrag = { change, dragAmount ->
-                                    val next = (dragOffsetY + dragAmount).coerceAtLeast(0f)
-                                    if (next > 0f || dragAmount > 0f) {
+                                    if (dragAmount < 0f && dragOffsetY <= 4f) {
                                         change.consume()
-                                        dragOffsetY = next.coerceAtMost(pipThresholdPx * 2.4f)
+                                        swipeUpAccum += dragAmount
+                                    } else {
+                                        val next = (dragOffsetY + dragAmount).coerceAtLeast(0f)
+                                        if (next > 0f || dragAmount > 0f) {
+                                            change.consume()
+                                            isDraggingDown = true
+                                            dragOffsetY = next.coerceAtMost(pipThresholdPx * 2.4f)
+                                        }
                                     }
                                 }
                             )
@@ -385,7 +417,7 @@ fun SplitPlayerScreen(
                             it.player = exoPlayer
                             it.keepScreenOn = isPlaying
                         },
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize().clipToBounds().graphicsLayer { scaleX = 1.006f; scaleY = 1.006f }
                     )
 
                     if (currentSubtitleText.isNotEmpty()) {
@@ -438,7 +470,7 @@ fun SplitPlayerScreen(
                         visible = controlsVisible && !isDraggingDown,
                         enter = fadeIn(),
                         exit = fadeOut(),
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize().clipToBounds().graphicsLayer { scaleX = 1.006f; scaleY = 1.006f }
                     ) {
                         Box(
                             modifier = Modifier
@@ -467,19 +499,11 @@ fun SplitPlayerScreen(
                                     Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = strings.floatPlayer, tint = Color.White, modifier = Modifier.size(22.dp))
                                 }
 
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    IconButton(
-                                        onClick = { showTrackSheet = true },
-                                        modifier = Modifier.size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
-                                    ) {
-                                        Icon(Icons.Rounded.Settings, contentDescription = strings.tracks, tint = Color.White, modifier = Modifier.size(18.dp))
-                                    }
-                                    IconButton(
-                                        onClick = onClosePlayer,
-                                        modifier = Modifier.size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
-                                    ) {
-                                        Icon(Icons.Rounded.Close, contentDescription = strings.closeBtn, tint = Color.White, modifier = Modifier.size(18.dp))
-                                    }
+                                IconButton(
+                                    onClick = { FlagshipFeedback.playTick(feedbackView); showTrackSheet = true },
+                                    modifier = Modifier.size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
+                                ) {
+                                    Icon(Icons.Rounded.Settings, contentDescription = strings.tracks, tint = Color.White, modifier = Modifier.size(18.dp))
                                 }
                             }
 
@@ -532,15 +556,16 @@ fun SplitPlayerScreen(
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 if (isVod && durationMs > 0L) {
-                                    SplitDragOnlySeekBar(
+                                    PrecisionVodSeekBar(
                                         positionMs = positionMs,
                                         durationMs = durationMs,
                                         onSeekCommitted = { target ->
-                                            FlagshipFeedback.playTick(feedbackView)
                                             exoPlayer.seekTo(target)
                                             positionMs = target
                                         },
-                                        onDraggingStateChanged = { isSeekDragging = it }
+                                        onDraggingStateChanged = { isSeekDragging = it },
+                                        showTimeRow = false,
+                                        compact = true
                                     )
                                 }
                                 Row(
@@ -581,20 +606,18 @@ fun SplitPlayerScreen(
                                         }
                                     }
 
-                                    Row(
+                                    Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
+                                            .size(32.dp)
+                                            .clip(CircleShape)
                                             .background(c.accent)
                                             .clickable {
                                                 FlagshipFeedback.playSelect(feedbackView)
                                                 onEnterFullscreen()
-                                            }
-                                            .padding(horizontal = 10.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            },
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(Icons.Rounded.Fullscreen, contentDescription = strings.fullscreen, tint = c.onAccent, modifier = Modifier.size(16.dp))
-                                        Text(strings.fullscreen, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Icon(Icons.Rounded.Fullscreen, contentDescription = strings.fullscreen, tint = c.onAccent, modifier = Modifier.size(19.dp))
                                     }
                                 }
                             }
@@ -627,13 +650,43 @@ fun SplitPlayerScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(
-                                text = currentChannel.category,
-                                color = c.textSecondary,
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            val epg = currentLiveEpg
+                            if (!isVod && epg != null) {
+                                Text(
+                                    text = "${epg.formattedTimeRange()} • ${epg.title}",
+                                    color = c.accent,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (epg.isNow()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(2.5.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White.copy(alpha = 0.14f))
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth(epg.progressFraction())
+                                                .fillMaxHeight()
+                                                .clip(CircleShape)
+                                                .background(c.accent)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = currentChannel.category,
+                                    color = c.textSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                         IconButton(
                             onClick = { onToggleFavorite(currentChannel) },
@@ -658,6 +711,8 @@ fun SplitPlayerScreen(
 
                     SplitQueuePanel(
                         currentChannel = currentChannel,
+                        repo = repo,
+                        activePlaylist = activePlaylist,
                         filteredQueue = filteredQueue,
                         totalCount = channelList.size,
                         searchQuery = queueSearchQuery,
@@ -694,7 +749,31 @@ fun SplitPlayerScreen(
                             .background(Color.Black)
                             .border(1.dp, c.glassBorder, RoundedCornerShape(18.dp))
                             .tvFocusBorder(isTvMode, RoundedCornerShape(18.dp))
-                            .clickable(onClick = onEnterFullscreen)
+                            .pointerInput(pipThresholdPx) {
+                                var upAcc = 0f
+                                detectVerticalDragGestures(
+                                    onDragStart = { upAcc = 0f },
+                                    onDragEnd = {
+                                        if (upAcc <= -(pipThresholdPx * 0.55f)) {
+                                            FlagshipFeedback.playSelect(feedbackView)
+                                            onEnterFullscreen()
+                                        }
+                                        upAcc = 0f
+                                    }
+                                ) { change, dragAmount ->
+                                    if (dragAmount < 0f) {
+                                        change.consume()
+                                        upAcc += dragAmount
+                                    }
+                                }
+                            }
+                            .clickable {
+                                if (isVod) controlsVisible = !controlsVisible
+                                else {
+                                    FlagshipFeedback.playSelect(feedbackView)
+                                    onEnterFullscreen()
+                                }
+                            }
                     ) {
                         AndroidView(
                             factory = { ctx ->
@@ -709,8 +788,38 @@ fun SplitPlayerScreen(
                                 it.player = exoPlayer
                                 it.keepScreenOn = isPlaying
                             },
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize().clipToBounds().graphicsLayer { scaleX = 1.006f; scaleY = 1.006f }
                         )
+                        // Overlay kontrol & Seekbar Presisi VOD (auto-hide, KHUSUS Film & Seri, TIDAK muncul terus menerus)
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = isVod && controlsVisible && durationMs > 0L,
+                            enter = fadeIn(),
+                            exit = fadeOut(),
+                            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f))
+                                        )
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                            ) {
+                                PrecisionVodSeekBar(
+                                    positionMs = positionMs,
+                                    durationMs = durationMs,
+                                    onSeekCommitted = { target ->
+                                        exoPlayer.seekTo(target)
+                                        positionMs = target
+                                    },
+                                    onDraggingStateChanged = { isSeekDragging = it },
+                                    showTimeRow = true,
+                                    compact = true
+                                )
+                            }
+                        }
                         if (currentSubtitleText.isNotEmpty()) {
                             Box(
                                 modifier = Modifier
@@ -725,48 +834,6 @@ fun SplitPlayerScreen(
                         }
                         if (isBuffering) {
                             CircularProgressIndicator(color = c.accent, modifier = Modifier.align(Alignment.Center))
-                        }
-                    }
-
-                    // Seekbar Seret Video khusus Film & Seri pada Mode TV / Layar Setengah (v2.5.0)
-                    if (isVod && durationMs > 0L) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(c.surface)
-                                .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            SplitDragOnlySeekBar(
-                                positionMs = positionMs,
-                                durationMs = durationMs,
-                                onSeekCommitted = { target ->
-                                    FlagshipFeedback.playTick(feedbackView)
-                                    exoPlayer.seekTo(target)
-                                    positionMs = target
-                                },
-                                onDraggingStateChanged = { isSeekDragging = it }
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = formatSplitTimeMs(positionMs),
-                                    color = c.accent,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = formatSplitTimeMs(durationMs),
-                                    color = c.textSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
                         }
                     }
 
@@ -790,13 +857,43 @@ fun SplitPlayerScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(
-                                text = currentChannel.category,
-                                color = c.textSecondary,
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            val epg = currentLiveEpg
+                            if (!isVod && epg != null) {
+                                Text(
+                                    text = "${epg.formattedTimeRange()} • ${epg.title}",
+                                    color = c.accent,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (epg.isNow()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(2.5.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White.copy(alpha = 0.14f))
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth(epg.progressFraction())
+                                                .fillMaxHeight()
+                                                .clip(CircleShape)
+                                                .background(c.accent)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = currentChannel.category,
+                                    color = c.textSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
 
                         IconButton(
@@ -825,33 +922,26 @@ fun SplitPlayerScreen(
                             Icon(Icons.Rounded.Settings, contentDescription = strings.tracks, tint = c.textPrimary, modifier = Modifier.size(19.dp))
                         }
 
-                        Button(
-                            onClick = onEnterFullscreen,
-                            colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.tvFocusBorder(isTvMode, RoundedCornerShape(12.dp))
-                        ) {
-                            Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(strings.fullscreen, color = c.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-
                         IconButton(
-                            onClick = onClosePlayer,
+                            onClick = {
+                                FlagshipFeedback.playSelect(feedbackView)
+                                onEnterFullscreen()
+                            },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
-                                .background(c.surfaceElevated)
+                                .background(c.accent)
                                 .tvFocusBorder(isTvMode, CircleShape)
                         ) {
-                            Icon(Icons.Rounded.Close, contentDescription = strings.closeBtn, tint = c.textPrimary, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Rounded.Fullscreen, contentDescription = strings.fullscreen, tint = c.onAccent, modifier = Modifier.size(21.dp))
                         }
                     }
                 }
 
                 SplitQueuePanel(
                     currentChannel = currentChannel,
+                    repo = repo,
+                    activePlaylist = activePlaylist,
                     filteredQueue = filteredQueue,
                     totalCount = channelList.size,
                     searchQuery = queueSearchQuery,
@@ -1169,6 +1259,8 @@ fun SplitPlayerScreen(
 @Composable
 private fun SplitQueuePanel(
     currentChannel: ChannelItem,
+    repo: IptvRepository? = null,
+    activePlaylist: PlaylistProfile? = null,
     filteredQueue: List<ChannelItem>,
     totalCount: Int,
     searchQuery: String,
@@ -1257,6 +1349,14 @@ private fun SplitQueuePanel(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     ChannelLogoBox(ch.logoUrl, 34.dp, corner = 8.dp)
+                    var rowEpg by remember(ch.id, ch.streamId) { mutableStateOf<EpgProgramItem?>(null) }
+                    if (ch.mediaType == MediaType.LIVE && repo != null && activePlaylist?.type == PlaylistType.XTREAM && ch.streamId.isNotBlank()) {
+                        LaunchedEffect(ch.streamId) {
+                            val list = repo.fetchShortEpg(activePlaylist, ch.streamId, limit = 2)
+                            val nowSec = System.currentTimeMillis() / 1000L
+                            rowEpg = list.firstOrNull { it.isNow(nowSec) } ?: list.firstOrNull()
+                        }
+                    }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = ch.name,
@@ -1266,13 +1366,42 @@ private fun SplitQueuePanel(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Text(
-                            text = ch.category,
-                            color = c.textSecondary,
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        val epgItem = rowEpg
+                        if (epgItem != null) {
+                            Text(
+                                text = "${epgItem.formattedTimeRange()} • ${epgItem.title}",
+                                color = if (isCurrent) c.accent.copy(alpha = 0.9f) else c.textSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (epgItem.isNow()) {
+                                Spacer(Modifier.height(4.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(2.2.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.14f))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(epgItem.progressFraction())
+                                            .fillMaxHeight()
+                                            .clip(CircleShape)
+                                            .background(c.accent)
+                                    )
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = ch.category,
+                                color = c.textSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                     IconButton(onClick = { onToggleFavorite(ch) }, modifier = Modifier.size(28.dp)) {
                         Icon(
@@ -1285,85 +1414,5 @@ private fun SplitQueuePanel(
                 }
             }
         }
-    }
-}
-
-
-@Composable
-private fun SplitDragOnlySeekBar(
-    positionMs: Long,
-    durationMs: Long,
-    onSeekCommitted: (Long) -> Unit,
-    onDraggingStateChanged: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val c = LocalYlowColors.current
-    val safeDuration = durationMs.coerceAtLeast(1L)
-    var barWidthPx by remember { mutableFloatStateOf(1f) }
-    var isDragging by remember { mutableStateOf(false) }
-    var dragFraction by remember { mutableFloatStateOf(0f) }
-
-    val displayFraction = if (isDragging) {
-        dragFraction
-    } else {
-        (positionMs.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(26.dp)
-            .onSizeChanged { barWidthPx = it.width.toFloat().coerceAtLeast(1f) }
-            .pointerInput(durationMs) {
-                detectHorizontalDragGestures(
-                    onDragStart = {
-                        isDragging = true
-                        dragFraction = (positionMs.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
-                        onDraggingStateChanged(true)
-                    },
-                    onDragEnd = {
-                        val target = (dragFraction * safeDuration).toLong().coerceIn(0L, safeDuration)
-                        isDragging = false
-                        onDraggingStateChanged(false)
-                        onSeekCommitted(target)
-                    },
-                    onDragCancel = {
-                        isDragging = false
-                        onDraggingStateChanged(false)
-                    }
-                ) { change, dragAmount ->
-                    change.consume()
-                    dragFraction = (dragFraction + (dragAmount / barWidthPx)).coerceIn(0f, 1f)
-                }
-            },
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (isDragging) 5.dp else 3.5.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(Color.White.copy(alpha = 0.28f))
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(displayFraction)
-                .height(if (isDragging) 5.dp else 3.5.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(c.accent)
-        )
-        Box(
-            modifier = Modifier
-                .offset {
-                    val thumbPx = if (isDragging) 16.dp.toPx() else 12.dp.toPx()
-                    val x = (displayFraction * (barWidthPx - thumbPx)).roundToInt()
-                    IntOffset(x, 0)
-                }
-                .size(if (isDragging) 16.dp else 12.dp)
-                .shadow(4.dp, CircleShape)
-                .clip(CircleShape)
-                .background(c.accent)
-                .border(1.6.dp, Color.White, CircleShape)
-        )
     }
 }

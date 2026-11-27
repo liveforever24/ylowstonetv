@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v2.5.0-0A0C0E?style=flat-square&logo=android&logoColor=E89D3C" alt="Release v2.5.0" />
+  <img src="https://img.shields.io/badge/Release-v2.5.1-0A0C0E?style=flat-square&logo=android&logoColor=E89D3C" alt="Release v2.5.1" />
   <img src="https://img.shields.io/badge/Platform-Android%2010%2B%20%7C%20Android%20TV-121512?style=flat-square" alt="Platform" />
   <img src="https://img.shields.io/badge/Stack-Kotlin%20%C2%B7%20Jetpack%20Compose-1A1E19?style=flat-square" alt="Kotlin Jetpack Compose" />
   <img src="https://img.shields.io/badge/Player-Media3%20ExoPlayer-2B2110?style=flat-square" alt="Media3 ExoPlayer" />
@@ -19,7 +19,7 @@
 
 YlowstoneTV is engineered around three strict constraints: **zero visual bloat**, **sub-second navigation across 175,000+ indexed entries**, and **hardened credential & connection security**. No ads, no tracking telemetry, no cramped bottom navigation bars—just an AMOLED-first interface anchored by deterministic SQLite encryption, Android Keystore, UniversalStreamStabilizer v2.0, and a persistent Media3 ExoPlayer pipeline.
 
-## Core Capabilities (`v2.5.0`)
+## Core Capabilities (`v2.5.1`)
 
 - **UniversalStreamStabilizer v2.0 (Anti-Kick IP Handoff & DoH):** Built-in **DNS-over-HTTPS (DoH)** with **Fast-IPv4 Pinning**, consistent per-session HTTP header & `X-Playback-Session-Id` fingerprinting, **Graceful Connection Teardown + Cool-Down Handshake + active quota check** on Wi-Fi/Cellular switches, **Dual Buffer Profiles** (fast-start Live TV vs large-buffer VOD), **Zapping Pre-Warm**, **Silent Token Auto-Heal** (HTTP 401/403/410), and 2-way `.m3u8 <-> .ts` automatic failover with per-channel session caching.
 - **Hardcore Security Architecture:** Backend **SSL Certificate Pinning** (CA SPKI), deterministic AES-256-GCM encryption on `stream_url` in `channels` & `watch_history`, Android Keystore AES-256-GCM encryption for playlist credentials, AES-256-GCM encrypted 1-file Backup & Restore (all playlists + settings + favourites), Release **APK Signature & Anti-Tamper/Anti-Hooking Check**, **Anti-Bruteforce 5-Minute Login Lockout**, aggressive R8 optimization, and dynamic `FLAG_SECURE` anti-capture protection for Standard User mode.

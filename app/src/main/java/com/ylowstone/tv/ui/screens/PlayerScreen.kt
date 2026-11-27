@@ -36,6 +36,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -69,6 +70,7 @@ import com.ylowstone.tv.model.PlaylistType
 import com.ylowstone.tv.model.SkipIntroMode
 import com.ylowstone.tv.model.SleepTimerOption
 import com.ylowstone.tv.util.FlagshipFeedback
+import com.ylowstone.tv.ui.components.PrecisionVodSeekBar
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -120,7 +122,7 @@ fun PipVideoSurface(exoPlayer: ExoPlayer, isPlaying: Boolean) {
                 it.player = exoPlayer
                 it.keepScreenOn = isPlaying
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize().clipToBounds().graphicsLayer { scaleX = 1.006f; scaleY = 1.006f }
         )
     }
 }
@@ -274,120 +276,6 @@ fun DraggableFloatingPlayer(
     }
 }
 
-/**
- * Custom Drag-Only Seekbar (Anti-Accidental-Tap!):
- * - Tapping anywhere on the track does NOTHING so accidental touches never jump the movie!
- * - Responds strictly to intentional horizontal dragging (detectHorizontalDragGestures).
- * - Seeks ExoPlayer smoothly on drag release.
- */
-@Composable
-private fun DragOnlySeekBar(
-    positionMs: Long,
-    durationMs: Long,
-    onSeekCommitted: (Long) -> Unit,
-    onDraggingStateChanged: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val c = LocalYlowColors.current
-    val safeDuration = durationMs.coerceAtLeast(1L)
-    var barWidthPx by remember { mutableFloatStateOf(1f) }
-    var isDragging by remember { mutableStateOf(false) }
-    var dragFraction by remember { mutableFloatStateOf(0f) }
-
-    val displayFraction = if (isDragging) {
-        dragFraction
-    } else {
-        (positionMs.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
-    }
-    val displayPosMs = if (isDragging) (dragFraction * safeDuration).toLong() else positionMs
-
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = formatDurationMs(displayPosMs),
-                color = if (isDragging) c.accent else Color.White.copy(alpha = 0.92f),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = formatDurationMs(durationMs),
-                color = Color.White.copy(alpha = 0.72f),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-
-        // Pure Drag-Only Touch Area (NO clickable, NO tap-to-jump!)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(32.dp)
-                .onSizeChanged { barWidthPx = it.width.toFloat().coerceAtLeast(1f) }
-                .pointerInput(durationMs) {
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            isDragging = true
-                            dragFraction = (positionMs.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
-                            onDraggingStateChanged(true)
-                        },
-                        onDragEnd = {
-                            val target = (dragFraction * safeDuration).toLong().coerceIn(0L, safeDuration)
-                            isDragging = false
-                            onDraggingStateChanged(false)
-                            onSeekCommitted(target)
-                        },
-                        onDragCancel = {
-                            isDragging = false
-                            onDraggingStateChanged(false)
-                        }
-                    ) { change, dragAmount ->
-                        change.consume()
-                        dragFraction = (dragFraction + (dragAmount / barWidthPx)).coerceIn(0f, 1f)
-                    }
-                },
-            contentAlignment = Alignment.CenterStart
-        ) {
-            // Track background
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(if (isDragging) 6.dp else 4.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.White.copy(alpha = 0.28f))
-            )
-            // Filled progress track
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(displayFraction)
-                    .height(if (isDragging) 6.dp else 4.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(c.accent)
-            )
-            // Thumb knob positioned along width
-            Box(
-                modifier = Modifier
-                    .offset {
-                        val thumbPx = if (isDragging) 18.dp.toPx() else 14.dp.toPx()
-                        val x = (displayFraction * (barWidthPx - thumbPx)).roundToInt()
-                        IntOffset(x, 0)
-                    }
-                    .size(if (isDragging) 18.dp else 14.dp)
-                    .shadow(6.dp, CircleShape)
-                    .clip(CircleShape)
-                    .background(c.accent)
-                    .border(2.dp, Color.White, CircleShape)
-            )
-        }
-    }
-}
-
 @OptIn(UnstableApi::class)
 @Composable
 fun FullscreenPlayerScreen(
@@ -420,7 +308,8 @@ fun FullscreenPlayerScreen(
     activeSleepTimer: SleepTimerOption = SleepTimerOption.OFF,
     sleepTimerRemainingLabel: String = "",
     onSelectSleepTimer: (SleepTimerOption) -> Unit = {},
-    onPlayCatchUp: (EpgProgramItem) -> Unit = {}
+    onPlayCatchUp: (EpgProgramItem) -> Unit = {},
+    onReturnToSplit: () -> Unit = onToggleFullscreenOrientation
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -442,6 +331,16 @@ fun FullscreenPlayerScreen(
     var showEpgDialog by remember { mutableStateOf(false) }
     var epgList by remember(currentChannel.streamId) { mutableStateOf<List<EpgProgramItem>>(emptyList()) }
     var loadingEpg by remember(currentChannel.streamId) { mutableStateOf(false) }
+    var currentLiveEpg by remember(currentChannel.streamId, isVod) { mutableStateOf<EpgProgramItem?>(null) }
+    LaunchedEffect(currentChannel.streamId, activePlaylist?.id, isVod) {
+        if (!isVod && activePlaylist?.type == PlaylistType.XTREAM && currentChannel.streamId.isNotBlank()) {
+            val list = repo.fetchShortEpg(activePlaylist, currentChannel.streamId, limit = 2)
+            val nowSec = System.currentTimeMillis() / 1000L
+            currentLiveEpg = list.firstOrNull { it.isNow(nowSec) } ?: list.firstOrNull()
+        } else {
+            currentLiveEpg = null
+        }
+    }
     var isSeekDragging by remember { mutableStateOf(false) }
 
     // Indonesian Subtitle (Hoisted in YlowstoneApp so it survives PiP, Minimize, and App Switching!)
@@ -804,12 +703,12 @@ fun FullscreenPlayerScreen(
             }
         }
 
-        // Tap + Double-Tap (±10s for Movies/Series) + Optional Left/Right Vertical Gestures
+        // Tap + Double-Tap (±10s VOD) + 3-Zone Vertical Gestures (Kiri: Brightness | Tengah: Tarik Bawah -> Layar Setengah | Kanan: Volume)
         Row(modifier = Modifier.fillMaxSize()) {
-            // Left Half: Tap toggle controls, Double-Tap -10s (VOD only), Vertical Drag Brightness
+            // Zona Kiri (28%): Tap toggle, Double-Tap -10s, Vertical Drag Brightness
             Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(0.28f)
                     .fillMaxHeight()
                     .pointerInput(isVod, isScreenLocked, showChannelDrawer, showTrackDrawer) {
                         detectTapGestures(
@@ -849,10 +748,52 @@ fun FullscreenPlayerScreen(
                         } else Modifier
                     )
             )
-            // Right Half: Tap toggle controls, Double-Tap +10s (VOD only), Vertical Drag Volume
+            // Zona Tengah (44%): Tap toggle + Tarik ke Bawah -> Kembali ke Layar Setengah (Split) TANPA menutup video (v2.5.1)
             Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(0.44f)
+                    .fillMaxHeight()
+                    .pointerInput(isScreenLocked, showChannelDrawer, showTrackDrawer) {
+                        detectTapGestures(
+                            onTap = {
+                                if (showChannelDrawer || showTrackDrawer) {
+                                    showChannelDrawer = false
+                                    showTrackDrawer = false
+                                } else {
+                                    controlsVisible = !controlsVisible
+                                    clockTriggerNonce++
+                                }
+                            }
+                        )
+                    }
+                    .then(
+                        if (!isScreenLocked && !showChannelDrawer && !showTrackDrawer) {
+                            Modifier.pointerInput(Unit) {
+                                var downAccum = 0f
+                                detectVerticalDragGestures(
+                                    onDragStart = { downAccum = 0f },
+                                    onDragCancel = { downAccum = 0f },
+                                    onDragEnd = {
+                                        if (downAccum >= 110f) {
+                                            FlagshipFeedback.playTick(feedbackView)
+                                            onReturnToSplit()
+                                        }
+                                        downAccum = 0f
+                                    }
+                                ) { change, dragAmount ->
+                                    if (dragAmount > 0f) {
+                                        change.consume()
+                                        downAccum += dragAmount
+                                    }
+                                }
+                            }
+                        } else Modifier
+                    )
+            )
+            // Zona Kanan (28%): Tap toggle, Double-Tap +10s, Vertical Drag Volume
+            Box(
+                modifier = Modifier
+                    .weight(0.28f)
                     .fillMaxHeight()
                     .pointerInput(isVod, isScreenLocked, showChannelDrawer, showTrackDrawer) {
                         detectTapGestures(
@@ -1147,21 +1088,47 @@ fun FullscreenPlayerScreen(
                             ) {
                                 Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = strings.floatPlayer, tint = c.onAccent, modifier = Modifier.size(28.dp))
                             }
-                            Column {
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
                                 Text(currentChannel.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(currentChannel.category, color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                val epg = currentLiveEpg
+                                if (!isVod && epg != null) {
+                                    Text(
+                                        text = "${epg.formattedTimeRange()} • ${epg.title}",
+                                        color = c.accent,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (epg.isNow()) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .widthIn(max = 260.dp)
+                                                .fillMaxWidth()
+                                                .height(2.5.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.White.copy(alpha = 0.22f))
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth(epg.progressFraction())
+                                                    .fillMaxHeight()
+                                                    .clip(CircleShape)
+                                                    .background(c.accent)
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Text(currentChannel.category, color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
                             }
                         }
 
-                        // v2.5.0: OSD Frosted Glass Controls (Quick Recall, EPG/Catch-Up, Sleep Timer, Drawer, Screen Lock, Tracks)
+                        // v2.5.1: Murni 4 Tombol Kanan Atas Fullscreen (Tanpa Bingkai OSD, Tanpa Ikon EPG/Drawer, Jarak Presisi 12dp)
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(Color(0xB80E1014))
-                                .border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (previousChannel != null) {
                                 IconButton(
@@ -1169,25 +1136,9 @@ fun FullscreenPlayerScreen(
                                         FlagshipFeedback.playSelect(feedbackView)
                                         onRecallPrevious()
                                     },
-                                    modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f))
+                                    modifier = Modifier.size(42.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f))
                                 ) {
-                                    Icon(Icons.Rounded.History, contentDescription = "Last Channel", tint = Color.White, modifier = Modifier.size(20.dp))
-                                }
-                            }
-                            if (!isVod && activePlaylist?.type == PlaylistType.XTREAM && currentChannel.streamId.isNotBlank()) {
-                                IconButton(
-                                    onClick = {
-                                        FlagshipFeedback.playTick(feedbackView)
-                                        showEpgDialog = true
-                                        loadingEpg = true
-                                        coroutineScope.launch {
-                                            epgList = repo.fetchShortEpg(activePlaylist, currentChannel.streamId, limit = 8)
-                                            loadingEpg = false
-                                        }
-                                    },
-                                    modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f))
-                                ) {
-                                    Icon(Icons.Rounded.EventNote, contentDescription = "EPG", tint = Color.White, modifier = Modifier.size(20.dp))
+                                    Icon(Icons.Rounded.History, contentDescription = "Last Channel", tint = Color.White, modifier = Modifier.size(21.dp))
                                 }
                             }
                             IconButton(
@@ -1195,20 +1146,11 @@ fun FullscreenPlayerScreen(
                                     FlagshipFeedback.playTick(feedbackView)
                                     showSleepDialog = true
                                 },
-                                modifier = Modifier.size(38.dp).clip(CircleShape).background(
-                                    if (activeSleepTimer != SleepTimerOption.OFF) c.accent.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.12f)
+                                modifier = Modifier.size(42.dp).clip(CircleShape).background(
+                                    if (activeSleepTimer != SleepTimerOption.OFF) c.accent.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.45f)
                                 )
                             ) {
-                                Icon(Icons.Rounded.Bedtime, contentDescription = "Sleep Timer", tint = if (activeSleepTimer != SleepTimerOption.OFF) c.accent else Color.White, modifier = Modifier.size(19.dp))
-                            }
-                            IconButton(
-                                onClick = {
-                                    FlagshipFeedback.playTick(feedbackView)
-                                    showChannelDrawer = true
-                                },
-                                modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f))
-                            ) {
-                                Icon(Icons.Rounded.ViewSidebar, contentDescription = strings.search, tint = Color.White, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Rounded.Bedtime, contentDescription = "Sleep Timer", tint = if (activeSleepTimer != SleepTimerOption.OFF) c.accent else Color.White, modifier = Modifier.size(20.dp))
                             }
                             IconButton(
                                 onClick = {
@@ -1216,18 +1158,18 @@ fun FullscreenPlayerScreen(
                                     isScreenLocked = true
                                     controlsVisible = true
                                 },
-                                modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f))
+                                modifier = Modifier.size(42.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f))
                             ) {
-                                Icon(Icons.Rounded.LockOpen, contentDescription = strings.screenLocked, tint = Color.White, modifier = Modifier.size(19.dp))
+                                Icon(Icons.Rounded.LockOpen, contentDescription = strings.screenLocked, tint = Color.White, modifier = Modifier.size(20.dp))
                             }
                             IconButton(
                                 onClick = {
                                     FlagshipFeedback.playTick(feedbackView)
                                     showTrackDrawer = true
                                 },
-                                modifier = Modifier.size(40.dp).clip(CircleShape).background(c.accent)
+                                modifier = Modifier.size(44.dp).clip(CircleShape).background(c.accent)
                             ) {
-                                Icon(Icons.Rounded.Settings, contentDescription = strings.tracks, tint = c.onAccent, modifier = Modifier.size(21.dp))
+                                Icon(Icons.Rounded.Settings, contentDescription = strings.tracks, tint = c.onAccent, modifier = Modifier.size(22.dp))
                             }
                         }
                     }
@@ -1282,7 +1224,7 @@ fun FullscreenPlayerScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (isVod && durationMs > 0L) {
-                        DragOnlySeekBar(
+                        PrecisionVodSeekBar(
                             positionMs = positionMs,
                             durationMs = durationMs,
                             onSeekCommitted = { target ->

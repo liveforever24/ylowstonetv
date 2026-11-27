@@ -594,10 +594,22 @@ fun BrowseScreen(
                     ) {
                         items(channels, key = { it.id }) { ch ->
                             val active = activeChannel?.id == ch.id && activeChannel.streamUrl == ch.streamUrl
+                            var nowEpg by remember(ch.id, ch.streamId) { mutableStateOf<EpgProgramItem?>(null) }
+                            if (playlist.type == PlaylistType.XTREAM && ch.streamId.isNotBlank()) {
+                                LaunchedEffect(ch.streamId) {
+                                    val list = repo.fetchShortEpg(playlist, ch.streamId, limit = 2)
+                                    val nowSec = System.currentTimeMillis() / 1000L
+                                    nowEpg = list.firstOrNull { it.isNow(nowSec) } ?: list.firstOrNull()
+                                }
+                            }
+                            val epgSub = nowEpg?.let { "${it.formattedTimeRange()} • ${it.title}" }
+                            val epgProg = nowEpg?.takeIf { it.isNow() }?.progressFraction() ?: 0f
                             BorderlessChannelRow(
                                 ch = ch,
                                 active = active,
                                 isTvMode = isTvMode,
+                                subtitleOverride = epgSub,
+                                progressFraction = epgProg,
                                 onClick = {
                                     if (active) onLaunchPlayer(ch, channels, false)
                                     else onSelectChannelInline(ch, channels)
@@ -671,22 +683,38 @@ fun BrowseScreen(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Text("• LIVE", color = CinematicNoirTokens.LiveRed, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                        Text(ch.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
+                                    var previewEpg by remember(ch.streamId) { mutableStateOf<EpgProgramItem?>(null) }
+                                    if (playlist.type == PlaylistType.XTREAM && ch.streamId.isNotBlank()) {
+                                        LaunchedEffect(ch.streamId) {
+                                            val list = repo.fetchShortEpg(playlist, ch.streamId, limit = 2)
+                                            val nowSec = System.currentTimeMillis() / 1000L
+                                            previewEpg = list.firstOrNull { it.isNow(nowSec) } ?: list.firstOrNull()
+                                        }
+                                    }
+                                    val pEpg = previewEpg
+                                    if (pEpg != null) {
+                                        Text("${pEpg.formattedTimeRange()} • ${pEpg.title}", color = c.accent, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        if (pEpg.isNow()) {
+                                            Spacer(Modifier.height(3.dp))
+                                            Box(modifier = Modifier.fillMaxWidth().height(2.5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f))) {
+                                                Box(modifier = Modifier.fillMaxWidth(pEpg.progressFraction()).fillMaxHeight().clip(CircleShape).background(c.accent))
+                                            }
+                                        }
+                                    } else {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text("• LIVE", color = CinematicNoirTokens.LiveRed, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            Text(ch.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
+                                        }
                                     }
                                 }
-                                Button(
+                                IconButton(
                                     onClick = { onLaunchPlayer(ch, channels, true) },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = c.accent,
-                                        contentColor = c.onAccent
-                                    ),
-                                    shape = RoundedCornerShape(12.dp)
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(c.accent)
                                 ) {
-                                    Icon(Icons.Rounded.Fullscreen, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(strings.fullscreen, color = c.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Icon(Icons.Rounded.Fullscreen, contentDescription = strings.fullscreen, tint = c.onAccent, modifier = Modifier.size(20.dp))
                                 }
                             }
                         }

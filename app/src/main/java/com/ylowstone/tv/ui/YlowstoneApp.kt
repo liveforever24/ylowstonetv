@@ -132,12 +132,12 @@ fun YlowstoneApp(
     var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
-    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.5.0", dohEnabled = settings.enableDoh) }
+    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.5.1", dohEnabled = settings.enableDoh) }
     val streamResolver = remember { XtreamStreamResolver() }
     val sessionMonitor = remember(connectionGuard) { XtreamSessionMonitor(connectionGuard) }
 
     val sharedPlayer = remember(settings.bufferProfile, connectionGuard) {
-        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.5.0")
+        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.5.1")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -1391,6 +1391,8 @@ fun YlowstoneApp(
                     },
                     onEnterSystemPip = onEnterSystemPip,
                     onClosePlayer = { stopPlaybackCompletely() },
+                    repo = repo,
+                    activePlaylist = playlists.firstOrNull { it.id == activeChannel!!.playlistId } ?: activePlaylist,
                     previousChannel = previousChannel,
                     onRecallPrevious = {
                         previousChannel?.let { prev -> playStream(prev, activeQueue) }
@@ -1478,6 +1480,11 @@ fun YlowstoneApp(
                             )
                             playStream(catchItem, activeQueue)
                         }
+                    },
+                    onReturnToSplit = {
+                        saveCurrentVodProgress(refreshHome = true)
+                        playerMode = PlayerMode.SPLIT
+                        isLandscapeFullscreen = false
                     }
                 )
             }
