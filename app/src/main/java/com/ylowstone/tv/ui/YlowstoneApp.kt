@@ -128,12 +128,12 @@ fun YlowstoneApp(
     var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
-    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.4.5") }
+    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.4.6") }
     val streamResolver = remember { XtreamStreamResolver() }
     val sessionMonitor = remember(connectionGuard) { XtreamSessionMonitor(connectionGuard) }
 
     val sharedPlayer = remember(settings.bufferProfile, connectionGuard) {
-        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.4.5")
+        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.4.6")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -1218,8 +1218,12 @@ fun YlowstoneApp(
                     channelList = activeQueue.ifEmpty { listOf(activeChannel!!) },
                     isPlaying = isPlaying,
                     isBuffering = isBuffering,
+                    tracksVersion = tracksVersion,
                     isTvMode = isTvMode,
                     subtitleSession = subtitleSession,
+                    onUpdateSubtitleSession = { nextSub -> subtitleSession = nextSub },
+                    onTracksModified = { tracksVersion++ },
+                    onSaveSeriesSubtitleOffset = { sKey, offMs -> prefs.saveSeriesSubtitleOffsetMs(sKey, offMs) },
                     strings = strings,
                     onSelectChannel = { nextCh -> playStream(nextCh, activeQueue) },
                     onLongPressChannel = { ch -> longPressTarget = ch to resolvePlaylistName(ch) },
