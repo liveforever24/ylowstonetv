@@ -810,7 +810,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                 .post(reqBody)
                 .header("User-Agent", "YlowstoneTV/2.5.4")
                 .build()
-            http.newCall(req).execute().use { resp ->
+            pinnedBackendClient.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
                     val bodyStr = resp.body?.string().orEmpty()
                     val json = JSONObject(bodyStr)
