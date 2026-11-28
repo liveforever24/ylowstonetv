@@ -1,6 +1,12 @@
 package com.ylowstone.tv.ui
 
 import android.content.Intent
+import android.app.UiModeManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.content.res.Configuration
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.ylowstone.tv.ui.components.FloatingLiquidGlassDock
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -88,7 +94,15 @@ fun YlowstoneApp(
 
     var settings by remember { mutableStateOf(prefs.loadSettings()) }
     val strings = remember(settings.language) { stringsFor(settings.language) }
-    val isTvMode = settings.deviceMode == DeviceMode.TV
+    val isTvHardware = remember(context) {
+        val uiMode = (context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType
+        uiMode == Configuration.UI_MODE_TYPE_TELEVISION ||
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
+    val isTvMode = settings.deviceMode == DeviceMode.TV || isTvHardware
+    val homeVerticalState = rememberLazyListState()
+    val homeContinueRowState = rememberLazyListState()
+    val homeFavouritesRowState = rememberLazyListState()
 
     var stage by remember { mutableStateOf(AppStage.SPLASH) }
     var returnStageAfterSettings by remember { mutableStateOf(AppStage.WORKSPACE) }
@@ -1201,7 +1215,10 @@ fun YlowstoneApp(
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
                                             showProfileDropdown = true
-                                        }
+                                        },
+                                        verticalListState = homeVerticalState,
+                                        continueRowState = homeContinueRowState,
+                                        favouritesRowState = homeFavouritesRowState
                                     )
 
                                     MainTab.LIVE -> BrowseScreen(
@@ -1364,6 +1381,16 @@ fun YlowstoneApp(
                                         }
                                     )
                                 }
+                            }
+
+                            // Floating Liquid Glass Dock KHUSUS mode Ponsel/Tablet (nonaktif di Android TV)
+                            if (!isTvMode && playerMode == PlayerMode.NONE) {
+                                FloatingLiquidGlassDock(
+                                    activeTab = activeTab,
+                                    strings = strings,
+                                    onSelectTab = { nextTab -> activeTab = nextTab },
+                                    modifier = Modifier.align(Alignment.BottomCenter)
+                                )
                             }
                         }
                     }

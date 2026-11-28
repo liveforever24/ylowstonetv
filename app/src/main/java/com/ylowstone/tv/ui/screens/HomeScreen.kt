@@ -38,6 +38,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.runtime.derivedStateOf
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.ylowstone.tv.ui.components.liquidGlassSurface
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -142,7 +153,10 @@ fun HomeScreen(
     onLongPressTaggedChannel: (TaggedChannel) -> Unit,
     onTogglePlayPause: () -> Unit,
     onOpenActivePlayer: () -> Unit,
-    onOpenProfileMenu: () -> Unit
+    onOpenProfileMenu: () -> Unit,
+    verticalListState: LazyListState = rememberLazyListState(),
+    continueRowState: LazyListState = rememberLazyListState(),
+    favouritesRowState: LazyListState = rememberLazyListState()
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -173,28 +187,47 @@ fun HomeScreen(
             .background(c.bg)
             .statusBarsPadding()
     ) {
-        val isWideMode = isTvMode || isTvHardware || maxWidth > maxHeight
+        val isWideMode = isTvMode || isTvHardware
 
-        if (c.isDark) {
+        if (c.isDark && isWideMode) {
             YlowstoneAmbientBlurBackdrop(modifier = Modifier.fillMaxSize())
         }
 
+        if (!isWideMode) {
+            PhoneEditorialHomeContent(
+                playlistName = activePlaylist.name.ifBlank { "YlowstoneTV" },
+                totalChannelsCount = liveCount + movieCount + seriesCount,
+                channelsCountLabel = strings.channelsCount,
+                continueWatching = continueWatchingVod,
+                favourites = favourites,
+                continueTitle = shortHistoryLabel,
+                favouritesTitle = shortFavoriteLabel,
+                emptyContinueHint = if (isIndonesian) "Belum ada film atau seri yang ditonton" else "No movies or series in progress",
+                emptyFavouriteHint = strings.noFavouritesYet,
+                verticalListState = verticalListState,
+                continueRowState = continueRowState,
+                favouritesRowState = favouritesRowState,
+                onOpenPlaylists = onOpenPlaylists,
+                onOpenProfileMenu = onOpenProfileMenu,
+                onOpenAllContinue = { activeSubView = HomeSubView.CONTINUE_WATCHING },
+                onOpenAllFavourites = { activeSubView = HomeSubView.FAVORITES },
+                onPlayTaggedChannel = onPlayTaggedChannel,
+                onLongPressTaggedChannel = onLongPressTaggedChannel
+            )
+        } else {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(
-                    horizontal = if (isWideMode) 28.dp else 18.dp,
-                    vertical = if (isWideMode) 18.dp else 14.dp
-                )
+                .padding(horizontal = 28.dp, vertical = 18.dp)
         ) {
             YlowstoneTopHeader(
                 regionLabel = activePlaylist.name.ifBlank { "YlowstoneTV" },
                 onPlaylistClick = onOpenPlaylists,
                 onSettingsClick = onOpenProfileMenu
             )
-            Spacer(modifier = Modifier.height(if (isWideMode) 14.dp else 16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            if (isWideMode) {
+            run {
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -285,93 +318,8 @@ activeSubView = HomeSubView.CONTINUE_WATCHING }
 activeSubView = HomeSubView.FAVORITES }
                     )
                 }
-            } else {
-                YellowstoneCoverCard(
-                    title = strings.liveTv,
-                    badgeText = tvCountText,
-                    coverRes = R.drawable.cover_home_tv,
-                    icon = Icons.Rounded.LiveTv,
-                    surfaceColor = HomeCoverColors.CardSurfaceTv,
-                    ambientColor = if (c.isDark) HomeCoverColors.AmbientTv else c.accent,
-                    isHero = true,
-                    showLiveDot = true,
-                    centerContent = false,
-                    modifier = Modifier
-                        .weight(0.40f)
-                        .fillMaxWidth(),
-                    onClick = { onOpenSection(MediaType.LIVE) }
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier
-                        .weight(0.41f)
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    YellowstoneCoverCard(
-                        title = strings.movies,
-                        badgeText = filmCountText,
-                        coverRes = R.drawable.cover_home_film,
-                        icon = Icons.Rounded.Movie,
-                        surfaceColor = HomeCoverColors.CardSurfaceFilm,
-                        ambientColor = if (c.isDark) HomeCoverColors.AmbientFilm else c.accent,
-                        isHero = false,
-                        centerContent = false,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        onClick = { onOpenSection(MediaType.MOVIE) }
-                    )
-                    YellowstoneCoverCard(
-                        title = strings.series,
-                        badgeText = seriCountText,
-                        coverRes = R.drawable.cover_home_seri,
-                        icon = Icons.Rounded.Tv,
-                        surfaceColor = HomeCoverColors.CardSurfaceSeri,
-                        ambientColor = if (c.isDark) HomeCoverColors.AmbientSeri else c.accent,
-                        isHero = false,
-                        centerContent = false,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        onClick = { onOpenSection(MediaType.SERIES) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    HomeNotchPill(
-                        label = shortHistoryLabel,
-                        count = continueWatchingVod.size.toString(),
-                        thumbRes = R.drawable.cover_pill_continue,
-                        icon = Icons.Rounded.PlayArrow,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        onClick = {
-activeSubView = HomeSubView.CONTINUE_WATCHING }
-                    )
-                    HomeNotchPill(
-                        label = shortFavoriteLabel,
-                        count = favourites.size.toString(),
-                        thumbRes = R.drawable.cover_pill_favorite,
-                        icon = Icons.Rounded.Favorite,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        onClick = {
-activeSubView = HomeSubView.FAVORITES }
-                    )
-                }
             }
+        }
         }
 
         // PANEL KHUSUS RIWAYAT & FAVORIT
@@ -1306,5 +1254,456 @@ private fun HomeNotchPill(
                 modifier = Modifier.size(16.dp)
             )
         }
+    }
+}
+
+
+/**
+ * Beranda Editorial Mode Ponsel/Tablet:
+ * - Collapsing Large Title ("Home" 34sp Bold) + indikator status playlist/server yang menyusut ke bar frosted glass
+ * - Carousel horizontal borderless 14dp: Continue Watching (175x230dp + 3dp LinearProgressIndicator) & Favourites (155x155dp #141416 + 16dp padding)
+ * - Bottom contentPadding 104dp agar konten paling bawah tidak tertutup Floating Liquid Glass Dock
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PhoneEditorialHomeContent(
+    playlistName: String,
+    totalChannelsCount: Int,
+    channelsCountLabel: String,
+    continueWatching: List<TaggedChannel>,
+    favourites: List<TaggedChannel>,
+    continueTitle: String,
+    favouritesTitle: String,
+    emptyContinueHint: String,
+    emptyFavouriteHint: String,
+    verticalListState: LazyListState,
+    continueRowState: LazyListState,
+    favouritesRowState: LazyListState,
+    onOpenPlaylists: () -> Unit,
+    onOpenProfileMenu: () -> Unit,
+    onOpenAllContinue: () -> Unit,
+    onOpenAllFavourites: () -> Unit,
+    onPlayTaggedChannel: (TaggedChannel, List<TaggedChannel>) -> Unit,
+    onLongPressTaggedChannel: (TaggedChannel) -> Unit
+) {
+    val c = LocalYlowColors.current
+    val isCollapsed by remember {
+        derivedStateOf {
+            verticalListState.firstVisibleItemIndex > 0 || verticalListState.firstVisibleItemScrollOffset > 36
+        }
+    }
+    val largeTitleAlpha by animateFloatAsState(
+        targetValue = if (isCollapsed) 0f else 1f,
+        animationSpec = tween(180),
+        label = "homeLargeTitleAlpha"
+    )
+    val serverSummary = "$playlistName • ${formatCompactCount(totalChannelsCount)} $channelsCountLabel"
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = verticalListState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 60.dp, bottom = 104.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            // Collapsing Large Title ("Home" 34sp Bold) + Status Server Ringkas
+            item(key = "editorial_large_header") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .alpha(largeTitleAlpha),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Home",
+                            color = c.textPrimary,
+                            fontFamily = YlowInterDisplay,
+                            fontSize = 34.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.6).sp,
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable(onClick = onOpenPlaylists)
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981))
+                            )
+                            Text(
+                                text = serverSummary,
+                                color = c.textSecondary,
+                                fontFamily = YlowInterDisplay,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Bagian 1: Continue Watching (Movies & Series)
+            item(key = "editorial_continue_section") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    EditorialSectionHeader(
+                        title = continueTitle,
+                        count = continueWatching.size,
+                        onClick = onOpenAllContinue
+                    )
+                    if (continueWatching.isEmpty()) {
+                        Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            EmptyHintCard(
+                                icon = Icons.Rounded.PlayCircleOutline,
+                                message = emptyContinueHint
+                            )
+                        }
+                    } else {
+                        LazyRow(
+                            state = continueRowState,
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            items(
+                                items = continueWatching,
+                                key = { "cw_${it.channel.streamUrl}" }
+                            ) { tagged ->
+                                EditorialPosterCard(
+                                    tagged = tagged,
+                                    onClick = { onPlayTaggedChannel(tagged, continueWatching) },
+                                    onLongClick = { onLongPressTaggedChannel(tagged) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Bagian 2: Favourites (Live TV & Saluran Favorit 1:1 #141416)
+            item(key = "editorial_favourites_section") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    EditorialSectionHeader(
+                        title = favouritesTitle,
+                        count = favourites.size,
+                        onClick = onOpenAllFavourites
+                    )
+                    if (favourites.isEmpty()) {
+                        Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            EmptyHintCard(
+                                icon = Icons.Rounded.FavoriteBorder,
+                                message = emptyFavouriteHint
+                            )
+                        }
+                    } else {
+                        LazyRow(
+                            state = favouritesRowState,
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            items(
+                                items = favourites,
+                                key = { "fav_${it.channel.id}_${it.channel.streamUrl}" }
+                            ) { tagged ->
+                                EditorialFavouriteSquareCard(
+                                    tagged = tagged,
+                                    onClick = { onPlayTaggedChannel(tagged, favourites) },
+                                    onLongClick = { onLongPressTaggedChannel(tagged) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sticky Frosted Top Bar (menyusut mulus saat konten digulir ke bawah)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .then(
+                    if (isCollapsed) {
+                        Modifier
+                            .liquidGlassSurface(
+                                shape = RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp),
+                                isDark = c.isDark,
+                                baseColor = c.navBarBg
+                            )
+                    } else {
+                        Modifier.background(Color.Transparent)
+                    }
+                )
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            YlowstoneTopHeader(
+                regionLabel = if (isCollapsed) "Home • $playlistName" else playlistName,
+                onPlaylistClick = onOpenPlaylists,
+                onSettingsClick = onOpenProfileMenu
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditorialSectionHeader(
+    title: String,
+    count: Int,
+    onClick: () -> Unit
+) {
+    val c = LocalYlowColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = title,
+                color = c.textPrimary,
+                fontFamily = YlowInterDisplay,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.4).sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = c.textSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        if (count > 0) {
+            Text(
+                text = "• $count",
+                color = c.textSecondary,
+                fontFamily = YlowInterDisplay,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun EditorialPosterCard(
+    tagged: TaggedChannel,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val c = LocalYlowColors.current
+    val context = LocalContext.current
+    val ch = tagged.channel
+    val cardShape = RoundedCornerShape(14.dp)
+    val progressFraction = if (tagged.positionMs > 5_000L && tagged.durationMs > 0L) {
+        (tagged.positionMs.toFloat() / tagged.durationMs.toFloat()).coerceIn(0.03f, 1f)
+    } else 0f
+    val subtitle = buildString {
+        if (ch.category.isNotBlank()) {
+            append(ch.category)
+        } else {
+            append(tagged.playlistName)
+        }
+        if (tagged.positionMs > 5_000L) {
+            append(" • ")
+            append(formatHistoryTime(tagged.positionMs))
+        }
+    }
+    val fallbackRes = if (ch.mediaType == MediaType.SERIES) R.drawable.cover_home_seri else R.drawable.cover_home_film
+
+    Column(
+        modifier = Modifier
+            .width(175.dp)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(175.dp)
+                .height(230.dp)
+                .clip(cardShape)
+                .background(Color(0xFF141416))
+        ) {
+            if (ch.logoUrl.isNotBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(ch.logoUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = ch.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Image(
+                    painter = painterResource(id = fallbackRes),
+                    contentDescription = ch.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f))
+                        )
+                    )
+            )
+
+            if (progressFraction > 0f) {
+                LinearProgressIndicator(
+                    progress = { progressFraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .align(Alignment.BottomCenter),
+                    color = c.accent,
+                    trackColor = Color.White.copy(alpha = 0.24f)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = ch.name,
+            color = c.textPrimary,
+            fontFamily = YlowInterDisplay,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = subtitle,
+            color = Color(0xFF8E8E93),
+            fontFamily = YlowInterDisplay,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun EditorialFavouriteSquareCard(
+    tagged: TaggedChannel,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val c = LocalYlowColors.current
+    val context = LocalContext.current
+    val ch = tagged.channel
+    val cardShape = RoundedCornerShape(14.dp)
+    val subtitle = ch.category.ifBlank { tagged.playlistName }
+
+    Column(
+        modifier = Modifier
+            .width(155.dp)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(155.dp)
+                .clip(cardShape)
+                .background(Color(0xFF141416))
+        ) {
+            if (ch.logoUrl.isNotBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(ch.logoUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = ch.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                )
+            } else {
+                Icon(
+                    imageVector = if (ch.mediaType == MediaType.LIVE) Icons.Rounded.LiveTv else Icons.Rounded.Favorite,
+                    contentDescription = ch.name,
+                    tint = c.accent.copy(alpha = 0.85f),
+                    modifier = Modifier
+                        .size(44.dp)
+                        .align(Alignment.Center)
+                )
+            }
+
+            if (ch.mediaType == MediaType.LIVE) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.62f))
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(CircleShape)
+                            .background(HomeCoverColors.LiveRed)
+                    )
+                    Text(
+                        text = "LIVE",
+                        color = Color.White,
+                        fontFamily = YlowInterDisplay,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = ch.name,
+            color = c.textPrimary,
+            fontFamily = YlowInterDisplay,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = subtitle,
+            color = Color(0xFF8E8E93),
+            fontFamily = YlowInterDisplay,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

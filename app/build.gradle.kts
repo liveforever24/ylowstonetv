@@ -9,7 +9,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.ylowstone.tv"
+        applicationId = "com.ylowstone.tv.glass"
         minSdk = 29
         targetSdk = 35
         versionCode = 30

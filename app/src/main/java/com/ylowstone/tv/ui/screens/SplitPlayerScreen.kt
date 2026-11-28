@@ -66,6 +66,7 @@ import com.ylowstone.tv.model.PlaylistProfile
 import com.ylowstone.tv.model.PlaylistType
 import com.ylowstone.tv.model.SkipIntroMode
 import com.ylowstone.tv.ui.components.ChannelLogoBox
+import com.ylowstone.tv.ui.components.liquidGlassSurface
 import com.ylowstone.tv.ui.components.PrecisionVodSeekBar
 import com.ylowstone.tv.ui.components.SkipIntroInlineSection
 import com.ylowstone.tv.ui.components.formatSkipIntroMmSs
@@ -537,7 +538,7 @@ onEnterFullscreen()
                             ) {
                                 IconButton(
                                     onClick = onMinimizeToFloat,
-                                    modifier = Modifier.size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
+                                    modifier = Modifier.size(34.dp).liquidGlassSurface(shape = CircleShape, isDark = true, baseColor = Color(0xFF141417))
                                 ) {
                                     Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = strings.floatPlayer, tint = Color.White, modifier = Modifier.size(22.dp))
                                 }
@@ -545,7 +546,7 @@ onEnterFullscreen()
                                 IconButton(
                                     onClick = {
 showTrackSheet = true },
-                                    modifier = Modifier.size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
+                                    modifier = Modifier.size(34.dp).liquidGlassSurface(shape = CircleShape, isDark = true, baseColor = Color(0xFF141417))
                                 ) {
                                     Icon(Icons.Rounded.Settings, contentDescription = strings.tracks, tint = Color.White, modifier = Modifier.size(18.dp))
                                 }
@@ -564,7 +565,7 @@ showTrackSheet = true },
                                             onSelectChannel(channelList[prev])
                                         }
                                     },
-                                    modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.50f))
+                                    modifier = Modifier.size(40.dp).liquidGlassSurface(shape = CircleShape, isDark = true, baseColor = Color(0xFF141417))
                                 ) {
                                     Icon(Icons.Rounded.SkipPrevious, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(24.dp))
                                 }
@@ -588,7 +589,7 @@ showTrackSheet = true },
                                             onSelectChannel(channelList[next])
                                         }
                                     },
-                                    modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.50f))
+                                    modifier = Modifier.size(40.dp).liquidGlassSurface(shape = CircleShape, isDark = true, baseColor = Color(0xFF141417))
                                 ) {
                                     Icon(Icons.Rounded.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(24.dp))
                                 }
