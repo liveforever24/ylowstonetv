@@ -789,10 +789,50 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
 
 
     private val vodMetaCache = java.util.concurrent.ConcurrentHashMap<String, VodMetadata>()
+    private val translationCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    suspend fun fetchVodMetadata(profile: PlaylistProfile, item: ChannelItem): VodMetadata =
+    suspend fun translateText(text: String, targetLang: String): String = withContext(Dispatchers.IO) {
+        val clean = text.trim()
+        if (clean.length < 4) return@withContext clean
+        val normalizedTarget = if (targetLang.equals("en", ignoreCase = true)) "en" else "id"
+        val key = "${normalizedTarget}::${clean.take(400)}"
+        translationCache[key]?.let { return@withContext it }
+
+        var output = clean
+        runCatching {
+            val payload = JSONObject().apply {
+                put("text", clean.take(1200))
+                put("target", normalizedTarget)
+            }.toString()
+            val reqBody = payload.toRequestBody("application/json; charset=utf-8".toMediaType())
+            val req = Request.Builder()
+                .url("https://ylowstonetv.vercel.app/api/translate")
+                .post(reqBody)
+                .header("User-Agent", "YlowstoneTV/2.5.4")
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val bodyStr = resp.body?.string().orEmpty()
+                    val json = JSONObject(bodyStr)
+                    val tr = json.optString("translated").trim()
+                    if (tr.isNotBlank()) output = tr
+                }
+            }
+        }
+        translationCache[key] = output
+        output
+    }
+
+    suspend fun fetchVodMetadata(
+        profile: PlaylistProfile,
+        item: ChannelItem,
+        targetLang: String = java.util.Locale.getDefault().language.let {
+            if (it.equals("in", true) || it.equals("id", true)) "id" else "en"
+        }
+    ): VodMetadata =
         withContext(Dispatchers.IO) {
-            val cacheKey = "${profile.id}_${item.mediaType.name}_${item.streamId.ifBlank { item.streamUrl }}"
+            val langCode = if (targetLang.equals("en", ignoreCase = true)) "en" else "id"
+            val cacheKey = "${profile.id}_${langCode}_${item.mediaType.name}_${item.streamId.ifBlank { item.streamUrl }}"
             vodMetaCache[cacheKey]?.let { return@withContext it }
 
             val fallback = VodMetadata(
@@ -879,6 +919,14 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                         }
                     }
                 }
+            }
+            if (resolved.plot.isNotBlank()) {
+                val translatedPlot = translateText(resolved.plot, langCode)
+                val translatedGenre = if (resolved.genre.isNotBlank()) translateText(resolved.genre, langCode) else ""
+                resolved = resolved.copy(
+                    plot = translatedPlot,
+                    genre = translatedGenre
+                )
             }
             vodMetaCache[cacheKey] = resolved
             resolved

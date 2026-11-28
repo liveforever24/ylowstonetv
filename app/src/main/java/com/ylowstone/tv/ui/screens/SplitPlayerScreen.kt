@@ -113,7 +113,6 @@ fun SplitPlayerScreen(
     onTracksModified: () -> Unit,
     onSaveSeriesSubtitleOffset: (String, Long) -> Unit = { _, _ -> },
     strings: AppStrings,
-    vodMetadata: VodMetadata? = null,
     onSelectChannel: (ChannelItem) -> Unit,
     onLongPressChannel: (ChannelItem) -> Unit,
     onToggleFavorite: (ChannelItem) -> Unit,
@@ -150,7 +149,8 @@ fun SplitPlayerScreen(
     var splitVodMeta by remember(currentChannel.streamUrl) { mutableStateOf<VodMetadata?>(null) }
     LaunchedEffect(currentChannel.streamUrl, activePlaylist?.id) {
         if (isVod && repo != null && activePlaylist != null) {
-            splitVodMeta = repo.fetchVodMetadata(activePlaylist, currentChannel)
+            val targetLang = if (strings.watchHistory.startsWith("Riwayat", ignoreCase = true)) "id" else "en"
+            splitVodMeta = repo.fetchVodMetadata(activePlaylist, currentChannel, targetLang)
         } else {
             splitVodMeta = null
         }
@@ -1363,6 +1363,7 @@ private fun SplitQueuePanel(
     listState: androidx.compose.foundation.lazy.LazyListState,
     isTvMode: Boolean,
     strings: AppStrings,
+    vodMetadata: VodMetadata? = null,
     onSelectChannel: (ChannelItem) -> Unit,
     onLongPressChannel: (ChannelItem) -> Unit,
     onToggleFavorite: (ChannelItem) -> Unit,

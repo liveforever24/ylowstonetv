@@ -241,7 +241,8 @@ fun BrowseScreen(
             episodes = emptyList()
             loadingEpisodes = (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM)
             scope.launch {
-                vodDetailMeta = repo.fetchVodMetadata(playlist, item)
+                val targetLang = if (strings.watchHistory.startsWith("Riwayat", ignoreCase = true)) "id" else "en"
+                vodDetailMeta = repo.fetchVodMetadata(playlist, item, targetLang)
                 loadingVodMeta = false
             }
             if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM) {
