@@ -52,8 +52,10 @@ import com.ylowstone.tv.ui.components.ProfileQuickDropdown
 import com.ylowstone.tv.ui.screens.*
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import com.ylowstone.tv.ui.theme.YlowstoneTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class AppStage {
     SPLASH,
@@ -358,6 +360,81 @@ fun YlowstoneApp(
         }
     }
 
+    fun hydrateSeriesQueueIfNeeded(ch: ChannelItem, currentQueue: List<ChannelItem>) {
+        if (ch.mediaType != MediaType.SERIES) return
+        val alreadySeriesEpisodes = currentQueue.size > 1 &&
+            currentQueue.all {
+                it.mediaType == MediaType.SERIES &&
+                    it.playlistId == ch.playlistId &&
+                    (ch.category.isBlank() || it.category.equals(ch.category, ignoreCase = true))
+            } &&
+            currentQueue.any { it.streamUrl == ch.streamUrl }
+        if (alreadySeriesEpisodes) return
+
+        val plObj = playlists.firstOrNull { it.id == ch.playlistId } ?: activePlaylist ?: return
+        val targetStreamUrl = ch.streamUrl
+
+        scope.launch {
+            val hydratedList: List<ChannelItem> = if (plObj.type == PlaylistType.XTREAM) {
+                val parent = withContext(Dispatchers.IO) {
+                    repo.db.findSeriesParent(plObj.id, ch.category, ch.name)
+                }
+                if (parent != null && parent.streamId.isNotBlank()) {
+                    val eps = repo.fetchSeriesEpisodes(plObj, parent.streamId)
+                    eps.map { ep ->
+                        ChannelItem(
+                            id = ep.id.toLongOrNull() ?: 0L,
+                            playlistId = plObj.id,
+                            streamId = ep.id,
+                            name = "S${ep.season}E${ep.episodeNum} - ${ep.title}",
+                            category = parent.name.ifBlank { ch.category },
+                            logoUrl = parent.logoUrl.ifBlank { ch.logoUrl },
+                            streamUrl = ep.streamUrl,
+                            mediaType = MediaType.SERIES
+                        )
+                    }
+                } else {
+                    emptyList()
+                }
+            } else {
+                withContext(Dispatchers.IO) {
+                    repo.db.getM3uSeriesEpisodes(plObj.id, ch.category, ch.name)
+                }
+            }
+
+            if (hydratedList.size <= 1) return@launch
+            if (activeChannel?.streamUrl != targetStreamUrl) return@launch
+
+            val seRegex = Regex("""[Ss](\d+)[Ee](\d+)""")
+            val curSe = seRegex.find(ch.name)?.let {
+                (it.groupValues.getOrNull(1)?.toIntOrNull() to it.groupValues.getOrNull(2)?.toIntOrNull())
+            }
+            val matchedIdx = hydratedList.indexOfFirst { it.streamUrl == targetStreamUrl }
+                .takeIf { it >= 0 }
+                ?: hydratedList.indexOfFirst { ch.streamId.isNotBlank() && it.streamId == ch.streamId }
+                .takeIf { it >= 0 }
+                ?: hydratedList.indexOfFirst { it.name.equals(ch.name, ignoreCase = true) }
+                .takeIf { it >= 0 }
+                ?: if (curSe != null && curSe.first != null && curSe.second != null) {
+                    hydratedList.indexOfFirst { ep ->
+                        val m = seRegex.find(ep.name)
+                        m?.groupValues?.getOrNull(1)?.toIntOrNull() == curSe.first &&
+                            m.groupValues.getOrNull(2)?.toIntOrNull() == curSe.second
+                    }
+                } else -1
+
+            if (matchedIdx >= 0) {
+                val matchedItem = hydratedList[matchedIdx].copy(
+                    streamUrl = targetStreamUrl,
+                    isFavorite = activeChannel?.isFavorite ?: hydratedList[matchedIdx].isFavorite
+                )
+                val finalQueue = hydratedList.toMutableList().apply { this[matchedIdx] = matchedItem }
+                activeChannel = matchedItem
+                activeQueue = finalQueue
+            }
+        }
+    }
+
     fun playStream(ch: ChannelItem, queue: List<ChannelItem>) {
         val sameStream = activeChannel?.streamUrl == ch.streamUrl
         if (!sameStream) {
@@ -372,6 +449,7 @@ fun YlowstoneApp(
         }
         activeChannel = ch
         activeQueue = queue.ifEmpty { listOf(ch) }
+        hydrateSeriesQueueIfNeeded(ch, activeQueue)
         if (!ch.isAdultContent()) {
             val plName = resolvePlaylistName(ch)
             repo.db.recordWatchHistory(ch, plName)
@@ -1123,7 +1201,8 @@ fun YlowstoneApp(
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
                                             showProfileDropdown = true
-                                        }
+                                        },
+                                        allLockedMap = allLockedMap
                                     )
 
                                     MainTab.LIVE -> BrowseScreen(
@@ -1170,7 +1249,8 @@ fun YlowstoneApp(
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
                                             showProfileDropdown = true
-                                        }
+                                        },
+                                        allLockedMap = allLockedMap
                                     )
 
                                     MainTab.MOVIES -> BrowseScreen(
@@ -1214,7 +1294,8 @@ fun YlowstoneApp(
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
                                             showProfileDropdown = true
-                                        }
+                                        },
+                                        allLockedMap = allLockedMap
                                     )
 
                                     MainTab.SERIES -> BrowseScreen(
@@ -1258,7 +1339,8 @@ fun YlowstoneApp(
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
                                             showProfileDropdown = true
-                                        }
+                                        },
+                                        allLockedMap = allLockedMap
                                     )
 
                                     MainTab.SEARCH -> SearchScreen(

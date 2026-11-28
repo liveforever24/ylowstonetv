@@ -99,7 +99,24 @@ class AppPrefs(context: Context) {
             .apply()
     }
 
-    // ---- Per-Series Subtitle Offset & Intro Duration Memory ----
+
+    /**
+     * v2.5.3 Fix: Bersihkan key SharedPreferences lama yang tidak terpakai
+     * (ui_sounds_enabled & intro_sec_* agar Skip Intro custom tidak pernah terkunci data lama).
+     */
+    fun cleanLegacyPrefs() {
+        val editor = prefs.edit()
+        var changed = false
+        for (key in prefs.all.keys) {
+            if (key == "ui_sounds_enabled" || key.startsWith("intro_sec_")) {
+                editor.remove(key)
+                changed = true
+            }
+        }
+        if (changed) editor.apply()
+    }
+
+    // ---- Per-Series Subtitle Offset ----
     private fun normalizeSeriesKey(raw: String): String {
         return raw.lowercase(Locale.US).replace(Regex("""[^a-z0-9]+"""), "_").trim('_').take(48)
     }

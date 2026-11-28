@@ -70,7 +70,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         prefs = AppPrefs(applicationContext)
+        prefs.cleanLegacyPrefs()
         val db = DatabaseHelper(applicationContext)
+        db.cleanLegacyObsoleteData()
         repo = IptvRepository(applicationContext, db)
 
         val filter = IntentFilter(ACTION_PIP_CONTROL)

@@ -49,7 +49,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         )
 
         createWatchHistoryTable(db)
-        createWatchGroupsTable(db)
 
         db.execSQL("CREATE INDEX idx_channels_main ON channels(playlist_id, media_type, category)")
         db.execSQL("CREATE INDEX idx_channels_name ON channels(playlist_id, name)")
@@ -78,29 +77,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_watch_history_time ON watch_history(last_watched DESC)")
     }
 
-    private fun createWatchGroupsTable(db: SQLiteDatabase) {
-        db.execSQL(
-            """
-            CREATE TABLE IF NOT EXISTS watch_groups (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_name TEXT NOT NULL,
-                stream_url TEXT NOT NULL,
-                playlist_id INTEGER NOT NULL,
-                playlist_name TEXT NOT NULL,
-                channel_id INTEGER NOT NULL DEFAULT 0,
-                stream_id TEXT NOT NULL DEFAULT '',
-                name TEXT NOT NULL,
-                category TEXT NOT NULL,
-                logo_url TEXT NOT NULL DEFAULT '',
-                media_type TEXT NOT NULL,
-                added_at INTEGER NOT NULL DEFAULT 0,
-                UNIQUE(group_name, stream_url)
-            )
-            """.trimIndent()
-        )
-        db.execSQL("CREATE INDEX IF NOT EXISTS idx_watch_groups_name ON watch_groups(group_name, added_at DESC)")
-    }
-
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
             runCatching {
@@ -119,7 +95,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
             runCatching { createWatchHistoryTable(db) }
         }
         if (oldVersion < 5) {
-            runCatching { createWatchGroupsTable(db) }
+            runCatching { db.execSQL("DROP TABLE IF EXISTS watch_groups") }
         }
     }
 
@@ -198,7 +174,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         try {
             writableDatabase.delete("channels", "playlist_id = ?", arrayOf(playlistId.toString()))
             writableDatabase.delete("watch_history", "playlist_id = ?", arrayOf(playlistId.toString()))
-            writableDatabase.delete("watch_groups", "playlist_id = ?", arrayOf(playlistId.toString()))
             writableDatabase.delete("playlists", "id = ?", arrayOf(playlistId.toString()))
             writableDatabase.setTransactionSuccessful()
         } finally {
@@ -404,6 +379,100 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
                 val ch = readChannel(c)
                 if (specialFilter == "HIST" && ch.isAdultContent()) continue
                 list.add(ch)
+            }
+        }
+        return list
+    }
+
+
+    /**
+     * v2.5.3 Fix: Hapus total sisa data & tabel lama yang sudah tidak terpakai
+     * (tabel watch_groups, sisa riwayat Live TV di watch_history, & tanda last_watched Live TV).
+     */
+    fun cleanLegacyObsoleteData() {
+        runCatching {
+            val db = writableDatabase
+            db.execSQL("DROP TABLE IF EXISTS watch_groups")
+            db.delete("watch_history", "media_type = ?", arrayOf(MediaType.LIVE.name))
+            val cv = ContentValues().apply { put("last_watched", 0L) }
+            db.update("channels", cv, "media_type = ? AND last_watched > 0", arrayOf(MediaType.LIVE.name))
+        }
+    }
+
+    /**
+     * v2.5.3 Fix: Favorit per mode tontonan (TV / Film / Seri) lintas semua playlist,
+     * 100% sinkron dengan penghitung & daftar Favorit di Beranda.
+     */
+    fun getFavoritesByMediaTypeAcrossPlaylists(
+        mediaType: MediaType,
+        lockedByPlaylist: Map<Long, Set<String>>,
+        limit: Int = 200
+    ): List<ChannelItem> {
+        val list = mutableListOf<ChannelItem>()
+        val sql = """
+            SELECT c.*
+            FROM channels c
+            JOIN playlists p ON p.id = c.playlist_id
+            WHERE c.is_favorite = 1 AND c.media_type = ?
+            ORDER BY c.last_watched DESC, c.id DESC
+            LIMIT ?
+        """.trimIndent()
+        readableDatabase.rawQuery(sql, arrayOf(mediaType.name, (limit * 3).toString())).use { c ->
+            while (c.moveToNext() && list.size < limit) {
+                val ch = readChannel(c)
+                if (ch.isAdultContent()) continue
+                val locked = lockedByPlaylist[ch.playlistId]
+                if (locked != null && locked.contains(ch.category)) continue
+                list.add(ch)
+            }
+        }
+        return list
+    }
+
+    /**
+     * v2.5.3 Fix: Lanjutkan Menonton per mode tontonan (KHUSUS Film & Seri) dari watch_history
+     * lintas semua playlist, 100% sinkron dengan Lanjutkan Menonton di Beranda.
+     */
+    fun getContinueWatchingByMediaTypeAcrossPlaylists(
+        mediaType: MediaType,
+        lockedByPlaylist: Map<Long, Set<String>>,
+        limit: Int = 100
+    ): List<ChannelItem> {
+        if (mediaType == MediaType.LIVE) return emptyList()
+        val list = mutableListOf<ChannelItem>()
+        val sql = """
+            SELECT h.stream_url, h.playlist_id, h.channel_id, h.stream_id, h.name,
+                   h.category, h.logo_url, h.media_type, h.last_watched
+            FROM watch_history h
+            JOIN playlists p ON p.id = h.playlist_id
+            WHERE h.last_watched > 0 AND h.media_type = ?
+            ORDER BY h.last_watched DESC
+            LIMIT ?
+        """.trimIndent()
+        readableDatabase.rawQuery(sql, arrayOf(mediaType.name, (limit * 3).toString())).use { c ->
+            while (c.moveToNext() && list.size < limit) {
+                val rawUrl = c.getString(0) ?: continue
+                val streamUrl = SecurityCrypto.decryptStreamUrl(rawUrl)
+                if (streamUrl.isBlank()) continue
+                val plId = c.getLong(1)
+                val chName = c.getString(4) ?: ""
+                val category = c.getString(5) ?: ""
+                if (isAdultCategoryOrTitle(category, chName)) continue
+                val locked = lockedByPlaylist[plId]
+                if (locked != null && locked.contains(category)) continue
+                list.add(
+                    ChannelItem(
+                        id = c.getLong(2),
+                        playlistId = plId,
+                        streamId = c.getString(3) ?: "",
+                        name = chName,
+                        category = category,
+                        logoUrl = c.getString(6) ?: "",
+                        streamUrl = streamUrl,
+                        mediaType = mediaType,
+                        lastWatchedAt = c.getLong(8)
+                    )
+                )
             }
         }
         return list
@@ -635,6 +704,114 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, "ylowstone_tv
         isFavorite = c.getInt(10) == 1,
         lastWatchedAt = c.getLong(11)
     )
+
+
+    /**
+     * v2.5.3 Fix: Cari entri induk Seri Xtream di tabel channels berdasarkan playlist_id & judul seri,
+     * agar pemutaran dari Lanjutkan Menonton (Beranda / Kategori Seri) otomatis memuat daftar episode seri tersebut.
+     */
+    fun findSeriesParent(playlistId: Long, seriesTitle: String, fallbackName: String = ""): ChannelItem? {
+        val candidates = buildList {
+            val t = seriesTitle.trim()
+            if (t.isNotEmpty()) add(t)
+            val cleanedFallback = fallbackName
+                .replace(Regex("""[Ss]\d+[Ee]\d+.*$"""), "")
+                .trim(' ', '-', ':', '|', '.', '_')
+            if (cleanedFallback.length >= 2 && !cleanedFallback.equals(t, ignoreCase = true)) {
+                add(cleanedFallback)
+            }
+        }
+        if (candidates.isEmpty()) return null
+
+        for (title in candidates) {
+            readableDatabase.rawQuery(
+                """
+                SELECT * FROM channels
+                WHERE playlist_id = ? AND media_type = 'SERIES' AND LOWER(TRIM(name)) = LOWER(?)
+                LIMIT 1
+                """.trimIndent(),
+                arrayOf(playlistId.toString(), title)
+            ).use { c ->
+                if (c.moveToFirst()) return readChannel(c)
+            }
+        }
+
+        for (title in candidates) {
+            if (title.length < 2) continue
+            readableDatabase.rawQuery(
+                """
+                SELECT * FROM channels
+                WHERE playlist_id = ? AND media_type = 'SERIES' AND LOWER(name) LIKE LOWER(?)
+                ORDER BY LENGTH(name) ASC
+                LIMIT 1
+                """.trimIndent(),
+                arrayOf(playlistId.toString(), "%$title%")
+            ).use { c ->
+                if (c.moveToFirst()) return readChannel(c)
+            }
+        }
+        return null
+    }
+
+    /**
+     * v2.5.3 Fix: Ambil daftar episode seri yang sama untuk playlist M3U,
+     * diurutkan natural berdasarkan nomor Season & Episode (SxxExx).
+     */
+    fun getM3uSeriesEpisodes(playlistId: Long, category: String, episodeName: String): List<ChannelItem> {
+        val seRegex = Regex("""[Ss](\d+)[Ee](\d+)""")
+        val m = seRegex.find(episodeName)
+        val titlePrefix = m?.let {
+            episodeName.substring(0, it.range.first).trim(' ', '-', ':', '|', '.', '_')
+        } ?: ""
+
+        val list = mutableListOf<ChannelItem>()
+        if (titlePrefix.length >= 2 && category.isNotBlank()) {
+            readableDatabase.rawQuery(
+                """
+                SELECT * FROM channels
+                WHERE playlist_id = ? AND media_type = 'SERIES' AND category = ? AND LOWER(name) LIKE LOWER(?)
+                LIMIT 500
+                """.trimIndent(),
+                arrayOf(playlistId.toString(), category, "$titlePrefix%")
+            ).use { c ->
+                while (c.moveToNext()) list.add(readChannel(c))
+            }
+        }
+        if (list.size < 2 && titlePrefix.length >= 2) {
+            list.clear()
+            readableDatabase.rawQuery(
+                """
+                SELECT * FROM channels
+                WHERE playlist_id = ? AND media_type = 'SERIES' AND LOWER(name) LIKE LOWER(?)
+                LIMIT 500
+                """.trimIndent(),
+                arrayOf(playlistId.toString(), "%$titlePrefix%")
+            ).use { c ->
+                while (c.moveToNext()) list.add(readChannel(c))
+            }
+        }
+        if (list.size < 2 && category.isNotBlank()) {
+            list.clear()
+            readableDatabase.rawQuery(
+                """
+                SELECT * FROM channels
+                WHERE playlist_id = ? AND media_type = 'SERIES' AND category = ?
+                LIMIT 500
+                """.trimIndent(),
+                arrayOf(playlistId.toString(), category)
+            ).use { c ->
+                while (c.moveToNext()) list.add(readChannel(c))
+            }
+        }
+
+        return list.sortedWith(
+            compareBy<ChannelItem>(
+                { seRegex.find(it.name)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: Int.MAX_VALUE },
+                { seRegex.find(it.name)?.groupValues?.getOrNull(2)?.toIntOrNull() ?: Int.MAX_VALUE },
+                { it.name.lowercase(java.util.Locale.US) }
+            )
+        )
+    }
 
     fun getAllFavoriteStreamUrls(): List<String> {
         val list = mutableListOf<String>()

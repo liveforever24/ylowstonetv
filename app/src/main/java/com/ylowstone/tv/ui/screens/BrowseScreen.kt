@@ -91,7 +91,8 @@ fun BrowseScreen(
     onTogglePlayPause: () -> Unit,
     onOpenActivePlayer: () -> Unit,
     onFloatCurrent: () -> Unit,
-    onOpenProfileMenu: () -> Unit
+    onOpenProfileMenu: () -> Unit,
+    allLockedMap: Map<Long, Set<String>> = emptyMap()
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -123,12 +124,15 @@ fun BrowseScreen(
         if (catSortAz) base.sortedBy { it.name.lowercase() } else base
     }
     val allCount = remember(categories) { categories.sumOf { it.count } }
-    val favCount = remember(playlist.id, mediaType, refreshTrigger) {
-        repo.db.getFavoriteCount(playlist.id, mediaType)
+    val syncedFavorites = remember(mediaType, allLockedMap, refreshTrigger) {
+        repo.db.getFavoritesByMediaTypeAcrossPlaylists(mediaType, allLockedMap, limit = 200)
     }
-    val histCount = remember(playlist.id, mediaType, refreshTrigger) {
-        repo.db.getHistoryCount(playlist.id, mediaType)
+    val syncedContinueWatching = remember(mediaType, allLockedMap, refreshTrigger) {
+        if (mediaType == MediaType.LIVE) emptyList()
+        else repo.db.getContinueWatchingByMediaTypeAcrossPlaylists(mediaType, allLockedMap, limit = 100)
     }
+    val favCount = syncedFavorites.size
+    val histCount = syncedContinueWatching.size
 
     var pinActionCategory by remember { mutableStateOf<String?>(null) }
     var pinActionMode by remember { mutableStateOf("") }
@@ -185,15 +189,27 @@ fun BrowseScreen(
                 return@LaunchedEffect
             }
             rawChannels = withContext(Dispatchers.IO) {
-                repo.db.queryChannels(
-                    playlistId = playlist.id,
-                    mediaType = mediaType,
-                    specialFilter = activeCatForQuery,
-                    searchQuery = debouncedChannelSearch,
-                    lockedCategories = lockedCategories - unlockedTempCategories,
-                    allowLockedCategory = unlockedTempCategories.contains(activeCatForQuery),
-                    limit = 600
-                )
+                val q = debouncedChannelSearch.trim()
+                when (activeCatForQuery) {
+                    "FAV" -> {
+                        val base = repo.db.getFavoritesByMediaTypeAcrossPlaylists(mediaType, allLockedMap, limit = 200)
+                        if (q.isEmpty()) base else base.filter { it.name.contains(q, ignoreCase = true) || it.category.contains(q, ignoreCase = true) }
+                    }
+                    "HIST" -> {
+                        val base = if (mediaType == MediaType.LIVE) emptyList()
+                        else repo.db.getContinueWatchingByMediaTypeAcrossPlaylists(mediaType, allLockedMap, limit = 100)
+                        if (q.isEmpty()) base else base.filter { it.name.contains(q, ignoreCase = true) || it.category.contains(q, ignoreCase = true) }
+                    }
+                    else -> repo.db.queryChannels(
+                        playlistId = playlist.id,
+                        mediaType = mediaType,
+                        specialFilter = activeCatForQuery,
+                        searchQuery = debouncedChannelSearch,
+                        lockedCategories = lockedCategories - unlockedTempCategories,
+                        allowLockedCategory = unlockedTempCategories.contains(activeCatForQuery),
+                        limit = 600
+                    )
+                }
             }
         }
 
@@ -203,7 +219,9 @@ fun BrowseScreen(
         }
 
         fun openMediaItem(item: ChannelItem, queue: List<ChannelItem>) {
-            if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM) {
+            val isDirectEpisodeUrl = item.streamUrl.contains("/series/", ignoreCase = true) &&
+                (item.streamUrl.endsWith(".mp4", true) || item.streamUrl.endsWith(".mkv", true) || item.streamUrl.endsWith(".ts", true))
+            if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM && !isDirectEpisodeUrl) {
                 activeSeries = item
                 loadingEpisodes = true
                 scope.launch {
@@ -354,7 +372,7 @@ fun BrowseScreen(
                     val openedTitle = when (currentCat) {
                         "ALL" -> strings.allChannels
                         "FAV" -> strings.favourites
-                        "HIST" -> strings.history
+                        "HIST" -> if (isIndonesian) "Lanjutkan Menonton" else "Continue Watching"
                         else -> currentCat
                     }
                     val firstPlayable = channels.firstOrNull { !it.isProviderSeparator() }
