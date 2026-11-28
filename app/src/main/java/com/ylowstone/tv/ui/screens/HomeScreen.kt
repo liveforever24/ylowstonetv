@@ -9,6 +9,21 @@ import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -718,12 +733,26 @@ private fun YellowstoneCoverCard(
     val maxSlopPx = remember(density) { with(density) { 12.dp.toPx() } }
 
     var isFocused by remember { mutableStateOf(false) }
+    var isPressed by remember { mutableStateOf(false) }
     var isSinking by remember { mutableStateOf(false) }
     var lastTapMs by remember { mutableLongStateOf(0L) }
+
+    // 1. Entrance Depth Zoom (khusus gambar: 1.06 -> 1.00 selama 900ms cubic-bezier, teks & ikon tetap diam)
+    val imageDepthZoom = remember { Animatable(1.06f) }
+    LaunchedEffect(Unit) {
+        imageDepthZoom.animateTo(
+            targetValue = 1.0f,
+            animationSpec = tween(
+                durationMillis = 900,
+                easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+            )
+        )
+    }
+
     fun triggerDiveInTap() {
         val now = System.currentTimeMillis()
         if (now - lastTapMs < 350L || isSinking) return
-lastTapMs = now
+        lastTapMs = now
         isSinking = true
         scope.launch {
             delay(110L)
@@ -733,20 +762,25 @@ lastTapMs = now
         }
     }
 
+    // 2. Tactile Spring Press (0.965f membal empuk dengan fisika pegas)
     val scale by animateFloatAsState(
         targetValue = when {
-            isSinking -> 0.935f
-            isFocused -> 1.02f
+            isPressed || isSinking -> 0.965f
+            isFocused -> 1.022f
             else -> 1f
         },
-        animationSpec = tween(if (isSinking) 105 else 180),
-        label = "cardDiveScale"
+        animationSpec = spring(
+            dampingRatio = 0.54f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "cardSpringScale"
     )
     val contentAlpha by animateFloatAsState(
-        targetValue = if (isSinking) 0.78f else 1f,
+        targetValue = if (isSinking) 0.88f else 1f,
         animationSpec = tween(105),
         label = "cardDiveAlpha"
     )
+    val specularActive = isPressed || isSinking || isFocused
     val borderAlpha = if (isFocused) 0.92f else 0.34f
     val borderWidth = if (isFocused) 2.dp else 1.dp
 
@@ -755,6 +789,11 @@ lastTapMs = now
             .scale(scale)
             .alpha(contentAlpha)
             .clip(RoundedCornerShape(cornerRadius))
+            .goldSpecularRimBorder(
+                active = specularActive,
+                cornerRadius = cornerRadius,
+                strokeWidth = if (isFocused) 2.dp else 1.5.dp
+            )
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
             .onKeyEvent { ev ->
@@ -768,10 +807,12 @@ lastTapMs = now
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val startPos = down.position
                     var movedTooFar = false
+                    isPressed = true
                     while (true) {
                         val event = awaitPointerEvent()
                         val change = event.changes.firstOrNull() ?: break
                         if (!change.pressed) {
+                            isPressed = false
                             if (!movedTooFar && !change.isConsumed) {
                                 triggerDiveInTap()
                             }
@@ -783,8 +824,10 @@ lastTapMs = now
                         )
                         if (dist > maxSlopPx) {
                             movedTooFar = true
+                            isPressed = false
                         }
                     }
+                    isPressed = false
                 }
             },
         shape = RoundedCornerShape(cornerRadius),
@@ -793,8 +836,8 @@ lastTapMs = now
             width = borderWidth,
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    ambientColor.copy(alpha = borderAlpha),
-                    ambientColor.copy(alpha = borderAlpha * 0.35f)
+                    if (isFocused) Color(0xFFE89D3C).copy(alpha = 0.92f) else ambientColor.copy(alpha = borderAlpha),
+                    if (isFocused) Color(0xFFE89D3C).copy(alpha = 0.45f) else ambientColor.copy(alpha = borderAlpha * 0.35f)
                 )
             )
         )
@@ -804,7 +847,12 @@ lastTapMs = now
                 painter = painterResource(id = coverRes),
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = imageDepthZoom.value
+                        scaleY = imageDepthZoom.value
+                    }
             )
 
             // Ambien tipis & tint tema + scrim matte agar teks tetap terbaca tajam
@@ -1226,6 +1274,53 @@ private fun YlowstoneAmbientBlurBackdrop(modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun Modifier.goldSpecularRimBorder(
+    active: Boolean,
+    cornerRadius: Dp,
+    strokeWidth: Dp = 1.5.dp
+): Modifier {
+    val rimAlpha by animateFloatAsState(
+        targetValue = if (active) 1f else 0f,
+        animationSpec = tween(220),
+        label = "specularRimAlpha"
+    )
+    if (rimAlpha <= 0.01f) return this
+
+    val infiniteTransition = rememberInfiniteTransition(label = "goldRimSweep")
+    val sweepAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1650, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "goldRimAngle"
+    )
+
+    return this.drawWithContent {
+        drawContent()
+        val strokePx = strokeWidth.toPx()
+        val radiusPx = cornerRadius.toPx()
+        val goldBrush = Brush.sweepGradient(
+            0.00f to Color.Transparent,
+            0.16f to Color(0xFFE89D3C).copy(alpha = 0.08f * rimAlpha),
+            0.26f to Color(0xFFE89D3C).copy(alpha = 0.92f * rimAlpha),
+            0.31f to Color(0xFFFFE0AC).copy(alpha = 0.98f * rimAlpha),
+            0.39f to Color(0xFFE89D3C).copy(alpha = 0.35f * rimAlpha),
+            0.55f to Color.Transparent,
+            1.00f to Color.Transparent
+        )
+        rotate(degrees = sweepAngle) {
+            drawRoundRect(
+                brush = goldBrush,
+                cornerRadius = CornerRadius(radiusPx, radiusPx),
+                style = Stroke(width = strokePx)
+            )
+        }
+    }
+}
+
+@Composable
 private fun HomeNotchPill(
     label: String,
     count: String,
@@ -1235,22 +1330,91 @@ private fun HomeNotchPill(
     onClick: () -> Unit
 ) {
     val c = LocalYlowColors.current
+    val density = LocalDensity.current
+    val maxSlopPx = remember(density) { with(density) { 12.dp.toPx() } }
+
     var isFocused by remember { mutableStateOf(false) }
+    var isPressed by remember { mutableStateOf(false) }
+    var lastTapMs by remember { mutableLongStateOf(0L) }
+
+    val thumbDepthZoom = remember { Animatable(1.06f) }
+    LaunchedEffect(Unit) {
+        thumbDepthZoom.animateTo(
+            targetValue = 1.0f,
+            animationSpec = tween(
+                durationMillis = 900,
+                easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+            )
+        )
+    }
+
+    fun triggerStrictTap() {
+        val now = System.currentTimeMillis()
+        if (now - lastTapMs < 350L) return
+        lastTapMs = now
+        onClick()
+    }
+
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.02f else 1f,
-        animationSpec = tween(160),
-        label = "notchPillScale"
+        targetValue = when {
+            isPressed -> 0.965f
+            isFocused -> 1.025f
+            else -> 1f
+        },
+        animationSpec = spring(
+            dampingRatio = 0.54f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "notchPillSpringScale"
     )
     val bgColor = if (c.isDark) Color(0xFF000000) else c.surface
-    val borderColor = if (isFocused) c.accent else c.glassBorder
+    val borderColor = if (isFocused) Color(0xFFE89D3C) else c.glassBorder
 
     Surface(
         modifier = modifier
             .scale(scale)
             .clip(CircleShape)
+            .goldSpecularRimBorder(
+                active = isPressed || isFocused,
+                cornerRadius = 28.dp,
+                strokeWidth = if (isFocused) 1.8.dp else 1.4.dp
+            )
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
-            .clickable(onClick = onClick),
+            .onKeyEvent { ev ->
+                if (ev.type == KeyEventType.KeyUp && (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter)) {
+                    triggerStrictTap()
+                    true
+                } else false
+            }
+            .pointerInput(maxSlopPx) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val startPos = down.position
+                    var movedTooFar = false
+                    isPressed = true
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull() ?: break
+                        if (!change.pressed) {
+                            isPressed = false
+                            if (!movedTooFar && !change.isConsumed) {
+                                triggerStrictTap()
+                            }
+                            break
+                        }
+                        val dist = hypot(
+                            (change.position.x - startPos.x).toDouble(),
+                            (change.position.y - startPos.y).toDouble()
+                        )
+                        if (dist > maxSlopPx) {
+                            movedTooFar = true
+                            isPressed = false
+                        }
+                    }
+                    isPressed = false
+                }
+            },
         shape = CircleShape,
         color = bgColor,
         border = BorderStroke(if (isFocused) 1.8.dp else 0.9.dp, borderColor)
@@ -1269,6 +1433,10 @@ private fun HomeNotchPill(
                     .width(52.dp)
                     .fillMaxHeight()
                     .clip(CircleShape)
+                    .graphicsLayer {
+                        scaleX = thumbDepthZoom.value
+                        scaleY = thumbDepthZoom.value
+                    }
             )
             Spacer(modifier = Modifier.width(9.dp))
             Column(
