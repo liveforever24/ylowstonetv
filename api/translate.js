@@ -1,6 +1,5 @@
-// YlowstoneTV v2.5.4 — Serverless Translation Proxy (ID & EN)
-// Endpoint: POST https://ylowstonetv.vercel.app/api/translate
-// Body: { "text": "...", "target": "id" | "en" }
+// YlowstoneTV v2.5.4 — Serverless Translation Proxy (ID & EN, ES Module)
+// Endpoint: POST/GET https://ylowstonetv.vercel.app/api/translate
 
 const memoryCache = new Map();
 const MAX_CACHE = 400;
@@ -55,7 +54,7 @@ async function translateFallback(text, target) {
   return translated;
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
