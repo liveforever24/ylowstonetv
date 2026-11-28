@@ -3,6 +3,8 @@ package com.ylowstone.tv
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
+import android.app.UiModeManager
+import android.content.pm.PackageManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -44,6 +46,13 @@ class MainActivity : ComponentActivity() {
     private var isInPipMode by mutableStateOf(false)
     private var isPipEligible: Boolean = false
     private var isPlayerPlaying: Boolean = false
+    private var isTvHardwareDevice: Boolean = false
+
+    private fun detectAndroidTvHardware(): Boolean {
+        val uiMode = (getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType
+        return uiMode == Configuration.UI_MODE_TYPE_TELEVISION ||
+            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
 
     private var pipCommandNonce by mutableIntStateOf(0)
     private var pipCommandAction by mutableStateOf("")
@@ -67,6 +76,7 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        isTvHardwareDevice = detectAndroidTvHardware()
         enableEdgeToEdge()
 
         prefs = AppPrefs(applicationContext)
@@ -111,12 +121,20 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onPipStateChanged = { eligible, playing ->
-                    isPipEligible = eligible
-                    isPlayerPlaying = playing
-                    updatePipParams(eligible && playing, playing)
+                    if (isTvHardwareDevice) {
+                        isPipEligible = false
+                        isPlayerPlaying = false
+                        updatePipParams(false, false)
+                    } else {
+                        isPipEligible = eligible
+                        isPlayerPlaying = playing
+                        updatePipParams(eligible && playing, playing)
+                    }
                 },
                 onEnterSystemPip = {
-                    enterPipNow()
+                    if (!isTvHardwareDevice) {
+                        enterPipNow()
+                    }
                 },
                 onExitApp = {
                     finish()
@@ -163,6 +181,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun enterPipNow() {
+        if (isTvHardwareDevice) return
         runCatching {
             enterPictureInPictureMode(buildPipParams(isPipEligible && isPlayerPlaying, isPlayerPlaying))
         }
@@ -170,7 +189,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (isPipEligible && isPlayerPlaying && !isInPipMode && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        if (!isTvHardwareDevice && isPipEligible && isPlayerPlaying && !isInPipMode && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             enterPipNow()
         }
     }

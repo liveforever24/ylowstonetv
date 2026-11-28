@@ -1784,7 +1784,7 @@ onSelectSleepTimer(opt)
                                     ) {
                                         Text(prog.formattedTimeRange(), color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         if (isLiveNow) {
-                                            Text("• LIVE", color = Color(0xFFFA263E), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            
                                         } else if (canCatchUp) {
                                             Text(
                                                 text = if (isIndo) "Putar Ulang" else "Catch-Up",

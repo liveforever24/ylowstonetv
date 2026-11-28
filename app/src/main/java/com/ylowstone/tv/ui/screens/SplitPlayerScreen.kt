@@ -57,6 +57,8 @@ import androidx.media3.ui.PlayerView
 import com.ylowstone.tv.data.ActiveSubtitleSession
 import androidx.compose.ui.draw.clipToBounds
 import com.ylowstone.tv.data.IptvRepository
+import com.ylowstone.tv.data.VodMetadata
+import com.ylowstone.tv.ui.components.VodSplitInfoCard
 import com.ylowstone.tv.data.SubtitleFetcher
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.ChannelItem
@@ -105,11 +107,13 @@ fun SplitPlayerScreen(
     isBuffering: Boolean,
     tracksVersion: Int,
     isTvMode: Boolean,
+    isTvHardware: Boolean = false,
     subtitleSession: ActiveSubtitleSession,
     onUpdateSubtitleSession: (ActiveSubtitleSession) -> Unit,
     onTracksModified: () -> Unit,
     onSaveSeriesSubtitleOffset: (String, Long) -> Unit = { _, _ -> },
     strings: AppStrings,
+    vodMetadata: VodMetadata? = null,
     onSelectChannel: (ChannelItem) -> Unit,
     onLongPressChannel: (ChannelItem) -> Unit,
     onToggleFavorite: (ChannelItem) -> Unit,
@@ -141,6 +145,16 @@ fun SplitPlayerScreen(
         currentChannel.streamUrl.lowercase(Locale.US).substringBefore('?').let {
             it.contains("/movie/") || it.endsWith(".mp4") || it.endsWith(".mkv") || it.endsWith(".webm")
         }
+
+    val isTvNoPip = isTvMode || isTvHardware
+    var splitVodMeta by remember(currentChannel.streamUrl) { mutableStateOf<VodMetadata?>(null) }
+    LaunchedEffect(currentChannel.streamUrl, activePlaylist?.id) {
+        if (isVod && repo != null && activePlaylist != null) {
+            splitVodMeta = repo.fetchVodMetadata(activePlaylist, currentChannel)
+        } else {
+            splitVodMeta = null
+        }
+    }
 
     val parsedSeriesInfo = remember(currentChannel, isSeriesEffective) {
         if (!isSeriesEffective) {
@@ -396,7 +410,7 @@ fun SplitPlayerScreen(
                                     dragOffsetY = 0f
                                     swipeUpAccum = 0f
                                     if (shouldPip) {
-onMinimizeToFloat()
+if (!isTvNoPip) onMinimizeToFloat()
                                     } else if (shouldFull) {
 onEnterFullscreen()
                                     }
@@ -535,11 +549,15 @@ onEnterFullscreen()
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                IconButton(
-                                    onClick = onMinimizeToFloat,
-                                    modifier = Modifier.size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
-                                ) {
-                                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = strings.floatPlayer, tint = Color.White, modifier = Modifier.size(22.dp))
+                                if (!isTvNoPip) {
+                                    IconButton(
+                                        onClick = onMinimizeToFloat,
+                                        modifier = Modifier.size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
+                                    ) {
+                                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = strings.floatPlayer, tint = Color.White, modifier = Modifier.size(22.dp))
+                                    }
+                                } else {
+                                    Spacer(modifier = Modifier.size(34.dp))
                                 }
 
                                 IconButton(
@@ -762,6 +780,7 @@ onEnterFullscreen()
                         listState = listState,
                         isTvMode = false,
                         strings = strings,
+                        vodMetadata = if (isVod) splitVodMeta else null,
                         onSelectChannel = onSelectChannel,
                         onLongPressChannel = onLongPressChannel,
                         onToggleFavorite = onToggleFavorite,
@@ -1014,6 +1033,7 @@ onEnterFullscreen()
                     listState = listState,
                     isTvMode = isTvMode,
                     strings = strings,
+                    vodMetadata = if (isVod) splitVodMeta else null,
                     onSelectChannel = onSelectChannel,
                     onLongPressChannel = onLongPressChannel,
                     onToggleFavorite = onToggleFavorite,
@@ -1353,6 +1373,13 @@ private fun SplitQueuePanel(
         modifier = modifier.padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        if (currentChannel.mediaType == MediaType.MOVIE || currentChannel.mediaType == MediaType.SERIES) {
+            VodSplitInfoCard(
+                channel = currentChannel,
+                metadata = vodMetadata,
+                isIndonesian = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,

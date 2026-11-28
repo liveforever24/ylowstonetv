@@ -1,6 +1,10 @@
 package com.ylowstone.tv.ui
 
+import android.app.UiModeManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -88,7 +92,13 @@ fun YlowstoneApp(
 
     var settings by remember { mutableStateOf(prefs.loadSettings()) }
     val strings = remember(settings.language) { stringsFor(settings.language) }
-    val isTvMode = settings.deviceMode == DeviceMode.TV
+    val isTvHardware = remember(context) {
+        val uiMode = (context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType
+        uiMode == Configuration.UI_MODE_TYPE_TELEVISION ||
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
+    val isTvMode = settings.deviceMode == DeviceMode.TV || isTvHardware
+    val allowPipAndFloat = !isTvHardware && !isTvMode
 
     var stage by remember { mutableStateOf(AppStage.SPLASH) }
     var returnStageAfterSettings by remember { mutableStateOf(AppStage.WORKSPACE) }
@@ -134,12 +144,12 @@ fun YlowstoneApp(
     var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
-    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.5.3", dohEnabled = settings.enableDoh) }
+    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.5.4", dohEnabled = settings.enableDoh) }
     val streamResolver = remember { XtreamStreamResolver() }
     val sessionMonitor = remember(connectionGuard) { XtreamSessionMonitor(connectionGuard) }
 
     val sharedPlayer = remember(settings.bufferProfile, connectionGuard) {
-        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.5.3")
+        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.5.4")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -599,7 +609,7 @@ fun YlowstoneApp(
     }
 
     LaunchedEffect(activeChannel, isPlaying) {
-        onPipStateChanged(activeChannel != null, isPlaying)
+        onPipStateChanged(allowPipAndFloat && activeChannel != null, allowPipAndFloat && isPlaying)
     }
 
     fun openWorkspace(profile: PlaylistProfile) {
@@ -864,7 +874,7 @@ fun YlowstoneApp(
         if (now - lastCategoryBackPressTime <= 2000L) {
             lastCategoryBackPressTime = 0L
             if (activeTab == MainTab.LIVE && activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
-                playerMode = PlayerMode.FLOATING
+                playerMode = if (allowPipAndFloat) PlayerMode.FLOATING else PlayerMode.NONE
             }
             activeTab = MainTab.HOME
         } else {
@@ -885,7 +895,7 @@ fun YlowstoneApp(
             }
             playerMode == PlayerMode.SPLIT -> {
                 saveCurrentVodProgress(refreshHome = true)
-                playerMode = PlayerMode.FLOATING
+                playerMode = if (allowPipAndFloat) PlayerMode.FLOATING else PlayerMode.NONE
                 isLandscapeFullscreen = false
             }
             stage == AppStage.WELCOME_QUOTE -> stage = AppStage.ONBOARDING_GUIDE
@@ -930,7 +940,7 @@ fun YlowstoneApp(
     }
 
     YlowstoneTheme(themeMode = settings.themeMode, accentPreset = settings.accentPreset) {
-        if (isInPipMode && activeChannel != null) {
+        if (allowPipAndFloat && isInPipMode && activeChannel != null) {
             PipVideoSurface(exoPlayer = sharedPlayer, isPlaying = isPlaying)
             return@YlowstoneTheme
         }
@@ -1174,7 +1184,7 @@ fun YlowstoneApp(
                                         },
                                         onOpenPlaylists = {
                                             if (activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
-                                                playerMode = PlayerMode.FLOATING
+                                                playerMode = if (allowPipAndFloat) PlayerMode.FLOATING else PlayerMode.NONE
                                             }
                                             stage = AppStage.PLAYLISTS
                                         },
@@ -1244,7 +1254,7 @@ fun YlowstoneApp(
                                                 isLandscapeFullscreen = false
                                             }
                                         },
-                                        onFloatCurrent = { playerMode = PlayerMode.FLOATING },
+                                        onFloatCurrent = { playerMode = if (allowPipAndFloat) PlayerMode.FLOATING else PlayerMode.NONE },
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
                                             showProfileDropdown = true
@@ -1289,7 +1299,7 @@ fun YlowstoneApp(
                                                 isLandscapeFullscreen = false
                                             }
                                         },
-                                        onFloatCurrent = { playerMode = PlayerMode.FLOATING },
+                                        onFloatCurrent = { playerMode = if (allowPipAndFloat) PlayerMode.FLOATING else PlayerMode.NONE },
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
                                             showProfileDropdown = true
@@ -1334,7 +1344,7 @@ fun YlowstoneApp(
                                                 isLandscapeFullscreen = false
                                             }
                                         },
-                                        onFloatCurrent = { playerMode = PlayerMode.FLOATING },
+                                        onFloatCurrent = { playerMode = if (allowPipAndFloat) PlayerMode.FLOATING else PlayerMode.NONE },
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
                                             showProfileDropdown = true
@@ -1420,7 +1430,7 @@ fun YlowstoneApp(
                     },
                     onManagePlaylists = {
                         if (activeChannel != null && playerMode == PlayerMode.NONE && isPlaying) {
-                            playerMode = PlayerMode.FLOATING
+                            playerMode = if (allowPipAndFloat) PlayerMode.FLOATING else PlayerMode.NONE
                         }
                         stage = AppStage.PLAYLISTS
                     },
@@ -1445,6 +1455,7 @@ fun YlowstoneApp(
                     isBuffering = isBuffering,
                     tracksVersion = tracksVersion,
                     isTvMode = isTvMode,
+                    isTvHardware = isTvHardware,
                     subtitleSession = subtitleSession,
                     onUpdateSubtitleSession = { nextSub -> subtitleSession = nextSub },
                     onTracksModified = { tracksVersion++ },
@@ -1468,7 +1479,7 @@ fun YlowstoneApp(
                     },
                     onMinimizeToFloat = {
                         saveCurrentVodProgress(refreshHome = true)
-                        playerMode = PlayerMode.FLOATING
+                        playerMode = if (allowPipAndFloat) PlayerMode.FLOATING else PlayerMode.NONE
                         isLandscapeFullscreen = false
                     },
                     onEnterSystemPip = onEnterSystemPip,
@@ -1490,7 +1501,7 @@ fun YlowstoneApp(
             }
 
             // Minimalist Floating Mini-Player
-            if (playerMode == PlayerMode.FLOATING && activeChannel != null && stage != AppStage.SPLASH) {
+            if (allowPipAndFloat && playerMode == PlayerMode.FLOATING && activeChannel != null && stage != AppStage.SPLASH) {
                 DraggableFloatingPlayer(
                     exoPlayer = sharedPlayer,
                     channel = activeChannel!!,
@@ -1535,7 +1546,7 @@ fun YlowstoneApp(
                     onUpdateSubtitleSession = { nextSub -> subtitleSession = nextSub },
                     onMinimizeToFloat = {
                         saveCurrentVodProgress(refreshHome = true)
-                        playerMode = PlayerMode.FLOATING
+                        playerMode = if (allowPipAndFloat) PlayerMode.FLOATING else PlayerMode.NONE
                         isLandscapeFullscreen = false
                     },
                     onTracksModified = { tracksVersion++ },

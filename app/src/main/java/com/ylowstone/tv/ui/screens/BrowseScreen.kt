@@ -48,6 +48,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.ylowstone.tv.R
 import com.ylowstone.tv.data.IptvRepository
+import com.ylowstone.tv.data.VodMetadata
+import com.ylowstone.tv.ui.components.VodDetailOverlay
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.*
 import com.ylowstone.tv.ui.components.BorderlessCategoryRow
@@ -139,6 +141,9 @@ fun BrowseScreen(
     var pinActionIsPortrait by remember { mutableStateOf(true) }
 
     var activeSeries by remember { mutableStateOf<ChannelItem?>(null) }
+    var activeVodDetail by remember { mutableStateOf<Pair<ChannelItem, List<ChannelItem>>?>(null) }
+    var vodDetailMeta by remember { mutableStateOf<VodMetadata?>(null) }
+    var loadingVodMeta by remember { mutableStateOf(false) }
     var episodes by remember { mutableStateOf<List<EpisodeItem>>(emptyList()) }
     var loadingEpisodes by remember { mutableStateOf(false) }
 
@@ -219,18 +224,31 @@ fun BrowseScreen(
         }
 
         fun openMediaItem(item: ChannelItem, queue: List<ChannelItem>) {
+            if (mediaType == MediaType.LIVE) {
+                onLaunchPlayer(item, queue, false)
+                return
+            }
             val isDirectEpisodeUrl = item.streamUrl.contains("/series/", ignoreCase = true) &&
                 (item.streamUrl.endsWith(".mp4", true) || item.streamUrl.endsWith(".mkv", true) || item.streamUrl.endsWith(".ts", true))
-            if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM && !isDirectEpisodeUrl) {
-                activeSeries = item
-                loadingEpisodes = true
+            if (isDirectEpisodeUrl) {
+                repo.db.markWatched(item.id)
+                onLaunchPlayer(item, queue, false)
+                return
+            }
+            activeVodDetail = item to queue
+            vodDetailMeta = null
+            loadingVodMeta = true
+            episodes = emptyList()
+            loadingEpisodes = (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM)
+            scope.launch {
+                vodDetailMeta = repo.fetchVodMetadata(playlist, item)
+                loadingVodMeta = false
+            }
+            if (mediaType == MediaType.SERIES && playlist.type == PlaylistType.XTREAM) {
                 scope.launch {
                     episodes = repo.fetchSeriesEpisodes(playlist, item.streamId)
                     loadingEpisodes = false
                 }
-            } else {
-                if (mediaType != MediaType.LIVE) repo.db.markWatched(item.id)
-                onLaunchPlayer(item, queue, false)
             }
         }
 
@@ -704,7 +722,6 @@ val targetIdx = channels.indexOfFirst { item ->
                                         }
                                     } else {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            Text("• LIVE", color = CinematicNoirTokens.LiveRed, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                             Text(ch.category, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
                                         }
                                     }
@@ -768,81 +785,28 @@ val targetIdx = channels.indexOfFirst { item ->
         )
     }
 
-    activeSeries?.let { series ->
-        AlertDialog(
-            onDismissRequest = { activeSeries = null },
-            containerColor = c.surface,
-            title = { Text(series.name, color = c.textPrimary, fontWeight = FontWeight.Bold) },
-            text = {
-                Box(modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 320.dp)) {
-                    if (loadingEpisodes) {
-                        CircularProgressIndicator(color = c.accent, modifier = Modifier.align(Alignment.Center))
-                    } else if (episodes.isEmpty()) {
-                        Text(strings.noEpisodes, color = c.textSecondary, modifier = Modifier.align(Alignment.Center))
-                    } else {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            items(episodes, key = { it.id }) { ep ->
-                                val epChannel = ChannelItem(
-                                    id = ep.id.toLongOrNull() ?: 0L,
-                                    playlistId = playlist.id,
-                                    streamId = ep.id,
-                                    name = "S${ep.season}E${ep.episodeNum} - ${ep.title}",
-                                    category = series.name,
-                                    logoUrl = series.logoUrl,
-                                    streamUrl = ep.streamUrl,
-                                    mediaType = MediaType.SERIES
-                                )
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .combinedClickable(
-                                            onClick = {
-                                                activeSeries = null
-                                                val epChannels = episodes.map {
-                                                    ChannelItem(
-                                                        id = it.id.toLongOrNull() ?: 0L,
-                                                        playlistId = playlist.id,
-                                                        streamId = it.id,
-                                                        name = "S${it.season}E${it.episodeNum} - ${it.title}",
-                                                        category = series.name,
-                                                        logoUrl = series.logoUrl,
-                                                        streamUrl = it.streamUrl,
-                                                        mediaType = MediaType.SERIES
-                                                    )
-                                                }
-                                                val picked = epChannels.first { it.streamUrl == ep.streamUrl }
-                                                onLaunchPlayer(picked, epChannels, false)
-                                            },
-                                            onLongClick = { onLongPressChannel(epChannel) }
-                                        )
-                                        .padding(horizontal = 8.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "S${ep.season} E${ep.episodeNum} • ${ep.title}",
-                                            color = c.textPrimary,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                        if (ep.plot.isNotBlank()) {
-                                            Text(ep.plot, color = c.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        }
-                                    }
-                                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = c.accent)
-                                }
-                            }
-                        }
-                    }
-                }
+    activeVodDetail?.let { (detailItem, detailQueue) ->
+        VodDetailOverlay(
+            item = detailItem,
+            playlist = playlist,
+            metadata = vodDetailMeta,
+            loadingMeta = loadingVodMeta,
+            episodes = episodes,
+            loadingEpisodes = loadingEpisodes,
+            strings = strings,
+            isTvMode = isTvMode,
+            onPlayMovie = {
+                activeVodDetail = null
+                repo.db.markWatched(detailItem.id)
+                onLaunchPlayer(detailItem, detailQueue, false)
             },
-            confirmButton = {
-                TextButton(onClick = { activeSeries = null }) {
-                    Text(strings.cancel, color = c.accent)
-                }
-            }
+            onPlayEpisode = { ep, epChannels ->
+                activeVodDetail = null
+                val picked = epChannels.firstOrNull { it.streamUrl == ep.streamUrl } ?: epChannels.first()
+                onLaunchPlayer(picked, epChannels, false)
+            },
+            onLongPressEpisode = { epCh -> onLongPressChannel(epCh) },
+            onDismiss = { activeVodDetail = null }
         )
     }
 }

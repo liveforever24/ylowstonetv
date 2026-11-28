@@ -27,6 +27,17 @@ import java.io.InputStreamReader
 import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 
+
+data class VodMetadata(
+    val title: String,
+    val plot: String = "",
+    val imdbRating: String = "",
+    val releaseYear: String = "",
+    val genre: String = "",
+    val duration: String = "",
+    val posterUrl: String = ""
+)
+
 class IptvRepository(private val context: Context, val db: DatabaseHelper) {
 
     val httpClient: OkHttpClient = OkHttpClient.Builder()
@@ -775,6 +786,103 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
             return resp.body?.string() ?: ""
         }
     }
+
+
+    private val vodMetaCache = java.util.concurrent.ConcurrentHashMap<String, VodMetadata>()
+
+    suspend fun fetchVodMetadata(profile: PlaylistProfile, item: ChannelItem): VodMetadata =
+        withContext(Dispatchers.IO) {
+            val cacheKey = "${profile.id}_${item.mediaType.name}_${item.streamId.ifBlank { item.streamUrl }}"
+            vodMetaCache[cacheKey]?.let { return@withContext it }
+
+            val fallback = VodMetadata(
+                title = item.name,
+                plot = "",
+                imdbRating = item.rating.trim(),
+                posterUrl = item.logoUrl
+            )
+            if (item.mediaType == MediaType.LIVE || profile.type != PlaylistType.XTREAM) {
+                vodMetaCache[cacheKey] = fallback
+                return@withContext fallback
+            }
+
+            var resolved = fallback
+            runCatching {
+                val base = profile.url.trim().trimEnd('/')
+                val u = Uri.encode(profile.username.trim())
+                val p = Uri.encode(profile.password.trim())
+
+                if (item.mediaType == MediaType.MOVIE && item.streamId.isNotBlank()) {
+                    val body = fetchJsonString(
+                        "$base/player_api.php?username=$u&password=$p&action=get_vod_info&vod_id=${item.streamId}",
+                        profile.userAgent
+                    )
+                    val root = JSONObject(body)
+                    val info = root.optJSONObject("info") ?: root
+                    val plot = info.optString("plot")
+                        .ifBlank { info.optString("description") }
+                        .ifBlank { info.optString("overview") }
+                    val rawRating = info.optString("rating")
+                        .ifBlank { info.optString("imdb_rating") }
+                        .ifBlank { item.rating }
+                    val cleanRating = rawRating.trim().takeIf { it.isNotEmpty() && it != "0" && it != "0.0" } ?: ""
+                    val year = info.optString("releasedate")
+                        .ifBlank { info.optString("releaseDate") }
+                        .ifBlank { info.optString("year") }
+                        .take(4)
+                    val genre = info.optString("genre")
+                    val dur = info.optString("duration")
+                    val poster = info.optString("movie_image")
+                        .ifBlank { info.optString("cover_big") }
+                        .ifBlank { item.logoUrl }
+                    resolved = VodMetadata(
+                        title = info.optString("name").ifBlank { item.name },
+                        plot = plot.trim(),
+                        imdbRating = cleanRating,
+                        releaseYear = year.trim(),
+                        genre = genre.trim(),
+                        duration = dur.trim(),
+                        posterUrl = poster.trim()
+                    )
+                } else if (item.mediaType == MediaType.SERIES) {
+                    val parent = db.findSeriesParent(profile.id, item.category.ifBlank { item.name }, item.name)
+                    val sid = parent?.streamId?.ifBlank { item.streamId } ?: item.streamId
+                    if (sid.isNotBlank()) {
+                        val body = fetchJsonString(
+                            "$base/player_api.php?username=$u&password=$p&action=get_series_info&series_id=$sid",
+                            profile.userAgent
+                        )
+                        val root = JSONObject(body)
+                        val info = root.optJSONObject("info")
+                        if (info != null) {
+                            val plot = info.optString("plot")
+                                .ifBlank { info.optString("description") }
+                            val rawRating = info.optString("rating")
+                                .ifBlank { info.optString("imdb_rating") }
+                                .ifBlank { parent?.rating ?: item.rating }
+                            val cleanRating = rawRating.trim().takeIf { it.isNotEmpty() && it != "0" && it != "0.0" } ?: ""
+                            val year = info.optString("releaseDate")
+                                .ifBlank { info.optString("releasedate") }
+                                .take(4)
+                            val genre = info.optString("genre")
+                            val poster = info.optString("cover")
+                                .ifBlank { parent?.logoUrl ?: item.logoUrl }
+                            resolved = VodMetadata(
+                                title = info.optString("name").ifBlank { parent?.name ?: item.name },
+                                plot = plot.trim(),
+                                imdbRating = cleanRating,
+                                releaseYear = year.trim(),
+                                genre = genre.trim(),
+                                duration = "",
+                                posterUrl = poster.trim()
+                            )
+                        }
+                    }
+                }
+            }
+            vodMetaCache[cacheKey] = resolved
+            resolved
+        }
 
     suspend fun fetchSeriesEpisodes(profile: PlaylistProfile, seriesId: String): List<EpisodeItem> =
         withContext(Dispatchers.IO) {

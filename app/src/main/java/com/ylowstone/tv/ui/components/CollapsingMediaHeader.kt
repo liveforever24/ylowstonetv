@@ -381,7 +381,7 @@ fun CinematicCollapsingListScreen(
                                     )
                                     if (showLiveMetaTag) {
                                         Text(
-                                            text = "• LIVE",
+                                            text = "",
                                             style = TextStyle(
                                                 fontFamily = YlowInterDisplay,
                                                 fontWeight = FontWeight.Bold,
@@ -598,7 +598,7 @@ fun FloatingMiniPlayerBar(
             ) {
                 if (channel.mediaType == MediaType.LIVE) {
                     Text(
-                        text = "• LIVE",
+                        text = "",
                         style = TextStyle(
                             fontFamily = YlowInterDisplay,
                             fontWeight = FontWeight.Bold,
@@ -743,7 +743,7 @@ fun BorderlessChannelRow(
                     )
                     if (active) {
                         Text(
-                            text = "• LIVE",
+                            text = "",
                             style = TextStyle(
                                 fontFamily = YlowInterDisplay,
                                 fontWeight = FontWeight.Bold,
