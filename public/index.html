@@ -1,7 +1,1411 @@
-<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>YlowstoneTV Auth</title></head>
-<body style="background:#000;color:#B5C8D6;font-family:sans-serif;display:flex;height:100vh;align-items:center;justify-content:center;margin:0;">
-  <h3>YlowstoneTV Auth Service • Online</h3>
+<!DOCTYPE html>
+<html lang="id" class="dark scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YlowstoneTV — Pemutar Media Matte Android &amp; TV</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      --bg-void: #050507;
+      --bg-surface: #0B0B0E;
+      --bg-elevated: #121216;
+      --border-hairline: rgba(255, 255, 255, 0.07);
+      --border-strong: rgba(255, 255, 255, 0.14);
+      --text-primary: #F4F4F5;
+      --text-secondary: #A1A1AA;
+      --text-muted: #63636B;
+      --accent: #E5A93B;
+      --accent-rgb: 229, 169, 59;
+      --accent-fg: #050507;
+    }
+
+    [data-theme="slate"] {
+      --accent: #60A5FA;
+      --accent-rgb: 96, 165, 250;
+      --accent-fg: #050507;
+    }
+
+    [data-theme="emerald"] {
+      --accent: #34D399;
+      --accent-rgb: 52, 211, 153;
+      --accent-fg: #050507;
+    }
+
+    [data-theme="crimson"] {
+      --accent: #F43F5E;
+      --accent-rgb: 244, 63, 94;
+      --accent-fg: #FFFFFF;
+    }
+
+    [data-theme="frost"] {
+      --accent: #E4E4E7;
+      --accent-rgb: 228, 228, 231;
+      --accent-fg: #050507;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-void);
+      color: var(--text-primary);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow-x: hidden;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    }
+
+    .hard-panel {
+      background: linear-gradient(180deg, rgba(18, 18, 22, 0.92) 0%, rgba(10, 10, 13, 0.98) 100%);
+      border: 1px solid var(--border-hairline);
+    }
+
+    .hairline-b { border-bottom: 1px solid var(--border-hairline); }
+    .hairline-t { border-top: 1px solid var(--border-hairline); }
+
+    .accent-text { color: var(--accent); }
+    .accent-bg { background-color: var(--accent); color: var(--accent-fg); }
+
+    .accent-soft-bg {
+      background-color: rgba(var(--accent-rgb), 0.1);
+      border: 1px solid rgba(var(--accent-rgb), 0.28);
+      color: var(--accent);
+    }
+
+    /* Architectural subtle grid background */
+    .grid-bg {
+      background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+      background-size: 64px 64px;
+    }
+
+    /* Collapsing sticky header */
+    #top-nav {
+      transition: background-color 0.24s ease, backdrop-filter 0.24s ease, border-color 0.24s ease;
+    }
+
+    #top-nav.scrolled {
+      background-color: rgba(5, 5, 7, 0.88);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-bottom-color: var(--border-hairline);
+    }
+
+    /* Matte Cover Cards & Dive-In */
+    .cover-tile {
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+      border: 1px solid var(--border-hairline);
+      transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s ease, box-shadow 0.34s ease;
+    }
+
+    .cover-tile img {
+      transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1), filter 0.45s ease;
+      filter: brightness(0.76) contrast(1.08) saturate(0.86);
+    }
+
+    .cover-tile:hover img {
+      transform: scale(1.05);
+      filter: brightness(0.88) contrast(1.1) saturate(0.96);
+    }
+
+    .cover-tile.active-cover {
+      border-color: rgba(var(--accent-rgb), 0.7);
+      box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.3), 0 24px 54px -24px rgba(var(--accent-rgb), 0.32);
+    }
+
+    .cover-tile.diving {
+      transform: scale(0.968);
+    }
+
+    .cover-gradient {
+      background: linear-gradient(180deg, rgba(5,5,7,0.16) 0%, rgba(5,5,7,0.42) 50%, rgba(5,5,7,0.95) 100%);
+    }
+
+    /* Borderless list rows */
+    .borderless-row {
+      transition: background-color 0.18s ease;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+    }
+
+    .borderless-row:last-child { border-bottom: none; }
+    .borderless-row:hover { background-color: rgba(255, 255, 255, 0.03); }
+
+    .ambient-glow {
+      background: radial-gradient(55% 45% at 50% 0%, rgba(var(--accent-rgb), 0.085) 0%, rgba(5, 5, 7, 0) 100%);
+      transition: background 0.5s ease;
+    }
+
+    .modal-backdrop {
+      background: rgba(3, 3, 5, 0.84);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+
+    .live-dot { animation: pulseDot 2.2s infinite ease-in-out; }
+  </style>
+</head>
+<body class="antialiased grid-bg selection:bg-white/15 selection:text-white">
+
+  <!-- Ambient Top Wash -->
+  <div class="ambient-glow pointer-events-none fixed inset-x-0 top-0 h-[480px] z-0"></div>
+
+  <!-- Collapsing Sticky Header -->
+  <header id="top-nav" class="fixed top-0 inset-x-0 z-40 border-b border-transparent py-3">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between gap-3">
+      <!-- Brand Mark -->
+      <a href="#hero" class="flex items-center gap-2.5 group focus:outline-none">
+        <div class="w-8 h-8 rounded-md hard-panel flex items-center justify-center">
+          <div class="w-2.5 h-2.5 accent-bg rotate-45 transition-transform duration-300 group-hover:rotate-90"></div>
+        </div>
+        <div class="flex items-baseline gap-1">
+          <span class="text-sm sm:text-base font-bold tracking-[0.06em] text-white">YLOWSTONE</span>
+          <span class="text-[11px] font-extrabold tracking-[0.16em] accent-text">TV</span>
+        </div>
+      </a>
+
+      <!-- Center Nav -->
+      <nav class="hidden md:flex items-center gap-7 text-xs font-medium tracking-wide uppercase text-zinc-400">
+        <a href="#hero" class="hover:text-white transition-colors" data-i18n="nav_home">Cover Home</a>
+        <a href="#architecture" class="hover:text-white transition-colors" data-i18n="nav_arch">Arsitektur</a>
+        <a href="#lab" class="hover:text-white transition-colors" data-i18n="nav_lab">Diagnostik</a>
+        <a href="#doctrine" class="hover:text-white transition-colors" data-i18n="nav_craft">Doktrin</a>
+        <a href="#download" class="hover:text-white transition-colors" data-i18n="nav_download">Rilis APK</a>
+      </nav>
+
+      <!-- Right Controls -->
+      <div class="flex items-center gap-2">
+        <!-- 5 Theme Palette Dots -->
+        <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hard-panel" role="group" aria-label="Palet Tema">
+          <button type="button" data-theme-pick="amber" title="Obsidian Amber" class="theme-dot w-3 h-3 rounded-full bg-[#E5A93B] transition-transform hover:scale-125 focus:outline-none"></button>
+          <button type="button" data-theme-pick="slate" title="Midnight Slate" class="theme-dot w-3 h-3 rounded-full bg-[#60A5FA] transition-transform hover:scale-125 focus:outline-none"></button>
+          <button type="button" data-theme-pick="emerald" title="Emerald Dusk" class="theme-dot w-3 h-3 rounded-full bg-[#34D399] transition-transform hover:scale-125 focus:outline-none"></button>
+          <button type="button" data-theme-pick="crimson" title="Crimson Velvet" class="theme-dot w-3 h-3 rounded-full bg-[#F43F5E] transition-transform hover:scale-125 focus:outline-none"></button>
+          <button type="button" data-theme-pick="frost" title="Monochrome Frost" class="theme-dot w-3 h-3 rounded-full bg-[#E4E4E7] transition-transform hover:scale-125 focus:outline-none"></button>
+        </div>
+
+        <!-- ID / EN Toggle -->
+        <button id="lang-toggle" type="button" class="px-2.5 py-1.5 rounded-md hard-panel text-[11px] font-mono font-semibold tracking-wider text-zinc-300 hover:text-white transition-colors">
+          ID · EN
+        </button>
+
+        <!-- Settings Trigger -->
+        <button id="open-settings" type="button" aria-label="Pengaturan" class="w-8 h-8 rounded-md hard-panel flex items-center justify-center text-zinc-300 hover:text-white transition-colors">
+          <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="relative z-10 pt-24 pb-24">
+
+    <!-- HERO: ZERO-SCROLL MATTE COVER HOME -->
+    <section id="hero" class="max-w-6xl mx-auto px-4 sm:px-6 pt-4 pb-16">
+      <!-- Top Telemetry Strip -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-5 mb-7 hairline-b text-[11px] font-mono text-zinc-500 uppercase tracking-wider">
+        <div class="flex items-center gap-2.5">
+          <span class="w-1.5 h-1.5 rounded-full accent-bg live-dot"></span>
+          <span class="text-zinc-300">YLOWSTONETV</span>
+          <span>//</span>
+          <span class="accent-text">v2.4.5 STABIL</span>
+          <span class="hidden sm:inline">//</span>
+          <span class="hidden sm:inline">COM.YLOWSTONE.TV</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span>GITHUB: LIVEFOREVER24/YLOWSTONETV</span>
+          <span class="hidden sm:inline text-zinc-700">|</span>
+          <span class="hidden sm:inline text-zinc-400">VERCEL EDGE</span>
+        </div>
+      </div>
+
+      <!-- Headline + Mode Switcher -->
+      <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-9">
+        <div class="max-w-2xl">
+          <h1 class="text-3xl sm:text-5xl font-bold tracking-tight text-white leading-[1.08] mb-4" data-i18n="hero_title">
+            Diam di permukaan. Brutal di mesin.
+          </h1>
+          <p class="text-sm sm:text-base text-zinc-400 leading-relaxed max-w-xl mb-4" data-i18n="hero_sub">
+            Pemutar IPTV Android dan TV tanpa kompromi. Tidak menjual janji manis, tidak menumpuk sampah visual. Hanya aliran stabil dan kendali penuh.
+          </p>
+          <p class="text-xs font-mono text-zinc-500 border-l-2 border-white/15 pl-3 italic" data-i18n="hero_quote">
+            “Pembohong terhormat selalu menjanjikan fitur tak terbatas. YlowstoneTV hanya memastikan layar tidak pernah mati.”
+          </p>
+        </div>
+
+        <!-- Primary Action + Mode Toggle -->
+        <div class="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end gap-3 shrink-0">
+          <button id="hero-direct-download" type="button" class="px-5 py-2.5 rounded-md accent-bg font-semibold text-xs tracking-wide uppercase flex items-center gap-2 transition-transform active:scale-95">
+            <i data-lucide="arrow-down-to-line" class="w-3.5 h-3.5"></i>
+            <span data-i18n="hero_dl_btn">Unduh APK v2.4.5</span>
+          </button>
+
+          <div class="inline-flex p-0.5 rounded-md hard-panel">
+            <button id="mode-tv" type="button" class="mode-btn px-3 py-1.5 rounded text-[11px] font-mono font-semibold flex items-center gap-1.5 transition-all accent-bg">
+              <i data-lucide="tv" class="w-3.5 h-3.5"></i>
+              <span data-i18n="mode_tv">TV 16:9</span>
+            </button>
+            <button id="mode-phone" type="button" class="mode-btn px-3 py-1.5 rounded text-[11px] font-mono font-semibold flex items-center gap-1.5 transition-all text-zinc-400 hover:text-white">
+              <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+              <span data-i18n="mode_phone">HP 9:16</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Cover Home Stage -->
+      <div id="cover-stage-wrapper" class="transition-all duration-500">
+        <!-- 3 Matte Covers Grid -->
+        <div id="cover-grid" class="grid grid-cols-1 md:grid-cols-3 gap-3.5 transition-all duration-500">
+          <!-- Cover 1: Live TV -->
+          <div class="cover-tile active-cover rounded-lg aspect-[16/10] md:aspect-[4/3]" data-category="live" tabindex="0" role="button">
+            <img src="/assets/cover-live.jpg" alt="Sampul Live TV YlowstoneTV" class="w-full h-full object-cover" />
+            <div class="cover-gradient absolute inset-0 flex flex-col justify-between p-5">
+              <div class="flex items-center justify-between">
+                <span class="px-2 py-0.5 rounded bg-black/65 text-[10px] font-mono font-semibold tracking-widest text-zinc-300 border border-white/10">01 // LIVE</span>
+                <span class="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-zinc-200 bg-black/55 px-2 py-0.5 rounded">
+                  <span class="w-1.5 h-1.5 rounded-full accent-bg live-dot"></span>
+                  <span data-i18n="cover_live_tag">Siaran</span>
+                </span>
+              </div>
+              <div>
+                <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-white mb-1" data-i18n="cover_live_title">Live TV</h2>
+                <p class="text-xs text-zinc-400" data-i18n="cover_live_desc">Zapping instan · Penstabil .ts &amp; M3U8</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cover 2: Movies -->
+          <div class="cover-tile rounded-lg aspect-[16/10] md:aspect-[4/3]" data-category="movies" tabindex="0" role="button">
+            <img src="/assets/cover-movies.jpg" alt="Sampul Film YlowstoneTV" class="w-full h-full object-cover" />
+            <div class="cover-gradient absolute inset-0 flex flex-col justify-between p-5">
+              <div class="flex items-center justify-between">
+                <span class="px-2 py-0.5 rounded bg-black/65 text-[10px] font-mono font-semibold tracking-widest text-zinc-300 border border-white/10">02 // VOD</span>
+                <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-300 bg-black/55 px-2 py-0.5 rounded" data-i18n="cover_movies_tag">Film &amp; SAF</span>
+              </div>
+              <div>
+                <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-white mb-1" data-i18n="cover_movies_title">Film</h2>
+                <p class="text-xs text-zinc-400" data-i18n="cover_movies_desc">Lanjut tonton akurat · .mp4, .mkv, SAF</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cover 3: Series -->
+          <div class="cover-tile rounded-lg aspect-[16/10] md:aspect-[4/3]" data-category="series" tabindex="0" role="button">
+            <img src="/assets/cover-series.jpg" alt="Sampul Serial YlowstoneTV" class="w-full h-full object-cover" />
+            <div class="cover-gradient absolute inset-0 flex flex-col justify-between p-5">
+              <div class="flex items-center justify-between">
+                <span class="px-2 py-0.5 rounded bg-black/65 text-[10px] font-mono font-semibold tracking-widest text-zinc-300 border border-white/10">03 // EP</span>
+                <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-300 bg-black/55 px-2 py-0.5 rounded" data-i18n="cover_series_tag">Auto-Sub</span>
+              </div>
+              <div>
+                <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-white mb-1" data-i18n="cover_series_title">Serial</h2>
+                <p class="text-xs text-zinc-400" data-i18n="cover_series_desc">Ekstrak judul SxxExx · Skip Intro MM:SS</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dive-In Borderless List Preview -->
+        <div id="dive-panel" class="mt-4 hard-panel rounded-lg overflow-hidden">
+          <div class="px-5 py-3.5 hairline-b flex flex-wrap items-center justify-between gap-3 bg-white/[0.012]">
+            <div class="flex items-center gap-3">
+              <span class="w-1.5 h-1.5 rounded-full accent-bg"></span>
+              <h3 id="dive-title" class="text-xs sm:text-sm font-semibold text-white tracking-tight">Live TV — Daftar Tanpa Garis</h3>
+              <span id="dive-count" class="text-[11px] font-mono text-zinc-500">04 ENTRI</span>
+            </div>
+            <div class="flex items-center gap-2 text-[11px] font-mono text-zinc-400">
+              <i data-lucide="shield-check" class="w-3.5 h-3.5 accent-text"></i>
+              <span data-i18n="tap_guard_note">STRICT TAP GUARD &gt;12DP</span>
+            </div>
+          </div>
+          <div id="dive-list" class="divide-y divide-white/[0.04]"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HARD MODE ARCHITECTURE MATRIX -->
+    <section id="architecture" class="max-w-6xl mx-auto px-4 sm:px-6 py-14 hairline-t">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+        <div>
+          <p class="text-[11px] font-mono tracking-[0.18em] uppercase accent-text mb-2" data-i18n="arch_kicker">ARSITEKTUR SISTEM</p>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-white" data-i18n="arch_title">
+            Dirancang seperti perangkat keras, bukan sekadar tampilan.
+          </h2>
+        </div>
+        <p class="text-xs font-mono text-zinc-500" data-i18n="arch_meta">JETPACK COMPOSE · MEDIA3 · TERMUX CI</p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-white/[0.07] border border-white/[0.07] rounded-lg overflow-hidden">
+        <div class="bg-[#08080B] p-5">
+          <p class="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-3">SYS.01 // UI</p>
+          <h3 class="text-sm font-semibold text-white mb-2" data-i18n="spec_1_t">Zero-Scroll Cover Home</h3>
+          <p class="text-xs text-zinc-400 leading-relaxed" data-i18n="spec_1_d">
+            Tiga sampul matte presisi untuk HP 9:16 dan TV 16:9. Transisi Dive-In langsung membuka daftar tanpa batas.
+          </p>
+        </div>
+        <div class="bg-[#08080B] p-5">
+          <p class="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-3">SYS.02 // CORE</p>
+          <h3 class="text-sm font-semibold text-white mb-2">UniversalStreamStabilizer</h3>
+          <p class="text-xs text-zinc-400 leading-relaxed" data-i18n="spec_2_d">
+            Mesin v1.2 di atas Media3/ExoPlayer. Menangani Xtream, M3U/M3U8, Local SAF, .ts, .mp4/.mkv, hingga .mpd.
+          </p>
+        </div>
+        <div class="bg-[#08080B] p-5">
+          <p class="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-3">SYS.03 // INPUT</p>
+          <h3 class="text-sm font-semibold text-white mb-2" data-i18n="spec_3_t">Kontrol Tanpa Salah Tekan</h3>
+          <p class="text-xs text-zinc-400 leading-relaxed" data-i18n="spec_3_d">
+            Strict Tap Guard &gt;12dp pada layar sentuh dan fokus D-Pad penuh di Android TV. Collapsing header tetap tenang saat digulir.
+          </p>
+        </div>
+        <div class="bg-[#08080B] p-5">
+          <p class="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-3">SYS.04 // DEPLOY</p>
+          <h3 class="text-sm font-semibold text-white mb-2" data-i18n="spec_4_t">Alur Rilis Terverifikasi</h3>
+          <p class="text-xs text-zinc-400 leading-relaxed" data-i18n="spec_4_d">
+            Kompilasi otomatis lewat GitHub Actions pada repo liveforever24/ylowstonetv, didistribusikan langsung melalui Vercel.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- INTERACTIVE DIAGNOSTICS LAB -->
+    <section id="lab" class="max-w-6xl mx-auto px-4 sm:px-6 py-14 hairline-t">
+      <div class="mb-9">
+        <p class="text-[11px] font-mono tracking-[0.18em] uppercase accent-text mb-2" data-i18n="lab_kicker">DIAGNOSTIK MESIN</p>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2" data-i18n="lab_title">
+          Uji protokol sebelum percaya.
+        </h2>
+        <p class="text-sm text-zinc-400 max-w-2xl" data-i18n="lab_sub">
+          Simulasi langsung profil penstabil aliran, ekstraktor judul auto-subtitle sebelum pola SxxExx, dan pemotong intro presisi MM:SS.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <!-- Tool 1: Universal Stream Stabilizer v1.2 + M3U Auto-Subtitle -->
+        <div class="hard-panel rounded-lg p-5 sm:p-6 flex flex-col justify-between gap-6">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-5">
+              <div>
+                <p class="text-[10px] font-mono uppercase tracking-widest text-zinc-500">ENGINE // V1.2</p>
+                <h3 class="text-base font-semibold text-white">UniversalStreamStabilizer</h3>
+              </div>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded accent-soft-bg">ONLINE</span>
+            </div>
+
+            <!-- Format Matrix -->
+            <div class="flex flex-wrap gap-1.5 mb-5" id="format-pills">
+              <button type="button" data-format="m3u8" class="fmt-btn px-2.5 py-1.5 rounded text-[11px] font-mono font-semibold transition-all accent-bg">M3U / M3U8</button>
+              <button type="button" data-format="xtream" class="fmt-btn px-2.5 py-1.5 rounded text-[11px] font-mono font-semibold transition-all bg-white/[0.04] text-zinc-400 hover:text-white">XTREAM</button>
+              <button type="button" data-format="saf" class="fmt-btn px-2.5 py-1.5 rounded text-[11px] font-mono font-semibold transition-all bg-white/[0.04] text-zinc-400 hover:text-white">LOCAL SAF</button>
+              <button type="button" data-format="ts" class="fmt-btn px-2.5 py-1.5 rounded text-[11px] font-mono font-semibold transition-all bg-white/[0.04] text-zinc-400 hover:text-white">.TS LIVE</button>
+              <button type="button" data-format="mkv" class="fmt-btn px-2.5 py-1.5 rounded text-[11px] font-mono font-semibold transition-all bg-white/[0.04] text-zinc-400 hover:text-white">.MP4 / .MKV</button>
+              <button type="button" data-format="mpd" class="fmt-btn px-2.5 py-1.5 rounded text-[11px] font-mono font-semibold transition-all bg-white/[0.04] text-zinc-400 hover:text-white">.MPD DASH</button>
+            </div>
+
+            <!-- Telemetry Output -->
+            <div class="rounded-md bg-black/60 border border-white/[0.06] p-4 space-y-2.5 text-xs">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-zinc-500 font-mono text-[11px]" data-i18n="stab_profile_lbl">BUFFER</span>
+                <span id="stab-buffer" class="font-mono text-zinc-100">Adaptive 4s / 18s (HLS)</span>
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-zinc-500 font-mono text-[11px]" data-i18n="stab_retry_lbl">RECOVERY</span>
+                <span id="stab-retry" class="font-mono accent-text">Auto-Reconnect 3x Backoff</span>
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-zinc-500 font-mono text-[11px]" data-i18n="stab_resume_lbl">VOD RESUME</span>
+                <span id="stab-resume" class="font-mono text-zinc-300">Aktif untuk VOD M3U8</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- M3U Auto-Subtitle Title Extractor -->
+          <div class="pt-4 hairline-t">
+            <label for="m3u-title-input" class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-2" data-i18n="sub_extract_lbl">
+              Ekstraktor Judul Auto-Subtitle (sebelum SxxExx)
+            </label>
+            <input id="m3u-title-input" type="text" value="YlowstoneTV.Archive.S02E05.1080p.WEB.mkv" class="w-full px-3.5 py-2.5 rounded-md bg-black/65 border border-white/10 text-xs font-mono text-zinc-100 focus:outline-none focus:border-white/30" />
+            <div class="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span class="text-zinc-500" data-i18n="sub_result_lbl">Hasil ekstraksi bersih:</span>
+              <span id="m3u-extracted-out" class="px-2.5 py-1 rounded accent-soft-bg font-mono font-semibold">YlowstoneTV Archive</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tool 2: Custom MM:SS Skip Intro HUD -->
+        <div class="hard-panel rounded-lg p-5 sm:p-6 flex flex-col justify-between gap-6">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-5">
+              <div>
+                <p class="text-[10px] font-mono uppercase tracking-widest text-zinc-500">HUD // PRECISION</p>
+                <h3 class="text-base font-semibold text-white" data-i18n="skip_card_title">Skip Intro Kustom MM:SS</h3>
+              </div>
+              <span id="player-status-pill" class="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 text-zinc-300 border border-white/10">PLAYING</span>
+            </div>
+
+            <!-- Matte Mini Player -->
+            <div class="relative rounded-md overflow-hidden border border-white/10 aspect-[16/9] bg-black mb-4">
+              <img src="/assets/cover-series.jpg" alt="Pratinjau Pemutar YlowstoneTV" class="w-full h-full object-cover opacity-70" />
+              <div class="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-black/45 flex flex-col justify-between p-4">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-medium text-white/95 truncate">YlowstoneTV Original · S01E03</span>
+                  <span class="font-mono text-[10px] text-zinc-300 bg-black/60 px-2 py-0.5 rounded border border-white/10">1080P · HEVC</span>
+                </div>
+
+                <div class="flex justify-end">
+                  <button id="btn-skip-intro" type="button" class="px-3.5 py-1.5 rounded accent-bg text-xs font-bold tracking-tight transition-transform active:scale-95 flex items-center gap-1.5">
+                    <span data-i18n="btn_skip_label">Lewati Intro</span>
+                    <span id="skip-badge-time" class="font-mono">+01:25</span>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+
+                <div>
+                  <div class="w-full h-1 rounded-full bg-white/20 overflow-hidden mb-2 cursor-pointer" id="timeline-track">
+                    <div id="timeline-fill" class="h-full accent-bg transition-all duration-300" style="width: 14%;"></div>
+                  </div>
+                  <div class="flex items-center justify-between text-[11px] font-mono text-zinc-300">
+                    <div class="flex items-center gap-3">
+                      <button id="btn-play-pause" type="button" class="hover:text-white transition-colors flex items-center gap-1.5">
+                        <i id="play-icon" data-lucide="pause" class="w-3.5 h-3.5"></i>
+                        <span id="current-time-txt">00:18</span>
+                      </button>
+                      <button id="btn-reset-player" type="button" class="text-zinc-500 hover:text-white transition-colors" title="Ulang dari 00:00">
+                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                      </button>
+                    </div>
+                    <span>48:00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- MM:SS Controls -->
+          <div class="pt-4 hairline-t flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p class="text-xs font-semibold text-zinc-200" data-i18n="skip_custom_lbl">Durasi Lompat (MM:SS)</p>
+              <p class="text-[11px] text-zinc-500" data-i18n="skip_custom_hint">Tentukan menit dan detik secara presisi</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <input id="skip-min" type="number" min="0" max="5" value="1" aria-label="Menit" class="w-14 px-2 py-1.5 rounded bg-black/65 border border-white/10 text-center text-xs font-mono text-white focus:outline-none focus:border-white/30" />
+              <span class="text-zinc-600 font-mono font-bold">:</span>
+              <input id="skip-sec" type="number" min="0" max="59" value="25" aria-label="Detik" class="w-14 px-2 py-1.5 rounded bg-black/65 border border-white/10 text-center text-xs font-mono text-white focus:outline-none focus:border-white/30" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DOCTRINE: COLD, DIGNIFIED, DRY PHILOSOPHICAL WIT -->
+    <section id="doctrine" class="max-w-6xl mx-auto px-4 sm:px-6 py-14 hairline-t">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div class="lg:col-span-5">
+          <p class="text-[11px] font-mono tracking-[0.18em] uppercase accent-text mb-2" data-i18n="craft_kicker">DOKTRIN // YLOWSTONETV</p>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-white leading-tight mb-4" data-i18n="craft_title">
+            Pak tua sialan pernah berkata: alat yang benar tidak perlu berteriak.
+          </h2>
+          <p class="text-sm text-zinc-400 leading-relaxed" data-i18n="craft_body">
+            Terlalu banyak aplikasi yang sibuk memamerkan tombol tak berguna, lalu tumbang saat benar-benar dibutuhkan. YlowstoneTV dibangun dengan kepala dingin: buang semua yang mengganggu, perkuat semua yang menopang gambar.
+          </p>
+        </div>
+
+        <div class="lg:col-span-7 divide-y divide-white/[0.06] hard-panel rounded-lg px-6">
+          <div class="py-5 flex gap-4">
+            <span class="text-xs font-mono accent-text pt-0.5">01</span>
+            <div>
+              <h3 class="text-sm font-semibold text-white mb-1" data-i18n="prin_1_t">Hening secara visual</h3>
+              <p class="text-xs sm:text-sm text-zinc-400 leading-relaxed" data-i18n="prin_1_d">
+                Tiga sampul matte tanpa scroll dan daftar tanpa garis kotak. Layar ada untuk tontonan, bukan untuk ego perancangnya.
+              </p>
+            </div>
+          </div>
+          <div class="py-5 flex gap-4">
+            <span class="text-xs font-mono accent-text pt-0.5">02</span>
+            <div>
+              <h3 class="text-sm font-semibold text-white mb-1" data-i18n="prin_2_t">Tegas pada detail sepele</h3>
+              <p class="text-xs sm:text-sm text-zinc-400 leading-relaxed" data-i18n="prin_2_d">
+                Strict Tap Guard &gt;12dp agar jari tak pernah salah perintah, 5 palet dinamis yang menyatu, dan tombol keluar merah bersih di dasar Pengaturan.
+              </p>
+            </div>
+          </div>
+          <div class="py-5 flex gap-4">
+            <span class="text-xs font-mono accent-text pt-0.5">03</span>
+            <div>
+              <h3 class="text-sm font-semibold text-white mb-1" data-i18n="prin_3_t">Satu identitas: YlowstoneTV</h3>
+              <p class="text-xs sm:text-sm text-zinc-400 leading-relaxed" data-i18n="prin_3_d">
+                Tidak menumpang nama besar siapa pun. Setiap baris antarmuka, palet, dan dokumentasi berdiri dengan nama YlowstoneTV seutuhnya.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DIRECT DOWNLOAD & GITHUB / VERCEL PIPELINE -->
+    <section id="download" class="max-w-6xl mx-auto px-4 sm:px-6 py-14 hairline-t">
+      <div class="hard-panel rounded-lg p-6 sm:p-9 relative overflow-hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div class="lg:col-span-7">
+            <div class="flex flex-wrap items-center gap-2 text-[11px] font-mono text-zinc-400 mb-3">
+              <span class="px-2 py-0.5 rounded accent-soft-bg">v2.4.5</span>
+              <span>//</span>
+              <span data-i18n="dl_compat">UNIVERSAL APK · ANDROID &amp; TV</span>
+            </div>
+            <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-3" data-i18n="dl_title">
+              Ambil berkasnya. Pasang. Selesai.
+            </h2>
+            <p class="text-sm text-zinc-400 leading-relaxed mb-6 max-w-xl" data-i18n="dl_sub">
+              Unduhan langsung terhubung ke rilis resmi GitHub <span class="font-mono text-zinc-300">liveforever24/ylowstonetv</span> melalui jalur distribusi Vercel <span class="font-mono text-zinc-300">/api/download-apk</span>.
+            </p>
+
+            <!-- Direct Download Action Row -->
+            <div class="flex flex-wrap items-center gap-3 mb-5">
+              <button id="btn-direct-download" type="button" class="px-5 py-3 rounded-md accent-bg font-semibold text-xs uppercase tracking-wider flex items-center gap-2 transition-transform active:scale-95">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                <span data-i18n="dl_cta">Unduh Langsung YlowstoneTV.apk</span>
+              </button>
+              <a id="github-release-link" href="https://github.com/liveforever24/ylowstonetv/releases/latest" target="_blank" rel="noopener noreferrer" class="px-4 py-3 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-zinc-200 font-mono text-xs flex items-center gap-2 transition-colors">
+                <i data-lucide="git-branch" class="w-3.5 h-3.5"></i>
+                <span>GitHub Releases</span>
+              </a>
+              <button id="btn-check-update-inline" type="button" class="px-3.5 py-3 rounded-md bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 text-zinc-400 hover:text-white font-mono text-xs flex items-center gap-1.5 transition-colors">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                <span data-i18n="dl_check">Cek Rilis</span>
+              </button>
+            </div>
+
+            <!-- Live Download Status Bar (Appears when Direct Download is clicked) -->
+            <div id="dl-progress-box" class="hidden rounded-md bg-black/70 border border-white/10 p-3.5 mb-5">
+              <div class="flex items-center justify-between text-[11px] font-mono mb-2">
+                <span id="dl-status-label" class="text-zinc-200">Menghubungkan ke /api/download-apk...</span>
+                <span id="dl-status-pct" class="accent-text">0%</span>
+              </div>
+              <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                <div id="dl-status-bar" class="h-full accent-bg transition-all duration-300" style="width: 0%;"></div>
+              </div>
+              <p id="dl-status-sub" class="text-[11px] text-zinc-500 mt-2 font-mono"></p>
+            </div>
+
+            <!-- Pipeline Connection Specs -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] font-mono">
+              <div class="px-3 py-2 rounded bg-black/50 border border-white/[0.06]">
+                <span class="text-zinc-500 block text-[10px]">PACKAGE ID</span>
+                <span class="text-zinc-200">com.ylowstone.tv</span>
+              </div>
+              <div class="px-3 py-2 rounded bg-black/50 border border-white/[0.06]">
+                <span class="text-zinc-500 block text-[10px]">VERCEL ROUTE</span>
+                <span class="accent-text">/api/download-apk</span>
+              </div>
+              <div class="px-3 py-2 rounded bg-black/50 border border-white/[0.06]">
+                <span class="text-zinc-500 block text-[10px]">SOURCE REPO</span>
+                <span class="text-zinc-200">liveforever24/ylowstonetv</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Install Steps Switcher -->
+          <div class="lg:col-span-5 rounded-md bg-black/55 border border-white/[0.06] p-5">
+            <div class="flex items-center justify-between gap-2 mb-4 pb-3 hairline-b">
+              <span class="text-[11px] font-mono uppercase tracking-wider text-zinc-300" data-i18n="inst_title">Prosedur Pemasangan</span>
+              <div class="inline-flex p-0.5 rounded bg-white/5">
+                <button type="button" data-inst-tab="phone" class="inst-tab px-2.5 py-1 rounded text-[11px] font-mono font-semibold accent-bg">HP</button>
+                <button type="button" data-inst-tab="tv" class="inst-tab px-2.5 py-1 rounded text-[11px] font-mono font-semibold text-zinc-400 hover:text-white">TV</button>
+              </div>
+            </div>
+            <ol id="inst-steps" class="space-y-3 text-xs text-zinc-300 list-decimal list-inside leading-relaxed"></ol>
+            <div class="mt-4 pt-3 hairline-t flex items-center justify-between">
+              <span class="text-[10px] font-mono text-zinc-500">INTEGRASI VERCEL + GITHUB</span>
+              <button id="btn-copy-pkg" type="button" class="text-[11px] font-mono accent-text hover:underline flex items-center gap-1">
+                <i data-lucide="copy" class="w-3 h-3"></i>
+                <span data-i18n="dl_copy_btn">Salin ID Paket</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Minimal Architectural Footer -->
+  <footer class="hairline-t py-7 relative z-10">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] font-mono text-zinc-500">
+      <div class="flex items-center gap-2">
+        <span class="font-bold text-zinc-200 tracking-wider">YLOWSTONE<span class="accent-text">TV</span></span>
+        <span>//</span>
+        <span data-i18n="footer_note">Dirakit dengan kepala dingin · Android &amp; TV</span>
+      </div>
+      <div class="flex items-center gap-5">
+        <button id="footer-settings-btn" type="button" class="hover:text-zinc-200 transition-colors" data-i18n="footer_settings">Pengaturan</button>
+        <button id="footer-validator-btn" type="button" class="hover:text-zinc-200 transition-colors" data-i18n="footer_validator">Cek Playlist</button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Bottom-Right '+' FAB (YlowstoneTV Playlist Manager Signature) -->
+  <button id="fab-playlist" type="button" aria-label="Uji Format Playlist" class="fixed bottom-6 right-6 z-40 p-3.5 rounded-lg accent-bg shadow-2xl transition-transform hover:scale-105 active:scale-95 flex items-center justify-center">
+    <i data-lucide="plus" class="w-5 h-5 stroke-[2.5]"></i>
+  </button>
+
+  <!-- SETTINGS MODAL -->
+  <div id="settings-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 modal-backdrop">
+    <div class="hard-panel rounded-lg w-full max-w-md overflow-hidden shadow-2xl">
+      <div class="px-6 py-4 hairline-b flex items-center justify-between">
+        <h3 class="text-sm font-mono uppercase tracking-wider font-bold text-white" data-i18n="set_title">Pengaturan YlowstoneTV</h3>
+        <button id="close-settings" type="button" class="w-8 h-8 rounded hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-6">
+        <!-- 5 Theme Palettes -->
+        <div>
+          <p class="text-xs font-mono uppercase tracking-wider text-zinc-400 mb-3" data-i18n="set_theme">Palet Tema Dinamis (5)</p>
+          <div class="grid grid-cols-5 gap-2" id="modal-theme-grid">
+            <button type="button" data-theme-pick="amber" class="modal-theme-btn flex flex-col items-center gap-1.5 p-2 rounded bg-white/[0.04] hover:bg-white/[0.08] transition-colors">
+              <span class="w-5 h-5 rounded-full bg-[#E5A93B]"></span>
+              <span class="text-[10px] font-mono text-zinc-300">Amber</span>
+            </button>
+            <button type="button" data-theme-pick="slate" class="modal-theme-btn flex flex-col items-center gap-1.5 p-2 rounded bg-white/[0.04] hover:bg-white/[0.08] transition-colors">
+              <span class="w-5 h-5 rounded-full bg-[#60A5FA]"></span>
+              <span class="text-[10px] font-mono text-zinc-300">Slate</span>
+            </button>
+            <button type="button" data-theme-pick="emerald" class="modal-theme-btn flex flex-col items-center gap-1.5 p-2 rounded bg-white/[0.04] hover:bg-white/[0.08] transition-colors">
+              <span class="w-5 h-5 rounded-full bg-[#34D399]"></span>
+              <span class="text-[10px] font-mono text-zinc-300">Dusk</span>
+            </button>
+            <button type="button" data-theme-pick="crimson" class="modal-theme-btn flex flex-col items-center gap-1.5 p-2 rounded bg-white/[0.04] hover:bg-white/[0.08] transition-colors">
+              <span class="w-5 h-5 rounded-full bg-[#F43F5E]"></span>
+              <span class="text-[10px] font-mono text-zinc-300">Velvet</span>
+            </button>
+            <button type="button" data-theme-pick="frost" class="modal-theme-btn flex flex-col items-center gap-1.5 p-2 rounded bg-white/[0.04] hover:bg-white/[0.08] transition-colors">
+              <span class="w-5 h-5 rounded-full bg-[#E4E4E7]"></span>
+              <span class="text-[10px] font-mono text-zinc-300">Frost</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Language Switch -->
+        <div class="flex items-center justify-between pt-4 hairline-t">
+          <div>
+            <p class="text-xs font-semibold text-zinc-200" data-i18n="set_lang">Bahasa Antarmuka</p>
+            <p class="text-[11px] font-mono text-zinc-500">ID / EN</p>
+          </div>
+          <div class="inline-flex p-0.5 rounded bg-white/5">
+            <button type="button" data-lang-pick="id" class="lang-pick-btn px-3 py-1 rounded text-xs font-mono font-semibold accent-bg">ID</button>
+            <button type="button" data-lang-pick="en" class="lang-pick-btn px-3 py-1 rounded text-xs font-mono font-semibold text-zinc-400 hover:text-white">EN</button>
+          </div>
+        </div>
+
+        <!-- Check Updates -->
+        <div class="flex items-center justify-between pt-4 hairline-t">
+          <div>
+            <p class="text-xs font-semibold text-zinc-200" data-i18n="set_upd">Pembaruan Rilis</p>
+            <p id="update-status-text" class="text-[11px] font-mono text-zinc-500">v2.4.5 (STABIL)</p>
+          </div>
+          <button id="modal-check-update" type="button" class="px-3.5 py-1.5 rounded bg-white/[0.05] hover:bg-white/10 border border-white/10 text-xs font-mono text-zinc-200 transition-colors" data-i18n="set_upd_btn">
+            Periksa
+          </button>
+        </div>
+
+        <!-- Red Bottom Action -->
+        <div class="pt-4 hairline-t">
+          <button id="btn-reset-prefs" type="button" class="w-full py-2.5 rounded bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 text-xs font-mono uppercase tracking-wider font-semibold transition-colors" data-i18n="set_reset">
+            Reset Preferensi
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLAYLIST VALIDATOR MODAL -->
+  <div id="playlist-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 modal-backdrop">
+    <div class="hard-panel rounded-lg w-full max-w-md overflow-hidden shadow-2xl">
+      <div class="px-6 py-4 hairline-b flex items-center justify-between">
+        <h3 class="text-sm font-mono uppercase tracking-wider font-bold text-white" data-i18n="pl_title">Validasi Format Playlist</h3>
+        <button id="close-playlist" type="button" class="w-8 h-8 rounded hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="p-6 space-y-4">
+        <p class="text-xs text-zinc-400 leading-relaxed" data-i18n="pl_desc">
+          Masukkan tautan M3U/M3U8 atau host Xtream untuk memeriksa kompatibilitas lokal terhadap UniversalStreamStabilizer v1.2.
+        </p>
+        <input id="pl-input" type="text" placeholder="https://stream.ylowstonetv.local/playlist.m3u8" class="w-full px-3.5 py-2.5 rounded bg-black/65 border border-white/10 text-xs font-mono text-zinc-100 focus:outline-none focus:border-white/30" />
+        <div class="flex gap-2">
+          <button id="pl-validate-btn" type="button" class="flex-1 py-2.5 rounded accent-bg text-xs font-mono uppercase font-bold transition-transform active:scale-95" data-i18n="pl_btn">Periksa</button>
+          <button id="pl-sample-btn" type="button" class="px-3.5 py-2.5 rounded bg-white/5 hover:bg-white/10 text-xs font-mono text-zinc-300" data-i18n="pl_sample">Contoh</button>
+        </div>
+        <div id="pl-result" class="hidden rounded bg-black/65 border border-white/10 p-3.5 text-xs space-y-1"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-md bg-zinc-950/95 border border-white/15 text-xs font-mono text-white shadow-2xl opacity-0 pointer-events-none transition-all duration-300 translate-y-2"></div>
+
+  <script>
+    (function () {
+      const GITHUB_LATEST_URL = "https://github.com/liveforever24/ylowstonetv/releases/latest";
+      const VERCEL_APK_ENDPOINT = "/api/download-apk";
+
+      const i18n = {
+        id: {
+          nav_home: "Cover Home",
+          nav_arch: "Arsitektur",
+          nav_lab: "Diagnostik",
+          nav_craft: "Doktrin",
+          nav_download: "Rilis APK",
+          hero_title: "Diam di permukaan. Brutal di mesin.",
+          hero_sub: "Pemutar IPTV Android dan TV tanpa kompromi. Tidak menjual janji manis, tidak menumpuk sampah visual. Hanya aliran stabil dan kendali penuh.",
+          hero_quote: "“Pembohong terhormat selalu menjanjikan fitur tak terbatas. YlowstoneTV hanya memastikan layar tidak pernah mati.”",
+          hero_dl_btn: "Unduh APK v2.4.5",
+          mode_tv: "TV 16:9",
+          mode_phone: "HP 9:16",
+          cover_live_tag: "Siaran",
+          cover_live_title: "Live TV",
+          cover_live_desc: "Zapping instan · Penstabil .ts & M3U8",
+          cover_movies_tag: "Film & SAF",
+          cover_movies_title: "Film",
+          cover_movies_desc: "Lanjut tonton akurat · .mp4, .mkv, SAF",
+          cover_series_tag: "Auto-Sub",
+          cover_series_title: "Serial",
+          cover_series_desc: "Ekstrak judul SxxExx · Skip Intro MM:SS",
+          tap_guard_note: "STRICT TAP GUARD >12DP",
+          arch_kicker: "ARSITEKTUR SISTEM",
+          arch_title: "Dirancang seperti perangkat keras, bukan sekadar tampilan.",
+          arch_meta: "JETPACK COMPOSE · MEDIA3 · TERMUX CI",
+          spec_1_t: "Zero-Scroll Cover Home",
+          spec_1_d: "Tiga sampul matte presisi untuk HP 9:16 dan TV 16:9. Transisi Dive-In langsung membuka daftar tanpa batas.",
+          spec_2_d: "Mesin v1.2 di atas Media3/ExoPlayer. Menangani Xtream, M3U/M3U8, Local SAF, .ts, .mp4/.mkv, hingga .mpd.",
+          spec_3_t: "Kontrol Tanpa Salah Tekan",
+          spec_3_d: "Strict Tap Guard >12dp pada layar sentuh dan fokus D-Pad penuh di Android TV. Collapsing header tetap tenang saat digulir.",
+          spec_4_t: "Alur Rilis Terverifikasi",
+          spec_4_d: "Kompilasi otomatis lewat GitHub Actions pada repo liveforever24/ylowstonetv, didistribusikan langsung melalui Vercel.",
+          lab_kicker: "DIAGNOSTIK MESIN",
+          lab_title: "Uji protokol sebelum percaya.",
+          lab_sub: "Simulasi langsung profil penstabil aliran, ekstraktor judul auto-subtitle sebelum pola SxxExx, dan pemotong intro presisi MM:SS.",
+          stab_profile_lbl: "BUFFER",
+          stab_retry_lbl: "RECOVERY",
+          stab_resume_lbl: "VOD RESUME",
+          sub_extract_lbl: "Ekstraktor Judul Auto-Subtitle (sebelum SxxExx)",
+          sub_result_lbl: "Hasil ekstraksi bersih:",
+          skip_card_title: "Skip Intro Kustom MM:SS",
+          btn_skip_label: "Lewati Intro",
+          skip_custom_lbl: "Durasi Lompat (MM:SS)",
+          skip_custom_hint: "Tentukan menit dan detik secara presisi",
+          craft_kicker: "DOKTRIN // YLOWSTONETV",
+          craft_title: "Pak tua sialan pernah berkata: alat yang benar tidak perlu berteriak.",
+          craft_body: "Terlalu banyak aplikasi yang sibuk memamerkan tombol tak berguna, lalu tumbang saat benar-benar dibutuhkan. YlowstoneTV dibangun dengan kepala dingin: buang semua yang mengganggu, perkuat semua yang menopang gambar.",
+          prin_1_t: "Hening secara visual",
+          prin_1_d: "Tiga sampul matte tanpa scroll dan daftar tanpa garis kotak. Layar ada untuk tontonan, bukan untuk ego perancangnya.",
+          prin_2_t: "Tegas pada detail sepele",
+          prin_2_d: "Strict Tap Guard >12dp agar jari tak pernah salah perintah, 5 palet dinamis yang menyatu, dan tombol keluar merah bersih di dasar Pengaturan.",
+          prin_3_t: "Satu identitas: YlowstoneTV",
+          prin_3_d: "Tidak menumpang nama besar siapa pun. Setiap baris antarmuka, palet, dan dokumentasi berdiri dengan nama YlowstoneTV seutuhnya.",
+          dl_compat: "UNIVERSAL APK · ANDROID & TV",
+          dl_title: "Ambil berkasnya. Pasang. Selesai.",
+          dl_sub: "Unduhan langsung terhubung ke rilis resmi GitHub liveforever24/ylowstonetv melalui jalur distribusi Vercel /api/download-apk.",
+          dl_cta: "Unduh Langsung YlowstoneTV.apk",
+          dl_check: "Cek Rilis",
+          inst_title: "Prosedur Pemasangan",
+          dl_copy_btn: "Salin ID Paket",
+          footer_note: "Dirakit dengan kepala dingin · Android & TV",
+          footer_settings: "Pengaturan",
+          footer_validator: "Cek Playlist",
+          set_title: "Pengaturan YlowstoneTV",
+          set_theme: "Palet Tema Dinamis (5)",
+          set_lang: "Bahasa Antarmuka",
+          set_upd: "Pembaruan Rilis",
+          set_upd_btn: "Periksa",
+          set_reset: "Reset Preferensi",
+          pl_title: "Validasi Format Playlist",
+          pl_desc: "Masukkan tautan M3U/M3U8 atau host Xtream untuk memeriksa kompatibilitas lokal terhadap UniversalStreamStabilizer v1.2.",
+          pl_btn: "Periksa",
+          pl_sample: "Contoh"
+        },
+        en: {
+          nav_home: "Cover Home",
+          nav_arch: "Architecture",
+          nav_lab: "Diagnostics",
+          nav_craft: "Doctrine",
+          nav_download: "APK Release",
+          hero_title: "Still on the surface. Relentless underneath.",
+          hero_sub: "An uncompromising media player for Android phones and TVs. No hollow promises, no visual debris. Just disciplined playback and total control.",
+          hero_quote: "“An honorable liar promises infinite features. YlowstoneTV merely ensures the screen never falters.”",
+          hero_dl_btn: "Download APK v2.4.5",
+          mode_tv: "TV 16:9",
+          mode_phone: "Phone 9:16",
+          cover_live_tag: "Broadcast",
+          cover_live_title: "Live TV",
+          cover_live_desc: "Instant zapping · .ts & M3U8 stabilizer",
+          cover_movies_tag: "VOD & SAF",
+          cover_movies_title: "Movies",
+          cover_movies_desc: "Exact VOD resume · .mp4, .mkv, SAF",
+          cover_series_tag: "Auto-Sub",
+          cover_series_title: "Series",
+          cover_series_desc: "SxxExx title parser · MM:SS Skip Intro",
+          tap_guard_note: "STRICT TAP GUARD >12DP",
+          arch_kicker: "SYSTEM ARCHITECTURE",
+          arch_title: "Engineered like hardware, not merely styled.",
+          arch_meta: "JETPACK COMPOSE · MEDIA3 · TERMUX CI",
+          spec_1_t: "Zero-Scroll Cover Home",
+          spec_1_d: "Three matte covers proportioned for 9:16 phones and 16:9 TVs. Dive-In transitions lead straight into borderless lists.",
+          spec_2_d: "Engine v1.2 over Media3/ExoPlayer. Handles Xtream, M3U/M3U8, Local SAF, .ts, .mp4/.mkv, and .mpd streams.",
+          spec_3_t: "Zero-Slip Input Discipline",
+          spec_3_d: "Strict >12dp tap guard on touchscreens and complete D-Pad focus on Android TV. Collapsing headers stay calm while scrolling.",
+          spec_4_t: "Verified Release Pipeline",
+          spec_4_d: "Automated builds via GitHub Actions on liveforever24/ylowstonetv, distributed directly through Vercel.",
+          lab_kicker: "ENGINE DIAGNOSTICS",
+          lab_title: "Test the protocol before trusting it.",
+          lab_sub: "Live simulation of stream stabilizer profiles, pre-SxxExx auto-subtitle title extraction, and precision MM:SS intro skipping.",
+          stab_profile_lbl: "BUFFER",
+          stab_retry_lbl: "RECOVERY",
+          stab_resume_lbl: "VOD RESUME",
+          sub_extract_lbl: "Auto-Subtitle Title Extractor (before SxxExx)",
+          sub_result_lbl: "Clean extracted title:",
+          skip_card_title: "Custom MM:SS Skip Intro",
+          btn_skip_label: "Skip Intro",
+          skip_custom_lbl: "Jump Duration (MM:SS)",
+          skip_custom_hint: "Dial exact minutes and seconds",
+          craft_kicker: "DOCTRINE // YLOWSTONETV",
+          craft_title: "A damn old man once said: a proper instrument never raises its voice.",
+          craft_body: "Too many players parade useless toggles and collapse the moment you actually press play. YlowstoneTV is built with cold discipline: strip away the noise, reinforce what holds the frame.",
+          prin_1_t: "Visual silence",
+          prin_1_d: "Three zero-scroll matte covers and borderless lists. The screen belongs to the film, never to the designer's ego.",
+          prin_2_t: "Strict on small things",
+          prin_2_d: "Strict >12dp tap guard so scrolling never misfires, 5 unified dynamic themes, and a clean red exit anchored at the bottom of Settings.",
+          prin_3_t: "One name: YlowstoneTV",
+          prin_3_d: "Borrowing no prestige from anyone else. Every string, palette, and line of documentation stands strictly as YlowstoneTV.",
+          dl_compat: "UNIVERSAL APK · ANDROID & TV",
+          dl_title: "Take the binary. Install. Done.",
+          dl_sub: "Direct download wired to official GitHub releases at liveforever24/ylowstonetv via Vercel route /api/download-apk.",
+          dl_cta: "Direct Download YlowstoneTV.apk",
+          dl_check: "Check Release",
+          inst_title: "Installation Protocol",
+          dl_copy_btn: "Copy Package ID",
+          footer_note: "Built with cold discipline · Android & TV",
+          footer_settings: "Settings",
+          footer_validator: "Playlist Check",
+          set_title: "YlowstoneTV Settings",
+          set_theme: "Dynamic Theme Palettes (5)",
+          set_lang: "Interface Language",
+          set_upd: "Release Updates",
+          set_upd_btn: "Inspect",
+          set_reset: "Reset Preferences",
+          pl_title: "Playlist Format Validator",
+          pl_desc: "Enter an M3U/M3U8 link or Xtream host to verify local compatibility with UniversalStreamStabilizer v1.2.",
+          pl_btn: "Validate",
+          pl_sample: "Sample"
+        }
+      };
+
+      const catalogData = {
+        live: {
+          titleId: "Live TV — Daftar Tanpa Garis",
+          titleEn: "Live TV — Borderless Channel List",
+          items: [
+            { name: "YlowstoneTV Broadcast 01", meta: "1080p · 50fps · HLS M3U8", status: "LIVE" },
+            { name: "Arena Sport Utama", meta: "1080p · Low-Latency .TS", status: "LIVE" },
+            { name: "Sinema Nusantara HD", meta: "720p · Adaptive Stabilizer", status: "LIVE" },
+            { name: "Dokumenter Alam 4K", meta: "2160p · HEVC · Stereo", status: "LIVE" }
+          ]
+        },
+        movies: {
+          titleId: "Film — Pustaka VOD & Lokal SAF",
+          titleEn: "Movies — VOD & Local SAF Library",
+          items: [
+            { name: "Obsidian Horizon (2026)", meta: "MKV · 4K HDR · Lanjut 42:18", status: "RESUME" },
+            { name: "Midnight Ridge", meta: "MP4 · 1080p · Subtitle ID", status: "VOD" },
+            { name: "Silent Broadcast", meta: "Local SAF · 1080p · Dual Audio", status: "LOCAL" },
+            { name: "The Last Signal", meta: "MPD DASH · 1080p · Baru", status: "VOD" }
+          ]
+        },
+        series: {
+          titleId: "Serial — Auto-Subtitle & Skip Intro",
+          titleEn: "Series — Auto-Subtitle & Skip Intro",
+          items: [
+            { name: "YlowstoneTV Original · S01E03", meta: "Skip Intro 01:25 · Auto-Sub Siap", status: "EP 03" },
+            { name: "Northern Dust · S02E05", meta: "Skip Intro 01:10 · Lanjut 18:04", status: "EP 05" },
+            { name: "Dark Signal · S01E08", meta: "Skip Intro 00:55 · Finale", status: "EP 08" },
+            { name: "Amber Protocol · S03E01", meta: "Skip Intro 01:30 · 1080p", status: "NEW" }
+          ]
+        }
+      };
+
+      const stabilizerProfiles = {
+        m3u8: { buffer: "Adaptive 4s / 18s (HLS)", retry: "Auto-Reconnect 3x Backoff", resume: "Aktif untuk VOD M3U8" },
+        xtream: { buffer: "Balanced 5s / 24s (API)", retry: "Session Refresh + 3x Retry", resume: "Sinkron Posisi Terakhir" },
+        saf: { buffer: "Direct Local Read (Zero-Net)", retry: "Instant File Seek", resume: "Simpan per URI Lokal" },
+        ts: { buffer: "Low-Latency 2.5s / 10s", retry: "Seamless Packet Re-sync", resume: "Live Stream (N/A)" },
+        mkv: { buffer: "Progressive 6s / 30s", retry: "Range Request Resume", resume: "Aktif + Track Subtitle" },
+        mpd: { buffer: "Segmented 4s / 20s (DASH)", retry: "Manifest Reload 3x", resume: "Aktif per Episode" }
+      };
+
+      const installGuides = {
+        id: {
+          phone: [
+            "Tekan Unduh Langsung untuk mengambil YlowstoneTV-v2.4.5.apk.",
+            "Izinkan instalasi dari sumber tidak dikenal pada perangkat Android.",
+            "Buka YlowstoneTV, pilih tema & bahasa, lalu masukkan playlist lewat tombol +."
+          ],
+          tv: [
+            "Kirim berkas APK ke Android TV melalui pengelola berkas lokal atau ADB.",
+            "Pasang berkas APK dan buka dari daftar aplikasi utama TV.",
+            "YlowstoneTV otomatis aktif dalam Mode TV 16:9 dengan navigasi D-Pad penuh."
+          ]
+        },
+        en: {
+          phone: [
+            "Hit Direct Download to fetch YlowstoneTV-v2.4.5.apk.",
+            "Permit installation from unknown sources on your Android device.",
+            "Launch YlowstoneTV, select theme & language, and add playlists via the + button."
+          ],
+          tv: [
+            "Transfer the APK to Android TV via local file manager or ADB.",
+            "Install and launch from your Android TV app drawer.",
+            "YlowstoneTV automatically boots into 16:9 TV Mode with complete D-Pad navigation."
+          ]
+        }
+      };
+
+      let state = {
+        lang: "id",
+        theme: "amber",
+        deviceMode: "tv",
+        category: "live",
+        format: "m3u8",
+        instTab: "phone",
+        playing: true,
+        currentSec: 18,
+        totalSec: 2880
+      };
+
+      try {
+        const savedTheme = localStorage.getItem("ytv_theme");
+        const savedLang = localStorage.getItem("ytv_lang");
+        if (savedTheme) state.theme = savedTheme;
+        if (savedLang === "id" || savedLang === "en") state.lang = savedLang;
+      } catch (e) {}
+
+      let toastTimer = null;
+      function showToast(msg) {
+        const el = document.getElementById("toast");
+        el.textContent = msg;
+        el.classList.remove("opacity-0", "translate-y-2");
+        el.classList.add("opacity-100", "translate-y-0");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          el.classList.add("opacity-0", "translate-y-2");
+          el.classList.remove("opacity-100", "translate-y-0");
+        }, 2800);
+      }
+
+      function formatMMSS(sec) {
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+      }
+
+      function applyTheme(theme) {
+        state.theme = theme;
+        if (theme === "amber") document.documentElement.removeAttribute("data-theme");
+        else document.documentElement.setAttribute("data-theme", theme);
+        try { localStorage.setItem("ytv_theme", theme); } catch (e) {}
+        document.querySelectorAll(".theme-dot").forEach((btn) => {
+          const active = btn.dataset.themePick === theme;
+          btn.style.boxShadow = active ? "0 0 0 2px #050507, 0 0 0 3.5px #FFFFFF" : "none";
+        });
+        document.querySelectorAll(".modal-theme-btn").forEach((btn) => {
+          const active = btn.dataset.themePick === theme;
+          btn.style.outline = active ? "1.5px solid var(--accent)" : "none";
+        });
+      }
+
+      function applyLang(lang) {
+        state.lang = lang;
+        document.documentElement.lang = lang;
+        try { localStorage.setItem("ytv_lang", lang); } catch (e) {}
+        const dict = i18n[lang];
+        document.querySelectorAll("[data-i18n]").forEach((el) => {
+          const key = el.getAttribute("data-i18n");
+          if (dict[key]) el.textContent = dict[key];
+        });
+        document.getElementById("lang-toggle").textContent = lang === "id" ? "ID · EN" : "EN · ID";
+        document.querySelectorAll(".lang-pick-btn").forEach((btn) => {
+          const active = btn.dataset.langPick === lang;
+          btn.className = active
+            ? "lang-pick-btn px-3 py-1 rounded text-xs font-mono font-semibold accent-bg"
+            : "lang-pick-btn px-3 py-1 rounded text-xs font-mono font-semibold text-zinc-400 hover:text-white";
+        });
+        renderDiveList();
+        renderInstallSteps();
+      }
+
+      function renderDiveList() {
+        const cat = catalogData[state.category];
+        document.getElementById("dive-title").textContent = state.lang === "id" ? cat.titleId : cat.titleEn;
+        document.getElementById("dive-count").textContent = "0" + cat.items.length + (state.lang === "id" ? " ENTRI" : " ENTRIES");
+        document.getElementById("dive-list").innerHTML = cat.items.map((item, idx) => `
+          <div class="borderless-row px-5 py-3.5 flex items-center justify-between gap-4 cursor-pointer" data-play-sample="${item.name}">
+            <div class="flex items-center gap-3.5 min-w-0">
+              <span class="text-[11px] font-mono text-zinc-500 w-5">0${idx + 1}</span>
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-zinc-100 truncate">${item.name}</p>
+                <p class="text-xs font-mono text-zinc-500 truncate">${item.meta}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold accent-soft-bg">${item.status}</span>
+              <span class="text-zinc-500 text-xs">&rarr;</span>
+            </div>
+          </div>
+        `).join("");
+      }
+
+      function renderInstallSteps() {
+        const steps = installGuides[state.lang][state.instTab];
+        document.getElementById("inst-steps").innerHTML = steps.map((s) => `<li>${s}</li>`).join("");
+        document.querySelectorAll(".inst-tab").forEach((btn) => {
+          const active = btn.dataset.instTab === state.instTab;
+          btn.className = active
+            ? "inst-tab px-2.5 py-1 rounded text-[11px] font-mono font-semibold accent-bg"
+            : "inst-tab px-2.5 py-1 rounded text-[11px] font-mono font-semibold text-zinc-400 hover:text-white";
+        });
+      }
+
+      function applyDeviceMode(mode) {
+        state.deviceMode = mode;
+        const grid = document.getElementById("cover-grid");
+        const wrapper = document.getElementById("cover-stage-wrapper");
+        const tvBtn = document.getElementById("mode-tv");
+        const phBtn = document.getElementById("mode-phone");
+
+        if (mode === "phone") {
+          wrapper.classList.add("max-w-md", "mx-auto");
+          grid.className = "grid grid-cols-1 gap-3 transition-all duration-500";
+          document.querySelectorAll(".cover-tile").forEach((c) => {
+            c.classList.remove("md:aspect-[4/3]");
+            c.classList.add("aspect-[16/8]");
+          });
+          phBtn.className = "mode-btn px-3 py-1.5 rounded text-[11px] font-mono font-semibold flex items-center gap-1.5 transition-all accent-bg";
+          tvBtn.className = "mode-btn px-3 py-1.5 rounded text-[11px] font-mono font-semibold flex items-center gap-1.5 transition-all text-zinc-400 hover:text-white";
+        } else {
+          wrapper.classList.remove("max-w-md", "mx-auto");
+          grid.className = "grid grid-cols-1 md:grid-cols-3 gap-3.5 transition-all duration-500";
+          document.querySelectorAll(".cover-tile").forEach((c) => {
+            c.classList.remove("aspect-[16/8]");
+            c.classList.add("md:aspect-[4/3]");
+          });
+          tvBtn.className = "mode-btn px-3 py-1.5 rounded text-[11px] font-mono font-semibold flex items-center gap-1.5 transition-all accent-bg";
+          phBtn.className = "mode-btn px-3 py-1.5 rounded text-[11px] font-mono font-semibold flex items-center gap-1.5 transition-all text-zinc-400 hover:text-white";
+        }
+      }
+
+      function updateStabilizer(fmt) {
+        state.format = fmt;
+        const p = stabilizerProfiles[fmt];
+        document.getElementById("stab-buffer").textContent = p.buffer;
+        document.getElementById("stab-retry").textContent = p.retry;
+        document.getElementById("stab-resume").textContent = p.resume;
+        document.querySelectorAll(".fmt-btn").forEach((btn) => {
+          const active = btn.dataset.format === fmt;
+          btn.className = active
+            ? "fmt-btn px-2.5 py-1.5 rounded text-[11px] font-mono font-semibold transition-all accent-bg"
+            : "fmt-btn px-2.5 py-1.5 rounded text-[11px] font-mono font-semibold transition-all bg-white/[0.04] text-zinc-400 hover:text-white";
+        });
+      }
+
+      function extractM3UTitle(raw) {
+        if (!raw || !raw.trim()) return "—";
+        const cleaned = raw.replace(/\.[a-z0-9]{2,4}$/i, "");
+        const match = cleaned.match(/^(.*?)(?=[\s._-]*S\d{1,2}E\d{1,2})/i);
+        const base = match && match[1].trim() ? match[1] : cleaned;
+        return base.replace(/[._-]+/g, " ").replace(/\s+/g, " ").trim() || "—";
+      }
+
+      function updateSkipBadge() {
+        const m = Math.max(0, Math.min(5, parseInt(document.getElementById("skip-min").value || "0", 10)));
+        const s = Math.max(0, Math.min(59, parseInt(document.getElementById("skip-sec").value || "0", 10)));
+        document.getElementById("skip-badge-time").textContent = "+" + formatMMSS(m * 60 + s);
+      }
+
+      function renderPlayerTime() {
+        const pct = Math.min(100, (state.currentSec / state.totalSec) * 100);
+        document.getElementById("timeline-fill").style.width = pct.toFixed(2) + "%";
+        document.getElementById("current-time-txt").textContent = formatMMSS(state.currentSec);
+      }
+
+      function toggleModal(id, show) {
+        const el = document.getElementById(id);
+        if (show) { el.classList.remove("hidden"); el.classList.add("flex"); }
+        else { el.classList.add("hidden"); el.classList.remove("flex"); }
+      }
+
+      // Direct In-Web APK Download Pipeline (Vercel /api/download-apk -> GitHub Releases)
+      function triggerDirectDownload() {
+        const section = document.getElementById("download");
+        section.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        const box = document.getElementById("dl-progress-box");
+        const label = document.getElementById("dl-status-label");
+        const pct = document.getElementById("dl-status-pct");
+        const bar = document.getElementById("dl-status-bar");
+        const sub = document.getElementById("dl-status-sub");
+
+        box.classList.remove("hidden");
+        bar.style.width = "35%";
+        pct.textContent = "35%";
+        label.textContent = state.lang === "id"
+          ? "Memanggil endpoint Vercel /api/download-apk..."
+          : "Requesting Vercel endpoint /api/download-apk...";
+        sub.textContent = "Target: github.com/liveforever24/ylowstonetv/releases/latest";
+
+        const isHostedHttp = /^https:\/\//i.test(window.location.href) && !/about:|srcdoc|blob:/i.test(window.location.href);
+
+        setTimeout(() => {
+          bar.style.width = "100%";
+          pct.textContent = "100%";
+
+          if (isHostedHttp) {
+            label.textContent = state.lang === "id"
+              ? "Unduhan YlowstoneTV-v2.4.5.apk dimulai."
+              : "YlowstoneTV-v2.4.5.apk download started.";
+            sub.textContent = state.lang === "id"
+              ? "Jika unduhan tidak otomatis mulai, gunakan tautan GitHub Releases di atas."
+              : "If download does not start automatically, use the GitHub Releases link above.";
+            const a = document.createElement("a");
+            a.href = VERCEL_APK_ENDPOINT;
+            a.setAttribute("download", "YlowstoneTV-v2.4.5.apk");
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast(state.lang === "id" ? "Mengunduh YlowstoneTV-v2.4.5.apk..." : "Downloading YlowstoneTV-v2.4.5.apk...");
+          } else {
+            label.textContent = state.lang === "id"
+              ? "Jalur unduh siap · Membuka rilis GitHub."
+              : "Download route armed · Opening GitHub release.";
+            sub.textContent = state.lang === "id"
+              ? "Saat tayang di domain Vercel milikmu, tombol ini mengunduh langsung lewat /api/download-apk tanpa pindah halaman."
+              : "Once deployed on your Vercel domain, this button streams the APK directly from /api/download-apk in-page.";
+            const a = document.createElement("a");
+            a.href = GITHUB_LATEST_URL;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast(state.lang === "id" ? "Mengarahkan ke rilis GitHub YlowstoneTV" : "Opening YlowstoneTV GitHub release");
+          }
+        }, 550);
+      }
+
+      // Events
+      window.addEventListener("scroll", () => {
+        const nav = document.getElementById("top-nav");
+        if (window.scrollY > 24) nav.classList.add("scrolled");
+        else nav.classList.remove("scrolled");
+      });
+
+      document.querySelectorAll("[data-theme-pick]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          applyTheme(btn.dataset.themePick);
+          showToast("THEME // " + btn.dataset.themePick.toUpperCase());
+        });
+      });
+
+      document.getElementById("lang-toggle").addEventListener("click", () => {
+        applyLang(state.lang === "id" ? "en" : "id");
+      });
+
+      document.querySelectorAll(".lang-pick-btn").forEach((btn) => {
+        btn.addEventListener("click", () => applyLang(btn.dataset.langPick));
+      });
+
+      document.getElementById("mode-tv").addEventListener("click", () => applyDeviceMode("tv"));
+      document.getElementById("mode-phone").addEventListener("click", () => applyDeviceMode("phone"));
+
+      document.getElementById("hero-direct-download").addEventListener("click", triggerDirectDownload);
+      document.getElementById("btn-direct-download").addEventListener("click", triggerDirectDownload);
+
+      document.querySelectorAll(".cover-tile").forEach((card) => {
+        const triggerDive = () => {
+          card.classList.add("diving");
+          setTimeout(() => card.classList.remove("diving"), 180);
+          document.querySelectorAll(".cover-tile").forEach((c) => c.classList.remove("active-cover"));
+          card.classList.add("active-cover");
+          state.category = card.dataset.category;
+          renderDiveList();
+        };
+        card.addEventListener("click", triggerDive);
+        card.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); triggerDive(); }
+        });
+      });
+
+      document.getElementById("dive-list").addEventListener("click", (e) => {
+        const row = e.target.closest("[data-play-sample]");
+        if (!row) return;
+        showToast("STABILIZER // " + row.getAttribute("data-play-sample"));
+      });
+
+      document.querySelectorAll(".fmt-btn").forEach((btn) => {
+        btn.addEventListener("click", () => updateStabilizer(btn.dataset.format));
+      });
+
+      const m3uInput = document.getElementById("m3u-title-input");
+      m3uInput.addEventListener("input", () => {
+        document.getElementById("m3u-extracted-out").textContent = extractM3UTitle(m3uInput.value);
+      });
+
+      document.getElementById("skip-min").addEventListener("input", updateSkipBadge);
+      document.getElementById("skip-sec").addEventListener("input", updateSkipBadge);
+
+      document.getElementById("btn-skip-intro").addEventListener("click", () => {
+        const m = Math.max(0, Math.min(5, parseInt(document.getElementById("skip-min").value || "0", 10)));
+        const s = Math.max(0, Math.min(59, parseInt(document.getElementById("skip-sec").value || "0", 10)));
+        const jump = m * 60 + s;
+        state.currentSec = Math.min(state.totalSec, state.currentSec + jump);
+        renderPlayerTime();
+        showToast("SKIP INTRO // +" + formatMMSS(jump));
+      });
+
+      document.getElementById("btn-play-pause").addEventListener("click", () => {
+        state.playing = !state.playing;
+        document.getElementById("player-status-pill").textContent = state.playing ? "PLAYING" : "PAUSED";
+        const icon = document.getElementById("play-icon");
+        icon.setAttribute("data-lucide", state.playing ? "pause" : "play");
+        if (window.lucide) lucide.createIcons();
+      });
+
+      document.getElementById("btn-reset-player").addEventListener("click", () => {
+        state.currentSec = 0;
+        renderPlayerTime();
+      });
+
+      document.getElementById("timeline-track").addEventListener("click", (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        state.currentSec = Math.floor(ratio * state.totalSec);
+        renderPlayerTime();
+      });
+
+      setInterval(() => {
+        if (state.playing) {
+          state.currentSec = state.currentSec < state.totalSec ? state.currentSec + 1 : 0;
+          renderPlayerTime();
+        }
+      }, 1000);
+
+      document.querySelectorAll(".inst-tab").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          state.instTab = btn.dataset.instTab;
+          renderInstallSteps();
+        });
+      });
+
+      document.getElementById("open-settings").addEventListener("click", () => toggleModal("settings-modal", true));
+      document.getElementById("footer-settings-btn").addEventListener("click", () => toggleModal("settings-modal", true));
+      document.getElementById("close-settings").addEventListener("click", () => toggleModal("settings-modal", false));
+
+      document.getElementById("fab-playlist").addEventListener("click", () => toggleModal("playlist-modal", true));
+      document.getElementById("footer-validator-btn").addEventListener("click", () => toggleModal("playlist-modal", true));
+      document.getElementById("close-playlist").addEventListener("click", () => toggleModal("playlist-modal", false));
+
+      ["settings-modal", "playlist-modal"].forEach((id) => {
+        document.getElementById(id).addEventListener("click", (e) => {
+          if (e.target.id === id) toggleModal(id, false);
+        });
+      });
+
+      function runUpdateCheck() {
+        const statusEl = document.getElementById("update-status-text");
+        statusEl.textContent = state.lang === "id" ? "MEMERIKSA RILIS..." : "CHECKING RELEASE...";
+        showToast("RELEASE // CHECKING...");
+        setTimeout(() => {
+          statusEl.textContent = state.lang === "id" ? "TERBARU · v2.4.5" : "UP TO DATE · v2.4.5";
+          showToast("RELEASE // v2.4.5 STABIL");
+        }, 750);
+      }
+
+      document.getElementById("modal-check-update").addEventListener("click", runUpdateCheck);
+      document.getElementById("btn-check-update-inline").addEventListener("click", () => {
+        toggleModal("settings-modal", true);
+        runUpdateCheck();
+      });
+
+      document.getElementById("btn-reset-prefs").addEventListener("click", () => {
+        applyTheme("amber");
+        applyLang("id");
+        applyDeviceMode("tv");
+        toggleModal("settings-modal", false);
+        showToast("PREFERENSI DIATUR ULANG");
+      });
+
+      document.getElementById("pl-sample-btn").addEventListener("click", () => {
+        document.getElementById("pl-input").value = "https://stream.ylowstonetv.local/live/playlist.m3u8";
+      });
+
+      document.getElementById("pl-validate-btn").addEventListener("click", () => {
+        const val = document.getElementById("pl-input").value.trim();
+        const box = document.getElementById("pl-result");
+        box.classList.remove("hidden");
+        if (!val) {
+          box.innerHTML = `<span class="text-red-400 font-mono">${state.lang === "id" ? "Tautan kosong." : "Empty URL."}</span>`;
+          return;
+        }
+        const isM3U = /\.(m3u8?|ts|mpd)(\?.*)?$/i.test(val);
+        const isXtream = /get\.php|player_api\.php|:\d{2,5}/i.test(val);
+        if (isM3U) {
+          box.innerHTML = `<p class="accent-text font-mono font-semibold">M3U / HLS VALID</p><p class="text-zinc-400">Kompatibel dengan UniversalStreamStabilizer v1.2 &amp; Auto-Subtitle.</p>`;
+        } else if (isXtream) {
+          box.innerHTML = `<p class="accent-text font-mono font-semibold">XTREAM HOST VALID</p><p class="text-zinc-400">Siap digunakan untuk Live TV, Film, dan Serial di YlowstoneTV.</p>`;
+        } else if (/^https?:\/\//i.test(val)) {
+          box.innerHTML = `<p class="text-zinc-200 font-mono font-semibold">HTTP / HTTPS UMUM</p><p class="text-zinc-400">Dapat diuji sebagai sumber M3U atau direct stream.</p>`;
+        } else {
+          box.innerHTML = `<p class="text-red-400 font-mono font-semibold">FORMAT TIDAK LENGKAP</p><p class="text-zinc-400">Awali dengan http:// atau https://.</p>`;
+        }
+      });
+
+      document.getElementById("btn-copy-pkg").addEventListener("click", () => {
+        const text = "com.ylowstone.tv";
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).catch(() => {});
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand("copy"); } catch (e) {}
+          document.body.removeChild(ta);
+        }
+        showToast("DISALIN // com.ylowstone.tv");
+      });
+
+      // Init
+      applyTheme(state.theme);
+      applyLang(state.lang);
+      updateStabilizer("m3u8");
+      document.getElementById("m3u-extracted-out").textContent = extractM3UTitle(m3uInput.value);
+      updateSkipBadge();
+      renderPlayerTime();
+      if (window.lucide) lucide.createIcons();
+    })();
+  </script>
 </body>
 </html>
