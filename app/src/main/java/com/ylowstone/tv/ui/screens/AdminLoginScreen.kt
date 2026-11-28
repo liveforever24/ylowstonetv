@@ -18,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -34,7 +33,6 @@ import com.ylowstone.tv.ui.components.YlowstoneLogoBadge
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
-import com.ylowstone.tv.util.FlagshipFeedback
 import com.ylowstone.tv.util.SecurityCrypto
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -55,7 +53,6 @@ fun AdminLoginScreen(
     onBack: () -> Unit
 ) {
     val c = LocalYlowColors.current
-    val view = LocalView.current
     val isIndo = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
 
     var pin by remember { mutableStateOf("") }
@@ -101,8 +98,7 @@ fun AdminLoginScreen(
             localError = strings.pinMustBe4Digits
             return
         }
-        FlagshipFeedback.playSelect(view)
-        localError = ""
+localError = ""
         onSubmitPin(pin)
     }
 
@@ -121,8 +117,7 @@ fun AdminLoginScreen(
             }
             return
         }
-        FlagshipFeedback.playSelect(view)
-        localError = ""
+localError = ""
         onSubmitFullAdmin(includeDefaultPlaylists, pin)
     }
 
@@ -143,8 +138,7 @@ fun AdminLoginScreen(
                     .border(1.dp, c.glassBorder, CircleShape)
                     .glossyPressPill(20f)
                     .clickable(enabled = !isVerifying, onClick = {
-                        FlagshipFeedback.playTick(view)
-                        onBack()
+onBack()
                     }),
                 contentAlignment = Alignment.Center
             ) {
@@ -334,8 +328,7 @@ fun AdminLoginScreen(
                         shape = RoundedCornerShape(12.dp)
                     )
                     .clickable(enabled = !isVerifying && !isLockedOut) {
-                        FlagshipFeedback.playTick(view)
-                        showAdminPanel = !showAdminPanel
+showAdminPanel = !showAdminPanel
                         localError = ""
                     }
                     .padding(horizontal = 14.dp, vertical = 11.dp),
@@ -411,8 +404,7 @@ fun AdminLoginScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .clickable(enabled = !isVerifying && !isLockedOut) {
-                                FlagshipFeedback.playTick(view)
-                                includeDefaultPlaylists = !includeDefaultPlaylists
+includeDefaultPlaylists = !includeDefaultPlaylists
                                 localError = ""
                             }
                             .padding(vertical = 2.dp),
@@ -423,8 +415,7 @@ fun AdminLoginScreen(
                             checked = includeDefaultPlaylists,
                             enabled = !isLockedOut,
                             onCheckedChange = {
-                                FlagshipFeedback.playTick(view)
-                                includeDefaultPlaylists = it
+includeDefaultPlaylists = it
                                 localError = ""
                             },
                             colors = CheckboxDefaults.colors(
@@ -484,8 +475,7 @@ fun AdminLoginScreen(
                 TextButton(
                     enabled = !isVerifying && !isLockedOut,
                     onClick = {
-                        FlagshipFeedback.playTick(view)
-                        onContinueGuest()
+onContinueGuest()
                     }
                 ) {
                     Text(

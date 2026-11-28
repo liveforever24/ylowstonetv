@@ -75,7 +75,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
             val p = Uri.encode(profile.password.trim())
             val req = Request.Builder()
                 .url("$base/player_api.php?username=$u&password=$p&action=get_short_epg&stream_id=${Uri.encode(streamId)}&limit=$limit")
-                .header("User-Agent", profile.userAgent.ifBlank { "YlowstoneTV/2.5.0" })
+                .header("User-Agent", profile.userAgent.ifBlank { "YlowstoneTV/2.5.3" })
                 .get()
                 .build()
             healthCheckClient.newCall(req).execute().use { resp ->
@@ -137,6 +137,210 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
     /**
      * Cek status stream IPTV secara cepat (Aktif / Delay / Mati) dengan fallback HEAD -> Range GET.
      */
+
+    /**
+     * Cek status playlist akurat (v2.5.3):
+     * - Xtream Codes: verifikasi langsung player_api.php (status, exp_date, active_cons/max_connections, & RTT ms).
+     * - M3U Remote: cek Range GET + validasi header #EXTM3U/#EXTINF (anti-false-positive HTML 200) + RTT ms.
+     * - Direct / Lokal: verifikasi stream/akses file + jumlah konten terindeks.
+     */
+    suspend fun checkPlaylistHealth(profile: PlaylistProfile): PlaylistHealthResult = withContext(Dispatchers.IO) {
+        val counts = db.getCountsByMediaType(profile.id)
+        val liveCnt = counts[MediaType.LIVE] ?: 0
+        val movieCnt = counts[MediaType.MOVIE] ?: 0
+        val seriesCnt = counts[MediaType.SERIES] ?: 0
+        val ua = profile.userAgent.ifBlank { "YlowstoneTV/2.5.3" }
+
+        when (profile.type) {
+            PlaylistType.XTREAM -> {
+                val base = profile.url.trim().trimEnd('/')
+                if (!base.startsWith("http://") && !base.startsWith("https://")) {
+                    return@withContext PlaylistHealthResult(
+                        state = PlaylistHealthState.DOWN,
+                        liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                        detail = "URL server tidak valid"
+                    )
+                }
+                val u = Uri.encode(profile.username.trim())
+                val p = Uri.encode(profile.password.trim())
+                val startMs = System.currentTimeMillis()
+                try {
+                    val req = Request.Builder()
+                        .url("$base/player_api.php?username=$u&password=$p")
+                        .header("User-Agent", ua)
+                        .get()
+                        .build()
+                    healthCheckClient.newCall(req).execute().use { resp ->
+                        val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                        if (resp.code == 401 || resp.code == 403) {
+                            return@withContext PlaylistHealthResult(
+                                state = PlaylistHealthState.INACTIVE,
+                                latencyMs = elapsed,
+                                liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                                detail = "HTTP ${resp.code} (Akun ditolak)"
+                            )
+                        }
+                        if (!resp.isSuccessful) {
+                            return@withContext PlaylistHealthResult(
+                                state = PlaylistHealthState.DOWN,
+                                latencyMs = elapsed,
+                                liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                                detail = "HTTP ${resp.code}"
+                            )
+                        }
+                        val body = resp.body?.string().orEmpty()
+                        val root = runCatching { JSONObject(body) }.getOrNull()
+                        val userInfo = root?.optJSONObject("user_info")
+                        if (userInfo == null) {
+                            return@withContext PlaylistHealthResult(
+                                state = PlaylistHealthState.DOWN,
+                                latencyMs = elapsed,
+                                liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                                detail = "Respons server tidak valid"
+                            )
+                        }
+                        val authFlag = userInfo.optInt("auth", 1)
+                        val statusStr = userInfo.optString("status", "").trim()
+                        val expEpoch = userInfo.optString("exp_date", "").toLongOrNull()
+                        val activeCons = userInfo.optString("active_cons", "-1").toIntOrNull() ?: -1
+                        val maxCons = userInfo.optString("max_connections", "-1").toIntOrNull() ?: -1
+                        val nowSec = System.currentTimeMillis() / 1000L
+                        val expText = if (expEpoch != null && expEpoch > 0L) {
+                            SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(expEpoch * 1000L))
+                        } else ""
+
+                        val resolvedState = when {
+                            authFlag == 0 -> PlaylistHealthState.INACTIVE
+                            statusStr.contains("expired", ignoreCase = true) || (expEpoch != null && expEpoch > 0L && expEpoch < nowSec) ->
+                                PlaylistHealthState.EXPIRED
+                            statusStr.equals("banned", ignoreCase = true) || statusStr.equals("disabled", ignoreCase = true) ->
+                                PlaylistHealthState.INACTIVE
+                            !statusStr.equals("Active", ignoreCase = true) && statusStr.isNotEmpty() ->
+                                PlaylistHealthState.INACTIVE
+                            (maxCons > 0 && activeCons >= maxCons) || elapsed > 1800L ->
+                                PlaylistHealthState.DELAY
+                            else -> PlaylistHealthState.ACTIVE
+                        }
+                        val detailNote = when {
+                            resolvedState == PlaylistHealthState.EXPIRED -> if (expText.isNotEmpty()) "Kadaluarsa sejak $expText" else "Masa aktif habis"
+                            resolvedState == PlaylistHealthState.INACTIVE -> statusStr.ifBlank { "Akun tidak aktif" }
+                            maxCons > 0 && activeCons >= maxCons -> "Kuota koneksi penuh ($activeCons/$maxCons)"
+                            else -> ""
+                        }
+                        PlaylistHealthResult(
+                            state = resolvedState,
+                            latencyMs = elapsed,
+                            liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                            expiryDateText = expText,
+                            activeConnections = activeCons,
+                            maxConnections = maxCons,
+                            detail = detailNote
+                        )
+                    }
+                } catch (e: SocketTimeoutException) {
+                    val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                    PlaylistHealthResult(
+                        state = PlaylistHealthState.DOWN,
+                        latencyMs = elapsed,
+                        liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                        detail = "Timeout (server tidak merespons)"
+                    )
+                } catch (e: Exception) {
+                    val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                    PlaylistHealthResult(
+                        state = PlaylistHealthState.DOWN,
+                        latencyMs = elapsed,
+                        liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                        detail = e.message?.take(56) ?: "Server tidak dapat dijangkau"
+                    )
+                }
+            }
+
+            PlaylistType.M3U -> {
+                val url = profile.url.trim()
+                if (url.startsWith("content://")) {
+                    val ok = runCatching { context.contentResolver.openInputStream(Uri.parse(url))?.use { true } ?: false }.getOrDefault(false)
+                    return@withContext PlaylistHealthResult(
+                        state = if (ok) PlaylistHealthState.ACTIVE else PlaylistHealthState.DOWN,
+                        liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                        detail = if (ok) "" else "Berkas lokal tidak ditemukan"
+                    )
+                }
+                val startMs = System.currentTimeMillis()
+                try {
+                    val req = Request.Builder()
+                        .url(url)
+                        .header("User-Agent", ua)
+                        .header("Range", "bytes=0-4096")
+                        .get()
+                        .build()
+                    healthCheckClient.newCall(req).execute().use { resp ->
+                        val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                        if (resp.code == 401 || resp.code == 403) {
+                            return@withContext PlaylistHealthResult(
+                                state = PlaylistHealthState.INACTIVE,
+                                latencyMs = elapsed,
+                                liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                                detail = "HTTP ${resp.code} (Akses ditolak)"
+                            )
+                        }
+                        if (resp.code !in 200..399) {
+                            return@withContext PlaylistHealthResult(
+                                state = PlaylistHealthState.DOWN,
+                                latencyMs = elapsed,
+                                liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                                detail = "HTTP ${resp.code}"
+                            )
+                        }
+                        val peek = resp.body?.source()?.let { src ->
+                            src.request(4096)
+                            src.buffer.clone().readUtf8(minOf(4096L, src.buffer.size))
+                        }.orEmpty()
+                        val validM3u = peek.contains("#EXTM3U", ignoreCase = true) || peek.contains("#EXTINF", ignoreCase = true)
+                        if (!validM3u && peek.contains("<html", ignoreCase = true)) {
+                            return@withContext PlaylistHealthResult(
+                                state = PlaylistHealthState.DOWN,
+                                latencyMs = elapsed,
+                                liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                                detail = "Tautan tidak mengembalikan M3U valid"
+                            )
+                        }
+                        val st = if (elapsed > 1800L) PlaylistHealthState.DELAY else PlaylistHealthState.ACTIVE
+                        PlaylistHealthResult(
+                            state = st,
+                            latencyMs = elapsed,
+                            liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt
+                        )
+                    }
+                } catch (e: Exception) {
+                    val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                    PlaylistHealthResult(
+                        state = PlaylistHealthState.DOWN,
+                        latencyMs = elapsed,
+                        liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                        detail = e.message?.take(56) ?: "Server tidak dapat dijangkau"
+                    )
+                }
+            }
+
+            PlaylistType.DIRECT -> {
+                val res = checkStreamHealth(profile.url, ua)
+                val st = when {
+                    res.httpCode == 401 || res.httpCode == 403 -> PlaylistHealthState.INACTIVE
+                    res.state == StreamHealthState.ACTIVE -> PlaylistHealthState.ACTIVE
+                    res.state == StreamHealthState.DELAY -> PlaylistHealthState.DELAY
+                    else -> PlaylistHealthState.DOWN
+                }
+                PlaylistHealthResult(
+                    state = st,
+                    latencyMs = res.latencyMs,
+                    liveCount = liveCnt, movieCount = movieCnt, seriesCount = seriesCnt,
+                    detail = if (st == PlaylistHealthState.ACTIVE) "" else res.detail
+                )
+            }
+        }
+    }
+
     suspend fun checkStreamHealth(
         streamUrl: String,
         userAgent: String = ""
@@ -150,7 +354,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                 detail = "URL tidak valid"
             )
         }
-        val ua = userAgent.ifBlank { "YlowstoneTV/2.5.0" }
+        val ua = userAgent.ifBlank { "YlowstoneTV/2.5.3" }
         val startMs = System.currentTimeMillis()
         try {
             val headReq = Request.Builder()
@@ -246,7 +450,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
                     } else {
                         val req = Request.Builder()
                             .url(profile.url.trim())
-                            .header("User-Agent", profile.userAgent.ifBlank { "YlowstoneTV/2.5.0" })
+                            .header("User-Agent", profile.userAgent.ifBlank { "YlowstoneTV/2.5.3" })
                             .build()
                         httpClient.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
@@ -352,7 +556,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
     ) {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.5.0" })
+            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.5.3" })
             .build()
         httpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
@@ -564,7 +768,7 @@ class IptvRepository(private val context: Context, val db: DatabaseHelper) {
     private fun fetchJsonString(url: String, ua: String): String {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.5.0" })
+            .header("User-Agent", ua.ifBlank { "YlowstoneTV/2.5.3" })
             .build()
         httpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")

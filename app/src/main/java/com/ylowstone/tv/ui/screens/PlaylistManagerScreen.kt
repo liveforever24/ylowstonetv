@@ -35,6 +35,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ylowstone.tv.R
+import com.ylowstone.tv.data.IptvRepository
+import com.ylowstone.tv.model.PlaylistHealthResult
+import com.ylowstone.tv.model.PlaylistHealthState
+import kotlinx.coroutines.launch
 import com.ylowstone.tv.i18n.AppStrings
 import com.ylowstone.tv.model.LoadingAnimStyle
 import com.ylowstone.tv.model.PlaylistProfile
@@ -67,8 +71,10 @@ fun PlaylistManagerScreen(
     streamFormat: StreamFormat,
     strings: AppStrings,
     isTvMode: Boolean,
+    repo: IptvRepository? = null,
     isLoading: Boolean,
     loadingMessage: String,
+    refreshingPlaylistName: String = "",
     loadingAnimStyle: LoadingAnimStyle = LoadingAnimStyle.CHROMA_BOOMERANG,
     onOpenPlaylist: (PlaylistProfile) -> Unit,
     onSavePlaylist: (PlaylistProfile, Uri?) -> Unit,
@@ -85,6 +91,21 @@ fun PlaylistManagerScreen(
     var editingProfile by remember { mutableStateOf<PlaylistProfile?>(null) }
     var actionTarget by remember { mutableStateOf<PlaylistProfile?>(null) }
     var inspectLinkTarget by remember { mutableStateOf<PlaylistProfile?>(null) }
+    val scope = rememberCoroutineScope()
+    var healthTarget by remember { mutableStateOf<PlaylistProfile?>(null) }
+    var isCheckingHealth by remember { mutableStateOf(false) }
+    var healthResult by remember { mutableStateOf<PlaylistHealthResult?>(null) }
+
+    fun triggerHealthCheck(target: PlaylistProfile) {
+        healthTarget = target
+        healthResult = null
+        isCheckingHealth = true
+        scope.launch {
+            val res = repo?.checkPlaylistHealth(target)
+            healthResult = res
+            isCheckingHealth = false
+        }
+    }
 
     var searchQuery by remember { mutableStateOf("") }
     var sortAz by remember { mutableStateOf(false) }
@@ -104,7 +125,7 @@ fun PlaylistManagerScreen(
         CinematicCollapsingListScreen(
             title = strings.choosePlaylist,
             subtitleInfo = "ylowstone • ${filteredPlaylists.size} playlist",
-            coverRes = R.drawable.cover_yellowstone_tv,
+            coverRes = R.drawable.cover_home_tv,
             headerGradientColor = c.headerGradNeutral,
             searchQuery = searchQuery,
             onSearchQueryChange = { searchQuery = it },
@@ -233,6 +254,19 @@ fun PlaylistManagerScreen(
                                 maxLines = 1
                             )
                         }
+                        if (repo != null) {
+                            IconButton(
+                                onClick = { triggerHealthCheck(profile) },
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.NetworkCheck,
+                                    contentDescription = if (isIndonesian) "Cek Status" else "Check Status",
+                                    tint = c.accent,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                        }
                         IconButton(
                             onClick = { actionTarget = profile },
                             modifier = Modifier.size(34.dp)
@@ -278,7 +312,7 @@ fun PlaylistManagerScreen(
             )
         }
 
-        // Loading overlay (Bumerang melayang bersih tanpa kotak hitam)
+        // Pop-Up Indikator Pembaruan Playlist Terpilih (v2.5.3)
         if (isLoading) {
             Box(
                 modifier = Modifier
@@ -288,15 +322,30 @@ fun PlaylistManagerScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier
+                        .widthIn(min = 250.dp, max = 330.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(c.surface)
+                        .border(1.dp, c.accent.copy(alpha = 0.45f), RoundedCornerShape(22.dp))
+                        .padding(horizontal = 24.dp, vertical = 22.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    BoomerangLoadingIndicator(style = loadingAnimStyle, size = 76.dp)
+                    BoomerangLoadingIndicator(style = loadingAnimStyle, size = 66.dp)
+                    if (refreshingPlaylistName.isNotBlank()) {
+                        Text(
+                            text = if (isIndonesian) "Memperbarui $refreshingPlaylistName" else "Updating $refreshingPlaylistName",
+                            color = c.textPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Text(
                         text = loadingMessage.ifBlank { strings.loadingPlaylist },
-                        color = Color.White.copy(alpha = 0.92f),
-                        fontSize = 13.sp,
+                        color = c.textSecondary,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -330,6 +379,12 @@ fun PlaylistManagerScreen(
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(bottom = 6.dp)
                         )
+                    }
+                    if (repo != null) {
+                        ActionRow(Icons.Rounded.NetworkCheck, if (isIndonesian) "Cek Status Playlist" else "Check Playlist Status", tint = c.accent) {
+                            actionTarget = null
+                            triggerHealthCheck(target)
+                        }
                     }
                     ActionRow(Icons.Rounded.Refresh, strings.refresh) {
                         actionTarget = null
@@ -404,6 +459,189 @@ fun PlaylistManagerScreen(
                 }
             )
         }
+    }
+
+
+    // Kartu Pop-Up Status Playlist Akurat (v2.5.3)
+    healthTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!isCheckingHealth) healthTarget = null },
+            containerColor = c.surface,
+            shape = RoundedCornerShape(22.dp),
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = target.name,
+                        color = c.textPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = if (isIndonesian) "Status Playlist" else "Playlist Status",
+                        color = c.textSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+            },
+            text = {
+                if (isCheckingHealth) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        BoomerangLoadingIndicator(style = loadingAnimStyle, size = 54.dp)
+                        Text(
+                            text = if (isIndonesian) "Memeriksa status URL & server..." else "Checking URL & server status...",
+                            color = c.textSecondary,
+                            fontSize = 12.sp
+                        )
+                    }
+                } else {
+                    val res = healthResult
+                    if (res == null) {
+                        Text(
+                            text = if (isIndonesian) "Gagal memeriksa status playlist." else "Unable to verify playlist status.",
+                            color = Color(0xFFFF6B6B),
+                            fontSize = 13.sp
+                        )
+                    } else {
+                        val (badgeColor, badgeLabel, badgeIcon) = when (res.state) {
+                            PlaylistHealthState.ACTIVE -> Triple(Color(0xFF22C55E), if (isIndonesian) "Aktif" else "Active", Icons.Rounded.CheckCircle)
+                            PlaylistHealthState.DELAY -> Triple(Color(0xFFF59E0B), if (isIndonesian) "Delay / Lemot" else "Slow / Delay", Icons.Rounded.Schedule)
+                            PlaylistHealthState.EXPIRED -> Triple(Color(0xFFFB7185), if (isIndonesian) "Kadaluarsa" else "Expired", Icons.Rounded.EventBusy)
+                            PlaylistHealthState.INACTIVE -> Triple(Color(0xFFEF4444), if (isIndonesian) "Tidak Aktif" else "Inactive", Icons.Rounded.Block)
+                            PlaylistHealthState.DOWN -> Triple(Color(0xFFEF4444), if (isIndonesian) "Down / Mati" else "Down / Offline", Icons.Rounded.CloudOff)
+                        }
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Badge Status + Latensi
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(badgeColor.copy(alpha = 0.14f))
+                                    .border(1.dp, badgeColor.copy(alpha = 0.50f), RoundedCornerShape(14.dp))
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(badgeIcon, contentDescription = null, tint = badgeColor, modifier = Modifier.size(20.dp))
+                                    Text(badgeLabel, color = badgeColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                }
+                                if (res.latencyMs > 0L) {
+                                    Text("${res.latencyMs} ms", color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+
+                            // Jumlah Channel TV, Film, Seri
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(
+                                    Triple(strings.liveTv, res.liveCount, Icons.Rounded.LiveTv),
+                                    Triple(strings.movies, res.movieCount, Icons.Rounded.Movie),
+                                    Triple(strings.series, res.seriesCount, Icons.Rounded.Tv)
+                                ).forEach { (lbl, cnt, ic) ->
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(c.surfaceElevated)
+                                            .border(0.8.dp, c.glassBorder, RoundedCornerShape(12.dp))
+                                            .padding(vertical = 10.dp, horizontal = 6.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Icon(ic, contentDescription = null, tint = c.accent, modifier = Modifier.size(16.dp))
+                                        Text("$cnt", color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                        Text(lbl, color = c.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
+
+                            // Info Masa Aktif / Kuota (jika Xtream)
+                            if (res.expiryDateText.isNotBlank() || res.maxConnections > 0) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    if (res.expiryDateText.isNotBlank()) {
+                                        Text(
+                                            text = (if (isIndonesian) "Aktif s/d: " else "Expires: ") + res.expiryDateText,
+                                            color = c.textSecondary,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                    if (res.maxConnections > 0) {
+                                        Text(
+                                            text = (if (isIndonesian) "Koneksi: " else "Conn: ") + "${res.activeConnections.coerceAtLeast(0)}/${res.maxConnections}",
+                                            color = c.textSecondary,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Saran HANYA jika Delay/Lemot, atau detail singkat jika bermasalah (Jika Aktif/Lancar -> TANPA komentar!)
+                            if (res.state == PlaylistHealthState.DELAY) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0x1FF59E0B))
+                                        .border(0.9.dp, Color(0x66F59E0B), RoundedCornerShape(12.dp))
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    if (res.detail.isNotBlank()) {
+                                        Text(res.detail, color = Color(0xFFF59E0B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text(
+                                        text = if (isIndonesian) {
+                                            "Saran: Aktifkan DNS-over-HTTPS (DoH) dan pilih Profil Buffer Anti-Buffer di Pengaturan, atau pindah ke jaringan lebih stabil."
+                                        } else {
+                                            "Tip: Enable DNS-over-HTTPS (DoH) and switch to the Anti-Buffer profile in Settings, or use a faster network."
+                                        },
+                                        color = c.textPrimary.copy(alpha = 0.88f),
+                                        fontSize = 11.sp,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            } else if (res.state != PlaylistHealthState.ACTIVE && res.detail.isNotBlank()) {
+                                Text(
+                                    text = res.detail,
+                                    color = Color(0xFFFF8A80),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (!isCheckingHealth) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        TextButton(onClick = { triggerHealthCheck(target) }) {
+                            Text(if (isIndonesian) "Cek Ulang" else "Recheck", color = c.textSecondary)
+                        }
+                        TextButton(onClick = { healthTarget = null }) {
+                            Text(strings.closeBtn, color = c.accent, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        )
     }
 
     if (showEditor) {

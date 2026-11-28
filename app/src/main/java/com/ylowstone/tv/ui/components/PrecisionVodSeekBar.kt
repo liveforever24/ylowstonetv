@@ -22,13 +22,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ylowstone.tv.ui.theme.LocalYlowColors
-import com.ylowstone.tv.util.FlagshipFeedback
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -59,7 +57,6 @@ fun PrecisionVodSeekBar(
     modifier: Modifier = Modifier
 ) {
     val c = LocalYlowColors.current
-    val view = LocalView.current
     val density = LocalDensity.current
     val safeDuration = durationMs.coerceAtLeast(1L)
 
@@ -205,8 +202,7 @@ fun PrecisionVodSeekBar(
                                 isScrubbing = false
                                 isFinePrecision = false
                                 onDraggingStateChanged(false)
-                                FlagshipFeedback.playTick(view)
-                                onSeekCommitted(target)
+onSeekCommitted(target)
                                 break
                             }
                             change.consume()
@@ -214,8 +210,7 @@ fun PrecisionVodSeekBar(
                             val nowFine = liftUpPx >= fineThresholdPx
                             if (nowFine && !enteredFineHaptic) {
                                 enteredFineHaptic = true
-                                FlagshipFeedback.playTick(view)
-                            }
+}
                             isFinePrecision = nowFine
 
                             val dx = change.position.x - prevX

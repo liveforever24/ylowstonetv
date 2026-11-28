@@ -41,7 +41,6 @@ class AppPrefs(context: Context) {
             pinCode = prefs.getString("pin_code", "1234") ?: "1234",
             use24HourClock = prefs.getBoolean("use_24h", true),
             preferExternalPlayer = prefs.getBoolean("prefer_external", false),
-            uiSoundsEnabled = prefs.getBoolean("ui_sounds_enabled", true),
             enableDoh = prefs.getBoolean("enable_doh", true)
         )
     }
@@ -68,7 +67,6 @@ class AppPrefs(context: Context) {
             .putString("pin_code", s.pinCode)
             .putBoolean("use_24h", s.use24HourClock)
             .putBoolean("prefer_external", s.preferExternalPlayer)
-            .putBoolean("ui_sounds_enabled", s.uiSoundsEnabled)
             .putBoolean("enable_doh", s.enableDoh)
             .apply()
     }

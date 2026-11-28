@@ -40,7 +40,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.ui.text.font.FontWeight
@@ -65,12 +64,14 @@ import com.ylowstone.tv.model.EpgProgramItem
 import com.ylowstone.tv.model.MediaType
 import com.ylowstone.tv.model.PlaylistProfile
 import com.ylowstone.tv.model.PlaylistType
+import com.ylowstone.tv.model.SkipIntroMode
 import com.ylowstone.tv.ui.components.ChannelLogoBox
 import com.ylowstone.tv.ui.components.PrecisionVodSeekBar
+import com.ylowstone.tv.ui.components.SkipIntroInlineSection
+import com.ylowstone.tv.ui.components.formatSkipIntroMmSs
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
-import com.ylowstone.tv.util.FlagshipFeedback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -119,7 +120,10 @@ fun SplitPlayerScreen(
     repo: IptvRepository? = null,
     activePlaylist: PlaylistProfile? = null,
     previousChannel: ChannelItem? = null,
-    onRecallPrevious: () -> Unit = {}
+    onRecallPrevious: () -> Unit = {},
+    skipIntroMode: SkipIntroMode = SkipIntroMode.MANUAL,
+    skipIntroSeconds: Int = 85,
+    onUpdateSkipIntro: (SkipIntroMode, Int) -> Unit = { _, _ -> }
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -158,8 +162,6 @@ fun SplitPlayerScreen(
     val currentIndex = remember(currentChannel, channelList) {
         channelList.indexOfFirst { it.id == currentChannel.id && it.streamUrl == currentChannel.streamUrl }.coerceAtLeast(0)
     }
-
-    val feedbackView = LocalView.current
     var controlsVisible by remember { mutableStateOf(true) }
     var isSeekDragging by remember { mutableStateOf(false) }
     var showTrackSheet by remember { mutableStateOf(false) }
@@ -221,6 +223,23 @@ fun SplitPlayerScreen(
             delay(200)
         }
     }
+
+    var splitIntroSkipped by remember(currentChannel.streamUrl) { mutableStateOf(false) }
+    val splitSkipTargetMs = skipIntroSeconds.coerceIn(5, 600) * 1000L
+    LaunchedEffect(currentChannel.streamUrl, skipIntroMode, skipIntroSeconds, isSeriesEffective, positionMs, durationMs) {
+        if (!isSeriesEffective || splitIntroSkipped || skipIntroMode != SkipIntroMode.AUTO) return@LaunchedEffect
+        if (durationMs > splitSkipTargetMs + 20_000L && positionMs in 2_000L..12_000L) {
+            splitIntroSkipped = true
+            exoPlayer.seekTo(splitSkipTargetMs)
+            positionMs = splitSkipTargetMs
+            Toast.makeText(context, "${strings.skipIntroBtn} (${formatSkipIntroMmSs(skipIntroSeconds)})", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val showSplitSkipPill = isSeriesEffective &&
+        !splitIntroSkipped &&
+        skipIntroMode == SkipIntroMode.MANUAL &&
+        durationMs > splitSkipTargetMs + 15_000L &&
+        positionMs in 2_000L..(splitSkipTargetMs - 3_000L).coerceAtLeast(3_000L)
 
     val currentSubtitleText = remember(activeSubCues, positionMs, subOffsetMs) {
         SubtitleFetcher.findCueTextAt(activeSubCues, positionMs + subOffsetMs)
@@ -377,11 +396,9 @@ fun SplitPlayerScreen(
                                     dragOffsetY = 0f
                                     swipeUpAccum = 0f
                                     if (shouldPip) {
-                                        FlagshipFeedback.playTick(feedbackView)
-                                        onMinimizeToFloat()
+onMinimizeToFloat()
                                     } else if (shouldFull) {
-                                        FlagshipFeedback.playSelect(feedbackView)
-                                        onEnterFullscreen()
+onEnterFullscreen()
                                     }
                                 },
                                 onVerticalDrag = { change, dragAmount ->
@@ -446,6 +463,32 @@ fun SplitPlayerScreen(
                             modifier = Modifier.align(Alignment.Center).size(34.dp)
                         )
                     }
+                    if (showSplitSkipPill) {
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 10.dp, bottom = if (controlsVisible) 48.dp else 10.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.Black.copy(alpha = 0.80f))
+                                .border(1.dp, c.accent.copy(alpha = 0.75f), RoundedCornerShape(12.dp))
+                                .clickable {
+                                    splitIntroSkipped = true
+                                    exoPlayer.seekTo(splitSkipTargetMs)
+                                    positionMs = splitSkipTargetMs
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(Icons.Rounded.FastForward, contentDescription = null, tint = c.accent, modifier = Modifier.size(15.dp))
+                            Text(
+                                text = "${strings.skipIntroBtn} (${formatSkipIntroMmSs(skipIntroSeconds)})",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
 
                     // Indikator tipis saat sedang menyeret ke bawah menuju PiP
                     if (isDraggingDown && dragOffsetY > 18f) {
@@ -500,7 +543,8 @@ fun SplitPlayerScreen(
                                 }
 
                                 IconButton(
-                                    onClick = { FlagshipFeedback.playTick(feedbackView); showTrackSheet = true },
+                                    onClick = {
+showTrackSheet = true },
                                     modifier = Modifier.size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
                                 ) {
                                     Icon(Icons.Rounded.Settings, contentDescription = strings.tracks, tint = Color.White, modifier = Modifier.size(18.dp))
@@ -595,8 +639,7 @@ fun SplitPlayerScreen(
                                                         .clip(RoundedCornerShape(8.dp))
                                                         .background(Color.White.copy(alpha = 0.16f))
                                                         .clickable {
-                                                            FlagshipFeedback.playTick(feedbackView)
-                                                            onRecallPrevious()
+onRecallPrevious()
                                                         }
                                                         .padding(horizontal = 7.dp, vertical = 3.dp)
                                                 ) {
@@ -612,8 +655,7 @@ fun SplitPlayerScreen(
                                             .clip(CircleShape)
                                             .background(c.accent)
                                             .clickable {
-                                                FlagshipFeedback.playSelect(feedbackView)
-                                                onEnterFullscreen()
+onEnterFullscreen()
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -755,8 +797,7 @@ fun SplitPlayerScreen(
                                     onDragStart = { upAcc = 0f },
                                     onDragEnd = {
                                         if (upAcc <= -(pipThresholdPx * 0.55f)) {
-                                            FlagshipFeedback.playSelect(feedbackView)
-                                            onEnterFullscreen()
+onEnterFullscreen()
                                         }
                                         upAcc = 0f
                                     }
@@ -770,8 +811,7 @@ fun SplitPlayerScreen(
                             .clickable {
                                 if (isVod) controlsVisible = !controlsVisible
                                 else {
-                                    FlagshipFeedback.playSelect(feedbackView)
-                                    onEnterFullscreen()
+onEnterFullscreen()
                                 }
                             }
                     ) {
@@ -834,6 +874,32 @@ fun SplitPlayerScreen(
                         }
                         if (isBuffering) {
                             CircularProgressIndicator(color = c.accent, modifier = Modifier.align(Alignment.Center))
+                        }
+                        if (showSplitSkipPill) {
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(end = 14.dp, bottom = if (controlsVisible) 56.dp else 14.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color.Black.copy(alpha = 0.80f))
+                                    .border(1.dp, c.accent.copy(alpha = 0.75f), RoundedCornerShape(14.dp))
+                                    .clickable {
+                                        splitIntroSkipped = true
+                                        exoPlayer.seekTo(splitSkipTargetMs)
+                                        positionMs = splitSkipTargetMs
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Rounded.FastForward, contentDescription = null, tint = c.accent, modifier = Modifier.size(16.dp))
+                                Text(
+                                    text = "${strings.skipIntroBtn} (${formatSkipIntroMmSs(skipIntroSeconds)})",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
 
@@ -924,8 +990,7 @@ fun SplitPlayerScreen(
 
                         IconButton(
                             onClick = {
-                                FlagshipFeedback.playSelect(feedbackView)
-                                onEnterFullscreen()
+onEnterFullscreen()
                             },
                             modifier = Modifier
                                 .size(38.dp)
@@ -989,6 +1054,16 @@ fun SplitPlayerScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    if (isSeriesEffective) {
+                        SkipIntroInlineSection(
+                            mode = skipIntroMode,
+                            seconds = skipIntroSeconds,
+                            strings = strings,
+                            onUpdate = onUpdateSkipIntro
+                        )
+                        HorizontalDivider(color = c.glassBorder)
+                    }
+
                     // Audio Tracks
                     Text(strings.audioTrack, color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     if (audioTracks.isEmpty()) {

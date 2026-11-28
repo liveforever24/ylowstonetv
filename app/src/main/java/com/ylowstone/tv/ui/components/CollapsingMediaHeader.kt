@@ -298,14 +298,20 @@ fun CinematicCollapsingListScreen(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(182.dp)
+                                    .width(248.dp)
+                                    .height(150.dp)
                                     .scale(coverScale)
                                     .alpha(coverAlpha)
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .clip(RoundedCornerShape(24.dp))
                                     .border(
-                                        width = 1.2.dp,
-                                        color = c.accent.copy(alpha = 0.42f),
-                                        shape = RoundedCornerShape(16.dp)
+                                        width = 1.1.dp,
+                                        brush = Brush.verticalGradient(
+                                            colors = listOf(
+                                                c.accent.copy(alpha = 0.58f),
+                                                c.accent.copy(alpha = 0.16f)
+                                            )
+                                        ),
+                                        shape = RoundedCornerShape(24.dp)
                                     )
                             ) {
                                 Image(

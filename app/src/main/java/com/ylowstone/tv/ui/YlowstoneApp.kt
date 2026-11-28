@@ -52,7 +52,6 @@ import com.ylowstone.tv.ui.components.ProfileQuickDropdown
 import com.ylowstone.tv.ui.screens.*
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import com.ylowstone.tv.ui.theme.YlowstoneTheme
-import com.ylowstone.tv.util.FlagshipFeedback
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -108,6 +107,7 @@ fun YlowstoneApp(
 
     var isLoading by remember { mutableStateOf(false) }
     var loadingMessage by remember { mutableStateOf("") }
+    var refreshingPlaylistName by remember { mutableStateOf("") }
 
     var showProfileDropdown by remember { mutableStateOf(false) }
     var quickUpdateDialogInfo by remember { mutableStateOf<UpdateInfo?>(null) }
@@ -132,12 +132,12 @@ fun YlowstoneApp(
     var subtitleSession by remember { mutableStateOf(ActiveSubtitleSession()) }
     var liveReconnectAttempts by remember { mutableIntStateOf(0) }
 
-    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.5.1", dohEnabled = settings.enableDoh) }
+    val connectionGuard = remember { StrictConnectionGuard("YlowstoneTV/2.5.3", dohEnabled = settings.enableDoh) }
     val streamResolver = remember { XtreamStreamResolver() }
     val sessionMonitor = remember(connectionGuard) { XtreamSessionMonitor(connectionGuard) }
 
     val sharedPlayer = remember(settings.bufferProfile, connectionGuard) {
-        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.5.1")
+        val dsFactory = connectionGuard.createUniversalDataSourceFactory(context.applicationContext, "YlowstoneTV/2.5.3")
         val bp = settings.bufferProfile
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bp.minBufferMs, bp.maxBufferMs, bp.playbackMs, bp.rebufferMs)
@@ -167,9 +167,6 @@ fun YlowstoneApp(
     }
     val stabilizerState by reconnectController.state.collectAsState()
 
-    LaunchedEffect(settings.uiSoundsEnabled) {
-        FlagshipFeedback.soundsEnabled = settings.uiSoundsEnabled
-    }
     LaunchedEffect(settings.enableDoh) {
         connectionGuard.setDohEnabled(settings.enableDoh)
     }
@@ -579,12 +576,14 @@ fun YlowstoneApp(
 
     fun syncAndEnter(profile: PlaylistProfile, localUri: Uri? = null, enterAfter: Boolean = true) {
         isLoading = true
+        refreshingPlaylistName = profile.name
         loadingMessage = strings.loadingPlaylist
         scope.launch {
             val res = repo.syncPlaylist(profile, settings.streamFormat, localUri) { msg ->
                 loadingMessage = msg
             }
             isLoading = false
+            refreshingPlaylistName = ""
             playlists = repo.db.getAllPlaylists()
             res.onSuccess { count ->
                 Toast.makeText(context, "${strings.syncComplete} ($count)", Toast.LENGTH_SHORT).show()
@@ -951,8 +950,10 @@ fun YlowstoneApp(
                         streamFormat = settings.streamFormat,
                         strings = strings,
                         isTvMode = isTvMode,
+                        repo = repo,
                         isLoading = isLoading,
                         loadingMessage = loadingMessage,
+                        refreshingPlaylistName = refreshingPlaylistName,
                         loadingAnimStyle = settings.loadingAnimStyle,
                         onOpenPlaylist = { profile ->
                             val counts = repo.db.getCountsByMediaType(profile.id)
@@ -1396,6 +1397,13 @@ fun YlowstoneApp(
                     previousChannel = previousChannel,
                     onRecallPrevious = {
                         previousChannel?.let { prev -> playStream(prev, activeQueue) }
+                    },
+                    skipIntroMode = settings.skipIntroMode,
+                    skipIntroSeconds = settings.skipIntroSeconds,
+                    onUpdateSkipIntro = { nextMode, nextSec ->
+                        val updated = settings.copy(skipIntroMode = nextMode, skipIntroSeconds = nextSec.coerceIn(5, 600))
+                        settings = updated
+                        prefs.saveSettings(updated)
                     }
                 )
             }
@@ -1451,10 +1459,7 @@ fun YlowstoneApp(
                     },
                     onTracksModified = { tracksVersion++ },
                     skipIntroMode = settings.skipIntroMode,
-                    skipIntroSeconds = prefs.getSeriesIntroSeconds(
-                        activeChannel!!.category.ifBlank { activeChannel!!.name },
-                        settings.skipIntroSeconds
-                    ),
+                    skipIntroSeconds = settings.skipIntroSeconds,
                     autoNextEpisode = settings.autoNextEpisode,
                     onSaveSeriesSubtitleOffset = { sKey, offMs -> prefs.saveSeriesSubtitleOffsetMs(sKey, offMs) },
                     onSaveSeriesIntroSeconds = { sKey, sec -> prefs.saveSeriesIntroSeconds(sKey, sec) },
@@ -1485,6 +1490,11 @@ fun YlowstoneApp(
                         saveCurrentVodProgress(refreshHome = true)
                         playerMode = PlayerMode.SPLIT
                         isLandscapeFullscreen = false
+                    },
+                    onUpdateSkipIntro = { nextMode, nextSec ->
+                        val updated = settings.copy(skipIntroMode = nextMode, skipIntroSeconds = nextSec.coerceIn(5, 600))
+                        settings = updated
+                        prefs.saveSettings(updated)
                     }
                 )
             }

@@ -130,6 +130,21 @@ enum class PlayerMode { NONE, SPLIT, FULLSCREEN, FLOATING }
 
 enum class StreamHealthState { ACTIVE, DELAY, DEAD }
 
+enum class PlaylistHealthState { ACTIVE, DELAY, EXPIRED, INACTIVE, DOWN }
+
+data class PlaylistHealthResult(
+    val state: PlaylistHealthState,
+    val latencyMs: Long = 0L,
+    val liveCount: Int = 0,
+    val movieCount: Int = 0,
+    val seriesCount: Int = 0,
+    val expiryDateText: String = "",
+    val activeConnections: Int = -1,
+    val maxConnections: Int = -1,
+    val detail: String = ""
+)
+
+
 data class StreamHealthResult(
     val state: StreamHealthState,
     val latencyMs: Long,
@@ -286,7 +301,6 @@ data class AppSettings(
     val pinCode: String = "1234",
     val use24HourClock: Boolean = true,
     val preferExternalPlayer: Boolean = false,
-    val uiSoundsEnabled: Boolean = true,
     val enableDoh: Boolean = true
 )
 

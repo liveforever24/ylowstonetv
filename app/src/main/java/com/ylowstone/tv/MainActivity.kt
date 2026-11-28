@@ -29,7 +29,6 @@ import com.ylowstone.tv.data.AppPrefs
 import com.ylowstone.tv.data.DatabaseHelper
 import com.ylowstone.tv.data.IptvRepository
 import com.ylowstone.tv.ui.YlowstoneApp
-import com.ylowstone.tv.util.FlagshipFeedback
 import com.ylowstone.tv.util.SecurityCrypto
 
 class MainActivity : ComponentActivity() {
@@ -71,7 +70,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         prefs = AppPrefs(applicationContext)
-        FlagshipFeedback.init(applicationContext)
         val db = DatabaseHelper(applicationContext)
         repo = IptvRepository(applicationContext, db)
 

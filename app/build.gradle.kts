@@ -12,8 +12,8 @@ android {
         applicationId = "com.ylowstone.tv"
         minSdk = 29
         targetSdk = 35
-        versionCode = 29
-        versionName = "2.5.2"
+        versionCode = 30
+        versionName = "2.5.3"
         resourceConfigurations += listOf("en", "in", "id")
     }
 

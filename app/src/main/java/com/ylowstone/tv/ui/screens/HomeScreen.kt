@@ -78,7 +78,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -102,7 +101,6 @@ import com.ylowstone.tv.ui.components.YlowInterDisplay
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
-import com.ylowstone.tv.util.FlagshipFeedback
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.hypot
@@ -162,8 +160,6 @@ fun HomeScreen(
     val tvCountText = "${formatCompactCount(liveCount)} ${strings.channelsCount}"
     val filmCountText = formatCompactCount(movieCount)
     val seriCountText = formatCompactCount(seriesCount)
-
-    val view = LocalView.current
     val isIndonesian = strings.watchHistory.startsWith("Riwayat", ignoreCase = true)
     val continueWatchingVod = remember(history) {
         history.filter { it.channel.mediaType == MediaType.MOVIE || it.channel.mediaType == MediaType.SERIES }
@@ -274,7 +270,8 @@ fun HomeScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        onClick = { FlagshipFeedback.playTick(view); activeSubView = HomeSubView.CONTINUE_WATCHING }
+                        onClick = {
+activeSubView = HomeSubView.CONTINUE_WATCHING }
                     )
                     HomeNotchPill(
                         label = shortFavoriteLabel,
@@ -284,7 +281,8 @@ fun HomeScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        onClick = { FlagshipFeedback.playTick(view); activeSubView = HomeSubView.FAVORITES }
+                        onClick = {
+activeSubView = HomeSubView.FAVORITES }
                     )
                 }
             } else {
@@ -358,7 +356,8 @@ fun HomeScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        onClick = { FlagshipFeedback.playTick(view); activeSubView = HomeSubView.CONTINUE_WATCHING }
+                        onClick = {
+activeSubView = HomeSubView.CONTINUE_WATCHING }
                     )
                     HomeNotchPill(
                         label = shortFavoriteLabel,
@@ -368,7 +367,8 @@ fun HomeScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
-                        onClick = { FlagshipFeedback.playTick(view); activeSubView = HomeSubView.FAVORITES }
+                        onClick = {
+activeSubView = HomeSubView.FAVORITES }
                     )
                 }
             }
@@ -720,13 +720,10 @@ private fun YellowstoneCoverCard(
     var isFocused by remember { mutableStateOf(false) }
     var isSinking by remember { mutableStateOf(false) }
     var lastTapMs by remember { mutableLongStateOf(0L) }
-
-    val cardView = LocalView.current
     fun triggerDiveInTap() {
         val now = System.currentTimeMillis()
         if (now - lastTapMs < 350L || isSinking) return
-        FlagshipFeedback.playSelect(cardView)
-        lastTapMs = now
+lastTapMs = now
         isSinking = true
         scope.launch {
             delay(110L)

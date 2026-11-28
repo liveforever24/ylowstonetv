@@ -459,7 +459,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
-                            onClick = { exportBackupLauncher.launch("ylowstonetv_backup_v250.json") },
+                            onClick = { exportBackupLauncher.launch("ylowstonetv_backup_v253.json") },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
                         ) {
@@ -578,35 +578,7 @@ fun SettingsScreen(
                         )
                     }
 
-                    HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (isIndonesian) "Suara Navigasi & Haptik Flagship" else "Flagship UI Sound & Haptics",
-                                color = c.textPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = if (isIndonesian) "Efek suara halus elegan dan getaran lembut saat bernavigasi" else "Subtle acoustic navigation chimes and tactile micro-haptics",
-                                color = c.textSecondary,
-                                fontSize = 11.sp
-                            )
-                        }
-                        Switch(
-                            checked = settings.uiSoundsEnabled,
-                            onCheckedChange = { onUpdateSettings(settings.copy(uiSoundsEnabled = it)) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = c.onAccent,
-                                checkedTrackColor = c.accent
-                            )
-                        )
-                    }
 
                     HorizontalDivider(color = c.glassBorder, modifier = Modifier.padding(vertical = 8.dp))
 

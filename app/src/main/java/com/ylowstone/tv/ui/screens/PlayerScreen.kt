@@ -44,7 +44,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -69,8 +68,9 @@ import com.ylowstone.tv.model.PlaylistProfile
 import com.ylowstone.tv.model.PlaylistType
 import com.ylowstone.tv.model.SkipIntroMode
 import com.ylowstone.tv.model.SleepTimerOption
-import com.ylowstone.tv.util.FlagshipFeedback
 import com.ylowstone.tv.ui.components.PrecisionVodSeekBar
+import com.ylowstone.tv.ui.components.SkipIntroInlineSection
+import com.ylowstone.tv.ui.components.formatSkipIntroMmSs
 import com.ylowstone.tv.ui.theme.LocalYlowColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -309,7 +309,8 @@ fun FullscreenPlayerScreen(
     sleepTimerRemainingLabel: String = "",
     onSelectSleepTimer: (SleepTimerOption) -> Unit = {},
     onPlayCatchUp: (EpgProgramItem) -> Unit = {},
-    onReturnToSplit: () -> Unit = onToggleFullscreenOrientation
+    onReturnToSplit: () -> Unit = onToggleFullscreenOrientation,
+    onUpdateSkipIntro: (SkipIntroMode, Int) -> Unit = { _, _ -> }
 ) {
     val c = LocalYlowColors.current
     val context = LocalContext.current
@@ -325,7 +326,6 @@ fun FullscreenPlayerScreen(
     var controlsVisible by remember { mutableStateOf(true) }
     var isScreenLocked by remember { mutableStateOf(false) }
     var showChannelDrawer by remember { mutableStateOf(false) }
-    val feedbackView = LocalView.current
     var showTrackDrawer by remember { mutableStateOf(false) }
     var showSleepDialog by remember { mutableStateOf(false) }
     var showEpgDialog by remember { mutableStateOf(false) }
@@ -455,15 +455,15 @@ fun FullscreenPlayerScreen(
 
     // v2.3.3: Skip Intro state (Manual pill in first 3 min or Auto-skip once per episode)
     var introSkippedThisEp by remember(currentChannel.streamUrl) { mutableStateOf(false) }
-    val skipIntroTargetMs = skipIntroSeconds.coerceIn(15, 180) * 1000L
+    val skipIntroTargetMs = skipIntroSeconds.coerceIn(5, 600) * 1000L
 
-    LaunchedEffect(currentChannel.streamUrl, skipIntroMode, isSeriesEpisode, positionMs, durationMs) {
+    LaunchedEffect(currentChannel.streamUrl, skipIntroMode, skipIntroSeconds, isSeriesEpisode, positionMs, durationMs) {
         if (!isSeriesEpisode || introSkippedThisEp || skipIntroMode != SkipIntroMode.AUTO) return@LaunchedEffect
         if (durationMs > skipIntroTargetMs + 30_000L && positionMs in 2_000L..12_000L) {
             introSkippedThisEp = true
             exoPlayer.seekTo(skipIntroTargetMs)
             positionMs = skipIntroTargetMs
-            Toast.makeText(context, "${strings.skipIntroBtn} (+${skipIntroSeconds}s)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "${strings.skipIntroBtn} (${formatSkipIntroMmSs(skipIntroSeconds)})", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -775,8 +775,7 @@ fun FullscreenPlayerScreen(
                                     onDragCancel = { downAccum = 0f },
                                     onDragEnd = {
                                         if (downAccum >= 110f) {
-                                            FlagshipFeedback.playTick(feedbackView)
-                                            onReturnToSplit()
+onReturnToSplit()
                                         }
                                         downAccum = 0f
                                     }
@@ -850,8 +849,7 @@ fun FullscreenPlayerScreen(
                                 accumX += dragAmount
                                 if (accumX > 48f) {
                                     change.consume()
-                                    FlagshipFeedback.playTick(feedbackView)
-                                    showChannelDrawer = true
+showChannelDrawer = true
                                     accumX = 0f
                                 }
                             }
@@ -954,7 +952,6 @@ fun FullscreenPlayerScreen(
                         introSkippedThisEp = true
                         exoPlayer.seekTo(skipIntroTargetMs)
                         positionMs = skipIntroTargetMs
-                        onSaveSeriesIntroSeconds(parsedSeriesInfo.first, skipIntroSeconds)
                     }
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -962,7 +959,7 @@ fun FullscreenPlayerScreen(
             ) {
                 Icon(Icons.Rounded.FastForward, contentDescription = null, tint = c.accent, modifier = Modifier.size(18.dp))
                 Text(
-                    text = "${strings.skipIntroBtn} (+${skipIntroSeconds}s)",
+                    text = "${strings.skipIntroBtn} (${formatSkipIntroMmSs(skipIntroSeconds)})",
                     color = Color.White,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
@@ -1133,8 +1130,7 @@ fun FullscreenPlayerScreen(
                             if (previousChannel != null) {
                                 IconButton(
                                     onClick = {
-                                        FlagshipFeedback.playSelect(feedbackView)
-                                        onRecallPrevious()
+onRecallPrevious()
                                     },
                                     modifier = Modifier.size(42.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f))
                                 ) {
@@ -1143,8 +1139,7 @@ fun FullscreenPlayerScreen(
                             }
                             IconButton(
                                 onClick = {
-                                    FlagshipFeedback.playTick(feedbackView)
-                                    showSleepDialog = true
+showSleepDialog = true
                                 },
                                 modifier = Modifier.size(42.dp).clip(CircleShape).background(
                                     if (activeSleepTimer != SleepTimerOption.OFF) c.accent.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.45f)
@@ -1154,8 +1149,7 @@ fun FullscreenPlayerScreen(
                             }
                             IconButton(
                                 onClick = {
-                                    FlagshipFeedback.playTick(feedbackView)
-                                    isScreenLocked = true
+isScreenLocked = true
                                     controlsVisible = true
                                 },
                                 modifier = Modifier.size(42.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f))
@@ -1164,8 +1158,7 @@ fun FullscreenPlayerScreen(
                             }
                             IconButton(
                                 onClick = {
-                                    FlagshipFeedback.playTick(feedbackView)
-                                    showTrackDrawer = true
+showTrackDrawer = true
                                 },
                                 modifier = Modifier.size(44.dp).clip(CircleShape).background(c.accent)
                             ) {
@@ -1347,8 +1340,7 @@ fun FullscreenPlayerScreen(
                                     shape = RoundedCornerShape(10.dp)
                                 )
                                 .clickable {
-                                    FlagshipFeedback.playSelect(feedbackView)
-                                    onSelectChannel(ch)
+onSelectChannel(ch)
                                     showChannelDrawer = false
                                 }
                                 .padding(horizontal = 10.dp, vertical = 9.dp)
@@ -1431,6 +1423,16 @@ fun FullscreenPlayerScreen(
                     Text(strings.settings, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 HorizontalDivider(color = Color.White.copy(alpha = 0.16f))
+
+                if (isSeriesEffective) {
+                    SkipIntroInlineSection(
+                        mode = skipIntroMode,
+                        seconds = skipIntroSeconds,
+                        strings = strings,
+                        onUpdate = onUpdateSkipIntro
+                    )
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.16f))
+                }
 
                 if (isVod) {
                     Column(
@@ -1696,8 +1698,7 @@ fun FullscreenPlayerScreen(
                                     .background(if (selected) c.accentContainer else c.surfaceElevated)
                                     .border(1.dp, if (selected) c.accent else c.glassBorder, RoundedCornerShape(12.dp))
                                     .clickable {
-                                        FlagshipFeedback.playSelect(feedbackView)
-                                        onSelectSleepTimer(opt)
+onSelectSleepTimer(opt)
                                         showSleepDialog = false
                                     }
                                     .padding(horizontal = 14.dp, vertical = 11.dp),
@@ -1794,8 +1795,7 @@ fun FullscreenPlayerScreen(
                                                     .clip(RoundedCornerShape(8.dp))
                                                     .background(c.accent)
                                                     .clickable {
-                                                        FlagshipFeedback.playSelect(feedbackView)
-                                                        showEpgDialog = false
+showEpgDialog = false
                                                         onPlayCatchUp(prog)
                                                     }
                                                     .padding(horizontal = 8.dp, vertical = 3.dp)

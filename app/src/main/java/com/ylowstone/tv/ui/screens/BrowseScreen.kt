@@ -34,7 +34,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,7 +62,6 @@ import com.ylowstone.tv.ui.components.YlowInterDisplay
 import com.ylowstone.tv.ui.components.glossyPressPill
 import com.ylowstone.tv.ui.components.tvFocusBorder
 import com.ylowstone.tv.ui.theme.LocalYlowColors
-import com.ylowstone.tv.util.FlagshipFeedback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -360,8 +358,6 @@ fun BrowseScreen(
                         else -> currentCat
                     }
                     val firstPlayable = channels.firstOrNull { !it.isProviderSeparator() }
-
-                    val browseView = LocalView.current
                     Box(modifier = Modifier.fillMaxSize()) {
                         CinematicCollapsingListScreen(
                             title = openedTitle,
@@ -377,29 +373,24 @@ fun BrowseScreen(
                             sortLabel = sortLabel,
                             sortActive = channelSortAz,
                             onSortClick = {
-                                FlagshipFeedback.playTick(browseView)
-                                channelSortAz = !channelSortAz
+channelSortAz = !channelSortAz
                             },
                             quickChips = buildList {
                                 add(QuickChipSpec("fav_filter", favChipLabel, channelFavOnly) {
-                                    FlagshipFeedback.playTick(browseView)
-                                    channelFavOnly = !channelFavOnly
+channelFavOnly = !channelFavOnly
                                 })
                                 add(QuickChipSpec("sort_az", sortChipLabel, channelSortAz) {
-                                    FlagshipFeedback.playTick(browseView)
-                                    channelSortAz = !channelSortAz
+channelSortAz = !channelSortAz
                                 })
 
                             },
                             onPlayAction = {
                                 firstPlayable?.let {
-                                    FlagshipFeedback.playSelect(browseView)
-                                    openMediaItem(it, channels)
+openMediaItem(it, channels)
                                 }
                             },
                             onBack = {
-                                FlagshipFeedback.playTick(browseView)
-                                openedCategory = null
+openedCategory = null
                                 channelSearchQuery = ""
                                 channelFavOnly = false
                             },
@@ -430,13 +421,11 @@ fun BrowseScreen(
                                     subtitleOverride = epgSub,
                                     progressFraction = epgProg,
                                     onClick = {
-                                        FlagshipFeedback.playSelect(browseView)
-                                        openMediaItem(ch, channels)
+openMediaItem(ch, channels)
                                     },
                                     onLongClick = { onLongPressChannel(ch) },
                                     onToggleFav = {
-                                        FlagshipFeedback.playTick(browseView)
-                                        onToggleFavorite(ch)
+onToggleFavorite(ch)
                                         refreshTrigger++
                                     }
                                 )
@@ -448,8 +437,7 @@ fun BrowseScreen(
                             AzFastJumpRail(
                                 items = channels.map { it.name },
                                 onSelectLetter = { letter ->
-                                    FlagshipFeedback.playTick(browseView)
-                                    val targetIdx = channels.indexOfFirst { item ->
+val targetIdx = channels.indexOfFirst { item ->
                                         val firstChar = item.name.trim().firstOrNull()?.uppercaseChar()
                                         if (letter == '#') firstChar == null || !firstChar.isLetter()
                                         else firstChar == letter

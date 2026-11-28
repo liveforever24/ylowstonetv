@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v2.5.2-0A0C0E?style=flat-square&logo=android&logoColor=E89D3C" alt="Release v2.5.2" />
+  <img src="https://img.shields.io/badge/Release-v2.5.3-0A0C0E?style=flat-square&logo=android&logoColor=E89D3C" alt="Release v2.5.3" />
   <img src="https://img.shields.io/badge/Platform-Android%2010%2B%20%7C%20Android%20TV-121512?style=flat-square" alt="Platform" />
   <img src="https://img.shields.io/badge/Stack-Kotlin%20%C2%B7%20Jetpack%20Compose-1A1E19?style=flat-square" alt="Kotlin Jetpack Compose" />
   <img src="https://img.shields.io/badge/Player-Media3%20ExoPlayer-2B2110?style=flat-square" alt="Media3 ExoPlayer" />
@@ -19,13 +19,13 @@
 
 YlowstoneTV is engineered around three strict constraints: **zero visual bloat**, **sub-second navigation across 175,000+ indexed entries**, and **hardened credential & connection security**. No ads, no tracking telemetry, no cramped bottom navigation bars—just an AMOLED-first interface anchored by deterministic SQLite encryption, Android Keystore, UniversalStreamStabilizer v2.0, and a persistent Media3 ExoPlayer pipeline.
 
-## Core Capabilities (`v2.5.2`)
+## Core Capabilities (`v2.5.3`)
 
 - **UniversalStreamStabilizer v2.0 (Anti-Kick IP Handoff & DoH):** Built-in **DNS-over-HTTPS (DoH)** with **Fast-IPv4 Pinning**, consistent per-session HTTP header & `X-Playback-Session-Id` fingerprinting, **Graceful Connection Teardown + Cool-Down Handshake + active quota check** on Wi-Fi/Cellular switches, **Dual Buffer Profiles** (fast-start Live TV vs large-buffer VOD), **Zapping Pre-Warm**, **Silent Token Auto-Heal** (HTTP 401/403/410), and 2-way `.m3u8 <-> .ts` automatic failover with per-channel session caching.
 - **Hardcore Security Architecture:** Backend **SSL Certificate Pinning** (CA SPKI), deterministic AES-256-GCM encryption on `stream_url` in `channels` & `watch_history`, Android Keystore AES-256-GCM encryption for playlist credentials, AES-256-GCM encrypted 1-file Backup & Restore (all playlists + settings + favourites), Release **APK Signature & Anti-Tamper/Anti-Hooking Check**, **Anti-Bruteforce 5-Minute Login Lockout**, aggressive R8 optimization, and dynamic `FLAG_SECURE` anti-capture protection for Standard User mode.
 - **Live EPG & Catch-Up, Smart Sleep Timer, & Quick Recall:** Inline Xtream `get_short_epg` program titles + live progress bars in Live TV lists, Fullscreen EPG guide with 1-tap **Catch-Up** replay, **Smart Sleep Timer** (15/30/60/90m or *End of Episode*) with clean Xtream socket teardown, and 1-tap **Quick Recall (Last Channel)**.
 - **Refined Home, A–Z Jump Index, & Half-Screen VOD Seekbar:** Home is streamlined strictly to **Continue Watching** (locked to Movies & Series only; watch history removed) and **Favourites**. Channel lists feature a right-edge **A–Z Fast Jump Index**, while **Half-Screen (Split) Player** adds an accidental-tap-proof **drag-only VOD seekbar** exclusively for Movies & Series across both **Phone and TV** modes (never Live TV).
-- **Fullscreen Frosted Glass OSD, Slide-In Channel Drawer, & Flagship TV Audio/Haptics:** Frosted-glass OSD controls with **Screen Lock**, left-edge swipe **Slide-In Channel Drawer** without leaving Fullscreen, and bespoke low-latency **Flagship TV acoustic navigation chimes & micro-haptics** (toggleable in Settings).
+- **Fullscreen Frosted Glass OSD, Slide-In Channel Drawer, & Flagship TV Audio/Haptics:** Clean floating 4-button Fullscreen controls with **Screen Lock**, left-edge swipe **Slide-In Channel Drawer** with inline Live EPG, in-player custom `MM:SS` **Skip Intro** (Fullscreen & Half-Screen), and accurate **Playlist Health Inspector** pop-up cards.
 - **5 Unified Dynamic Theme Palettes, 12 Custom Icons, & Auto-Subtitle Pipeline:** 5 unified palettes (*System Auto*, *Dark AMOLED Noir*, *Light*, *Amber Dusk*, *Velvet Crimson*), 12 switchable 3D launcher icons, 60fps Boomerang loading animations, Skip Intro (`MM:SS`) & Auto-Next Episode, and automatic Indonesian/preferred-language subtitle sync.
 
 ## System Architecture
@@ -38,7 +38,7 @@ YlowstoneTV is engineered around three strict constraints: **zero visual bloat**
 └─────────────────┬──────────────────┘
                   │ Direct Stream / Xtream / M3U8 / Local .m3u
                   ▼
-       User-Provided IPTV Sources          CI/CD: GitHub Actions → Signed Release APK (~6 MB)
+       User-Provided IPTV Sources          CI/CD: GitHub Actions → Signed Release APK (~8 MB)
 ```
 
 ## Supported Sources
