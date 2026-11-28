@@ -419,7 +419,7 @@ fun YlowstoneApp(
                     hydratedList.indexOfFirst { ep ->
                         val m = seRegex.find(ep.name)
                         m?.groupValues?.getOrNull(1)?.toIntOrNull() == curSe.first &&
-                            m.groupValues.getOrNull(2)?.toIntOrNull() == curSe.second
+                            m?.groupValues?.getOrNull(2)?.toIntOrNull() == curSe.second
                     }
                 } else -1
 
@@ -1201,8 +1201,7 @@ fun YlowstoneApp(
                                         onOpenProfileMenu = {
                                             returnStageAfterSettings = AppStage.WORKSPACE
                                             showProfileDropdown = true
-                                        },
-                                        allLockedMap = allLockedMap
+                                        }
                                     )
 
                                     MainTab.LIVE -> BrowseScreen(
