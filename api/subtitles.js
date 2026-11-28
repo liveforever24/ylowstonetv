@@ -6,7 +6,7 @@ function fetchBuffer(targetUrl, redirects = 0) {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error('Too many redirects'));
     const client = targetUrl.startsWith('https') ? https : http;
-    client.get(targetUrl, { headers: { 'User-Agent': 'YlowstoneTV/2.2.5' } }, (res) => {
+    client.get(targetUrl, { headers: { 'User-Agent': 'YlowstoneTV/2.5.4' } }, (res) => {
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
         const nextUrl = new URL(res.headers.location, targetUrl).toString();
         res.resume();
@@ -24,14 +24,57 @@ function fetchBuffer(targetUrl, redirects = 0) {
 }
 
 function cleanTitle(raw) {
-  let t = (raw || '').trim();
-  t = t.replace(/^[A-Z]{2,4}\s*[★♦✪•|:-]\s*/i, '');
+  let t = String(raw || '').trim();
+
+  // 1. Lepas prefix negara/kategori/ikon bertumpuk khas M3U (mis. [EN], |US|, EN ❖, US | 4K |, IND -)
+  for (let i = 0; i < 4; i++) {
+    const prev = t;
+    t = t.replace(/^\s*(?:[\[(|]\s*[A-Z0-9+/\- ]{1,14}\s*[\])|]|[A-Z]{2,5}\s*[★♦❖✪•|:/\-])\s*/i, '');
+    if (t === prev) break;
+  }
+
+  // 2. Deteksi pola episode di judul (S01E30, S01 E30, 1x30, Season 1 Episode 30) lalu pangkas ekornya
+  let detectedSeason = null;
+  let detectedEpisode = null;
+  const seMatch =
+    t.match(/\b[Ss](\d{1,2})\s*[.\-_ ]*\s*[Ee](\d{1,3})\b/) ||
+    t.match(/\b(\d{1,2})x(\d{1,3})\b/i) ||
+    t.match(/\bSeason\s*(\d{1,2})\s*(?:Episode|Ep\.?)\s*(\d{1,3})\b/i);
+  if (seMatch) {
+    detectedSeason = parseInt(seMatch[1], 10);
+    detectedEpisode = parseInt(seMatch[2], 10);
+    const cutIdx = t.indexOf(seMatch[0]);
+    if (cutIdx >= 2) {
+      t = t.slice(0, cutIdx);
+    }
+  } else {
+    t = t.replace(/\s*[-–:|]\s*(?:Season|S)\s*\d{1,2}.*$/i, '');
+  }
+
+  // 3. Ambil tahun rilis jika ada
   const yearMatch = t.match(/[\[(](19\d{2}|20\d{2})[\])]/);
   const year = yearMatch ? yearMatch[1] : null;
-  t = t.replace(/[\[(](19\d{2}|20\d{2}|4K|UHD|FHD|HD|SD|CAM|TS|HEVC|H\.?26[45])[\])]/gi, ' ');
-  t = t.replace(/\b(4K|UHD|FHD|HD|1080p|720p|2160p)\b/gi, ' ');
+
+  // 4. Hapus bracket/kurung metadata & tag kualitas/bahasa M3U
+  t = t.replace(/[\[(][^\]\)]{1,28}[\])]/g, ' ');
+  t = t.replace(
+    /\b(4K|UHD|FHD|HD|SD|1080p|720p|2160p|480p|WEB[\s.-]?DL|WEBRip|BluRay|BDRip|BRRip|HDR10?|DV|HEVC|x26[45]|H\.?26[45]|AAC|AC3|DDP5\.?1|MULTI[\s.-]?SUB|SUB[\s.-]?INDO|INDO[\s.-]?SUB|DUB(?:BED)?|CAM|HDTS|TS|EXTENDED|REMASTERED|UNRATED|DIRECTORS?[\s.-]?CUT)\b/gi,
+    ' '
+  );
+
+  // 5. Normalkan titik/underscore jika judul pakai pemisah titik (The.Dark.Knight)
+  if (!t.includes(' ') && /[._]/.test(t)) {
+    t = t.replace(/[._]+/g, ' ');
+  } else {
+    t = t.replace(/_+/g, ' ');
+  }
+
+  // 6. Hapus tahun telanjang di akhir & tanda baca sisa
+  t = t.replace(/\b(19\d{2}|20\d{2})\s*$/, '');
+  t = t.replace(/[\s\-–:|/]+$/g, '').replace(/^[\s\-–:|/]+/g, '');
   t = t.replace(/\s+/g, ' ').trim();
-  return { title: t, year };
+
+  return { title: t, year, detectedSeason, detectedEpisode };
 }
 
 function extractZipEntries(buf) {
@@ -132,33 +175,56 @@ module.exports = async function handler(req, res) {
       if (text.includes('\uFFFD')) text = chosen.data.toString('latin1');
       text = text.replace(/^\uFEFF/, '').replace(/^WEBVTT[^\n]*\n+/i, '');
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
       return res.status(200).send(text);
     }
 
     if (!title) {
       return res.status(400).json({ ok: false, error: 'Parameter title wajib diisi' });
     }
-    const parsed = cleanTitle(title);
-    const mediaType = type === 'tv' ? 'tv' : 'movie';
 
-    const querySubdl = async (withEpisode) => {
+    const parsed = cleanTitle(title);
+    const effSeason = season || parsed.detectedSeason || null;
+    const effEpisode = episode || parsed.detectedEpisode || null;
+    const primaryType = (type === 'tv' || (effSeason && effEpisode)) ? 'tv' : 'movie';
+
+    const querySubdl = async (filmName, mType, useYear, withEpisode) => {
+      if (!filmName || filmName.length < 2) return [];
       const u = new URL('https://api.subdl.com/api/v1/subtitles');
       u.searchParams.set('api_key', apiKey);
-      u.searchParams.set('film_name', parsed.title);
-      u.searchParams.set('type', mediaType);
+      u.searchParams.set('film_name', filmName);
+      u.searchParams.set('type', mType);
       u.searchParams.set('languages', 'ID');
-      if (parsed.year && mediaType === 'movie') u.searchParams.set('year', parsed.year);
-      if (mediaType === 'tv' && season) u.searchParams.set('season_number', String(season));
-      if (mediaType === 'tv' && withEpisode && episode) u.searchParams.set('episode_number', String(episode));
-      const raw = await fetchBuffer(u.toString());
-      return JSON.parse(raw.toString('utf8'));
+      if (useYear && parsed.year && mType === 'movie') u.searchParams.set('year', parsed.year);
+      if (mType === 'tv' && effSeason) u.searchParams.set('season_number', String(effSeason));
+      if (mType === 'tv' && withEpisode && effEpisode) u.searchParams.set('episode_number', String(effEpisode));
+      try {
+        const raw = await fetchBuffer(u.toString());
+        const json = JSON.parse(raw.toString('utf8'));
+        return Array.isArray(json.subtitles) ? json.subtitles : [];
+      } catch (_) {
+        return [];
+      }
     };
 
-    let data = await querySubdl(true);
-    let list = Array.isArray(data.subtitles) ? data.subtitles : [];
-    if (list.length === 0 && mediaType === 'tv' && episode) {
-      data = await querySubdl(false);
-      list = Array.isArray(data.subtitles) ? data.subtitles : [];
+    // Multi-stage smart search untuk M3U & Xtream
+    let list = await querySubdl(parsed.title, primaryType, true, true);
+
+    if (list.length === 0 && primaryType === 'tv' && effEpisode) {
+      list = await querySubdl(parsed.title, 'tv', false, false);
+    }
+    if (list.length === 0 && parsed.year) {
+      list = await querySubdl(parsed.title, primaryType, false, true);
+    }
+    if (list.length === 0 && /[:\-–]/.test(parsed.title)) {
+      const shortTitle = parsed.title.split(/[:\-–]/)[0].trim();
+      if (shortTitle.length >= 2) {
+        list = await querySubdl(shortTitle, primaryType, false, false);
+      }
+    }
+    if (list.length === 0) {
+      const altType = primaryType === 'tv' ? 'movie' : 'tv';
+      list = await querySubdl(parsed.title, altType, false, false);
     }
 
     const results = list
@@ -167,9 +233,9 @@ module.exports = async function handler(req, res) {
         const score = (x) => {
           const r = (x.release_name || '').toLowerCase();
           let sc = 0;
-          if (!x.full_season && episode) sc += 20;
-          if (/web-?dl|nf|netflix|amzn|dsnp/.test(r)) sc += 15;
-          if (/bluray|brrip/.test(r)) sc += 10;
+          if (!x.full_season && effEpisode) sc += 20;
+          if (/web-?dl|webrip/.test(r)) sc += 15;
+          if (/bluray|brrip|bdrip/.test(r)) sc += 10;
           return sc;
         };
         return score(b) - score(a);
@@ -180,9 +246,10 @@ module.exports = async function handler(req, res) {
         releaseName: (s.release_name || s.name || 'Subtitle Indonesia').trim(),
         author: (s.author || '').trim(),
         fullSeason: Boolean(s.full_season),
-        zipUrl: s.url
+        zipUrl: String(s.url).replace(/[?&]api_key=[^&]+/gi, '')
       }));
 
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
     return res.status(200).json({ ok: true, query: parsed.title, results });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message || 'Gagal memproses subtitle' });
